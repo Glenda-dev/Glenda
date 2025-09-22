@@ -65,7 +65,7 @@ pub fn _print(args: fmt::Arguments) {
 // 不自动加换行符
 macro_rules! print {
     ($($arg:tt)*) => {{
-        $crate::uart::_print(core::format_args!($($arg)*));
+        $crate::driver::uart::_print(core::format_args!($($arg)*));
     }}
 }
 

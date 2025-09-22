@@ -5,11 +5,11 @@
 #![no_std]
 #![no_main]
 
-mod uart;
+mod driver;
 
 use core::panic::PanicInfo;
 use riscv::asm::wfi;
-use crate::uart::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
+use crate::driver::uart::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
