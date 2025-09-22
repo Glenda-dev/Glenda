@@ -1,0 +1,11 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+riscv = "0.15"
+driver-uart = { path = "../drivers/uart" }
+
+[build-dependencies]
+cc = "1.1"

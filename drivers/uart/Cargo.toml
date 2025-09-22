@@ -1,0 +1,12 @@
+[package]
+name = "driver-uart"
+version = "0.1.0"
+edition = "2021"
+description = "16550 UART driver for Glenda"
+
+[lib]
+name = "driver_uart"
+path = "src/uart.rs"
+crate-type = ["rlib"]
+
+[dependencies]
