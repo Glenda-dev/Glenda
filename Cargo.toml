@@ -2,6 +2,7 @@
 members = [
   "kernel",
   "drivers/uart",
+  "build",
 ]
 resolver = "2"
 
