@@ -1,0 +1,20 @@
+[package]
+name = "glenda"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+riscv = "0.15.0"
+
+[build-dependencies]
+cc = "1.2.38"
+
+[profile.dev]
+panic = "abort"
+lto = false
+opt-level = 0
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
