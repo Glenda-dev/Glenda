@@ -36,6 +36,8 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
     #[cfg(feature = "tests")]
     {
+        use crate::tests::run_printk_tests;
+        run_printk_tests(hartid);
         run_spinlock_tests(hartid);
     }
 
