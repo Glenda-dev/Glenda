@@ -1,12 +1,13 @@
 #![no_std]
 #![no_main]
 
+mod lock;
 mod logo;
 mod printk;
 
 use core::panic::PanicInfo;
-use logo::logo::LOGO;
-use printk::printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
+use logo::LOGO;
+use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
