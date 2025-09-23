@@ -1,10 +1,12 @@
 #![no_std]
 #![no_main]
 
+mod logo;
 mod printk;
 
-use crate::printk::printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use core::panic::PanicInfo;
+use logo::logo::LOGO;
+use printk::printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -19,6 +21,7 @@ use riscv::asm::wfi;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
+    printk!("{}", LOGO);
     printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
     printk!("HART ID: {}", hartid);
     printk!("DTB at {:p}", dtb);
