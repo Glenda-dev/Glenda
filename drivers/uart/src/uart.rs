@@ -8,7 +8,7 @@ use core::ptr::{read_volatile, write_volatile};
   `0x10000000' 是 `qemu-system-riscv64' 中 `virt' 机器模型的串口地址
 
   理论上不可以直接硬编码下面的内容，不然会失去其它硬件的可移植性
-  正确方式是解析 `glenda_main(reg a0, reg a1)' 中传进来的文件树，但我还没写
+  正确方式是解析 `glenda_main(reg a0, reg a1)' 中传进来的设备树，但我还没写
 */
 pub struct Uart;
 

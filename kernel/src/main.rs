@@ -4,11 +4,13 @@
 mod lock;
 mod logo;
 mod printk;
+mod tests;
 
 use core::panic::PanicInfo;
 use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
+
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
  (虽然大概率以后要从头写出来 M-mode 到 S-mode 的切换)
@@ -22,10 +24,18 @@ use riscv::asm::wfi;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
-    printk!("{}", LOGO);
-    printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
-    printk!("HART ID: {}", hartid);
-    printk!("DTB at {:p}", dtb);
+    tests::init_harts(hartid, dtb);
+    if hartid == 0 {
+        printk!("{}", LOGO);
+        printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
+        printk!("Device tree blob at {:p}", dtb);
+    }
+
+    #[cfg(feature = "tests")]
+    {
+        tests::run_spinlock_tests(hartid, dtb);
+    }
+
     loop {
         wfi();
     }

@@ -1,11 +1,32 @@
     .section .text.start
     .globl _start
-_start:
-    csrw sie, zero
-    la   t0, trap
-    csrw stvec, t0
-    la   sp, boot_stack_top
-    tail glenda_main
+    .globl secondary_start
+
+    .equ BOOT_STACK_SIZE, 4096 // 4KB 启动栈
+    .equ MAX_BOOT_HARTS, 8  // 最多 8 个 hart 并发启动
+
+    .macro HART_ENTRY
+        csrw sie, zero
+        la   t0, trap
+        csrw stvec, t0
+        la   t1, boot_stack_top
+        li   t2, BOOT_STACK_SIZE
+        li   t3, MAX_BOOT_HARTS
+        bgeu a0, t3, 1f
+        mul  t2, t2, a0
+        sub  sp, t1, t2
+        j    2f
+1:
+        mv   sp, t1
+2:
+        tail glenda_main
+    .endm
+
+_start: // boot hart
+    HART_ENTRY
+
+secondary_start: // secondary harts
+    HART_ENTRY
 
     .align 2
 trap:
@@ -15,5 +36,5 @@ trap:
     .section .bss
     .align 16
 boot_stack:
-    .space 4096
+    .space BOOT_STACK_SIZE * MAX_BOOT_HARTS
 boot_stack_top:
