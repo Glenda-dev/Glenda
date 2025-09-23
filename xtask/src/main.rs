@@ -34,6 +34,20 @@ enum Cmd {
         #[arg(long, default_value = "nographic")]
         display: String,
     },
+    /// Run kernel tests
+    Test {
+        /// Number of virtual CPUs to pass to QEMU
+        #[arg(long, default_value_t = 4)]
+        cpus: u32,
+
+        /// Memory for QEMU (e.g. 128M, 1G)
+        #[arg(long, default_value = "128M")]
+        mem: String,
+
+        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
+        #[arg(long, default_value = "nographic")]
+        display: String,
+    },
     /// Start QEMU paused and wait for GDB
     Gdb {
         /// Number of virtual CPUs to pass to QEMU
@@ -67,6 +81,10 @@ fn main() -> anyhow::Result<()> {
         Cmd::Gdb { cpus, mem, display } => {
             build(mode, &xtask.features)?;
             qemu_gdb(mode, cpus, &mem, &display)?;
+        }
+        Cmd::Test { cpus, mem, display } => {
+            build(mode, &Vec::from([String::from("tests")]))?;
+            qemu_run(mode, cpus, &mem, &display)?;
         }
         Cmd::Objdump => objdump(mode)?,
         Cmd::Size => size(mode)?,
