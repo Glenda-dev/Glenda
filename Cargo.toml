@@ -2,7 +2,7 @@
 members = [
   "kernel",
   "drivers/uart",
-  "build",
+  "xtask",
 ]
 resolver = "2"
 

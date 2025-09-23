@@ -18,9 +18,33 @@ enum Cmd {
     /// Build the kernel
     Build,
     /// Build then boot the kernel in QEMU
-    Run,
+    Run {
+        /// Number of virtual CPUs to pass to QEMU
+        #[arg(long, default_value_t = 1)]
+        cpus: u32,
+
+        /// Memory for QEMU (e.g. 128M, 1G)
+        #[arg(long, default_value = "128M")]
+        mem: String,
+
+        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
+        #[arg(long, default_value = "nographic")]
+        display: String,
+    },
     /// Start QEMU paused and wait for GDB
-    Gdb,
+    Gdb {
+        /// Number of virtual CPUs to pass to QEMU
+        #[arg(long, default_value_t = 1)]
+        cpus: u32,
+
+        /// Memory for QEMU (e.g. 128M, 1G)
+        #[arg(long, default_value = "128M")]
+        mem: String,
+
+        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
+        #[arg(long, default_value = "nographic")]
+        display: String,
+    },
     /// Disassemble the kernel ELF
     Objdump,
     /// Show section sizes
@@ -33,13 +57,13 @@ fn main() -> anyhow::Result<()> {
 
     match xtask.cmd {
         Cmd::Build => build(mode)?,
-        Cmd::Run => {
+        Cmd::Run { cpus, mem, display } => {
             build(mode)?;
-            qemu_run(mode)?;
+            qemu_run(mode, cpus, &mem, &display)?;
         }
-        Cmd::Gdb => {
+        Cmd::Gdb { cpus, mem, display } => {
             build(mode)?;
-            qemu_gdb(mode)?;
+            qemu_gdb(mode, cpus, &mem, &display)?;
         }
         Cmd::Objdump => objdump(mode)?,
         Cmd::Size => size(mode)?,
@@ -66,47 +90,56 @@ fn qemu_cmd() -> anyhow::Result<String> {
     Ok(qemu.to_string_lossy().into_owned())
 }
 
-fn qemu_run(mode: &str) -> anyhow::Result<()> {
+fn qemu_run(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<()> {
     let elf = elf_path(mode);
     if !elf.exists() {
         return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
     }
     let qemu = qemu_cmd()?;
     let mut cmd = Command::new(&qemu);
-    cmd.args([
-        "-machine",
-        "virt",
-        "-m",
-        "128M",
-        "-nographic",
-        "-bios",
-        "default",
-        "-kernel",
-        elf.to_str().unwrap(),
-    ]);
+    cmd.arg("-machine").arg("virt");
+    // CPUs
+    if cpus > 1 {
+        cmd.arg("-smp").arg(cpus.to_string());
+    }
+    // Memory
+    cmd.arg("-m").arg(mem);
+    // Display handling: keep legacy -nographic behavior when requested
+    if display == "nographic" {
+        cmd.arg("-nographic");
+    } else if display == "none" {
+        cmd.arg("-display").arg("none");
+    } else {
+        // pass raw display backend name (e.g. gtk, sdl)
+        cmd.arg("-display").arg(display);
+    }
+    cmd.arg("-bios").arg("default").arg("-kernel").arg(elf.to_str().unwrap());
     run(&mut cmd)
 }
 
-fn qemu_gdb(mode: &str) -> anyhow::Result<()> {
+fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<()> {
     let elf = elf_path(mode);
     if !elf.exists() {
         return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
     }
     let qemu = qemu_cmd()?;
     let mut cmd = Command::new(&qemu);
-    cmd.args([
-        "-machine",
-        "virt",
-        "-m",
-        "128M",
-        "-nographic",
-        "-bios",
-        "default",
-        "-S",
-        "-s",
-        "-kernel",
-        elf.to_str().unwrap(),
-    ]);
+    cmd.arg("-machine").arg("virt");
+    // CPUs
+    if cpus > 1 {
+        cmd.arg("-smp").arg(cpus.to_string());
+    }
+    // Memory
+    cmd.arg("-m").arg(mem);
+    // Display handling
+    if display == "nographic" {
+        cmd.arg("-nographic");
+    } else if display == "none" {
+        cmd.arg("-display").arg("none");
+    } else {
+        cmd.arg("-display").arg(display);
+    }
+    cmd.arg("-bios").arg("default").arg("-S").arg("-s").arg("-kernel").arg(elf.to_str().unwrap());
     eprintln!("QEMU started. In another shell:");
     if which("gdb").is_ok() {
         eprintln!("  gdb -ex 'set architecture riscv:rv64' -ex 'target remote :1234' -ex 'symbol-file {}'", elf.display());
