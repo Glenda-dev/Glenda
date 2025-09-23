@@ -138,8 +138,11 @@ fn spinlock_test(hartid: usize) {
     }
 }
 
-pub fn run(hartid: usize, dtb: *const u8) {
-    printk!("HART ID: {}", hartid);
-    bootstrap_secondary_harts(hartid, dtb);
+pub fn run(hartid: usize, _dtb: *const u8) {
     spinlock_test(hartid);
+}
+
+// FIXME: 把启动次级 hart 的逻辑移出 tests
+pub fn init(hartid: usize, dtb: *const u8) {
+    bootstrap_secondary_harts(hartid, dtb);
 }

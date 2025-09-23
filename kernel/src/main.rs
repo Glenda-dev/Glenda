@@ -4,8 +4,6 @@
 mod lock;
 mod logo;
 mod printk;
-
-#[cfg(feature = "tests")]
 mod tests;
 
 use core::panic::PanicInfo;
@@ -26,6 +24,7 @@ use riscv::asm::wfi;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
+    tests::init_harts(hartid, dtb);
     if hartid == 0 {
         printk!("{}", LOGO);
         printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
