@@ -48,16 +48,15 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn elf_path(mode: &str) -> PathBuf {
-    Path::new("target")
-        .join("riscv64gc-unknown-none-elf")
-        .join(mode)
-        .join("kernel")
+    Path::new("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel")
 }
 
 fn build(mode: &str) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.arg("build").arg("-p").arg("kernel").arg("--target").arg("riscv64gc-unknown-none-elf");
-    if mode == "release" { cmd.arg("--release"); }
+    if mode == "release" {
+        cmd.arg("--release");
+    }
     run(&mut cmd)
 }
 
@@ -75,11 +74,15 @@ fn qemu_run(mode: &str) -> anyhow::Result<()> {
     let qemu = qemu_cmd()?;
     let mut cmd = Command::new(&qemu);
     cmd.args([
-        "-machine","virt",
-        "-m","128M",
+        "-machine",
+        "virt",
+        "-m",
+        "128M",
         "-nographic",
-        "-bios","default",
-        "-kernel", elf.to_str().unwrap(),
+        "-bios",
+        "default",
+        "-kernel",
+        elf.to_str().unwrap(),
     ]);
     run(&mut cmd)
 }
@@ -92,12 +95,17 @@ fn qemu_gdb(mode: &str) -> anyhow::Result<()> {
     let qemu = qemu_cmd()?;
     let mut cmd = Command::new(&qemu);
     cmd.args([
-        "-machine","virt",
-        "-m","128M",
+        "-machine",
+        "virt",
+        "-m",
+        "128M",
         "-nographic",
-        "-bios","default",
-        "-S","-s",
-        "-kernel", elf.to_str().unwrap(),
+        "-bios",
+        "default",
+        "-S",
+        "-s",
+        "-kernel",
+        elf.to_str().unwrap(),
     ]);
     eprintln!("QEMU started. In another shell:");
     if which("gdb").is_ok() {
@@ -115,9 +123,9 @@ fn objdump(mode: &str) -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("[ ERROR ] install objdump first"))?;
     let mut cmd = Command::new(tool);
     if cmd.get_program().to_string_lossy().contains("llvm-objdump") {
-        cmd.args(["-d","--all-headers","--source", elf.to_str().unwrap()]);
+        cmd.args(["-d", "--all-headers", "--source", elf.to_str().unwrap()]);
     } else {
-        cmd.args(["-d","--all-headers","--source", elf.to_str().unwrap()]);
+        cmd.args(["-d", "--all-headers", "--source", elf.to_str().unwrap()]);
     }
     run(&mut cmd)
 }
@@ -134,10 +142,8 @@ fn size(mode: &str) -> anyhow::Result<()> {
 
 fn run(cmd: &mut Command) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Running: $ {:?}", cmd);
-    let status = cmd.stdin(Stdio::inherit())
-                    .stdout(Stdio::inherit())
-                    .stderr(Stdio::inherit())
-                    .status()?;
+    let status =
+        cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit()).status()?;
     if !status.success() {
         return Err(anyhow::anyhow!("[ ERROR ] command failed with status {}", status));
     }

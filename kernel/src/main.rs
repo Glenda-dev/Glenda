@@ -1,34 +1,36 @@
 #![no_std]
 #![no_main]
 
+mod printk;
+
+use crate::printk::printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use core::panic::PanicInfo;
 use riscv::asm::wfi;
-use driver_uart::{println, ANSI_BLUE, ANSI_RED, ANSI_RESET};
+/*
+ 为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
+ (虽然大概率以后要从头写出来 M-mode 到 S-mode 的切换)
 
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
-    loop { wfi(); }
+ 寄存器约定[1]:
+   - $a0 存放当前核的 hartid
+   - $a1 存放设备树指针
+
+ [1]: https://www.kernel.org/doc/Documentation/riscv/boot.rst
+
+*/
+#[unsafe(no_mangle)]
+pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
+    printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
+    printk!("HART ID: {}", hartid);
+    printk!("DTB at {:p}", dtb);
+    loop {
+        wfi();
+    }
 }
 
-/*
-  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
-  (虽然大概率以后要从头写出来 M-mode 到 S-mode 的切换)
-
-  寄存器约定[1]:
-    - $a0 存放当前核的 hartid
-    - $a1 存放设备树指针
-
-  [1]: https://www.kernel.org/doc/Documentation/riscv/boot.rst
-
- */
-#[no_mangle]
-pub extern "C" fn glenda_main(hartid: usize, _dtb: *const u8) -> ! {
-    println!("{}Glenda microkernel booting (hart={}){}",
-             ANSI_BLUE, hartid, ANSI_RESET);
-    println!("println self-test:");
-    println!("  int = {}", -42i32);
-    println!("  hex = 0x{:x}", 0xDEAD_BEEFu64);
-
-    loop { wfi(); }
+#[panic_handler]
+pub fn panic(info: &PanicInfo) -> ! {
+    printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
+    loop {
+        wfi();
+    }
 }
