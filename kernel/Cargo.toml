@@ -9,3 +9,7 @@ driver-uart = { path = "../drivers/uart" }
 
 [build-dependencies]
 cc = "1.2.38"
+
+[features]
+default = []
+tests = []

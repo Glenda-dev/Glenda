@@ -9,6 +9,9 @@ struct Xtask {
     #[arg(long)]
     release: bool,
 
+    #[arg(long = "features", value_delimiter = ',', num_args(0..))]
+    features: Vec<String>,
+
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -20,7 +23,7 @@ enum Cmd {
     /// Build then boot the kernel in QEMU
     Run {
         /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 4)]
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
@@ -34,7 +37,7 @@ enum Cmd {
     /// Start QEMU paused and wait for GDB
     Gdb {
         /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 4)]
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
@@ -56,13 +59,13 @@ fn main() -> anyhow::Result<()> {
     let mode = if xtask.release { "release" } else { "debug" };
 
     match xtask.cmd {
-        Cmd::Build => build(mode)?,
+        Cmd::Build => build(mode, &xtask.features)?,
         Cmd::Run { cpus, mem, display } => {
-            build(mode)?;
+            build(mode, &xtask.features)?;
             qemu_run(mode, cpus, &mem, &display)?;
         }
         Cmd::Gdb { cpus, mem, display } => {
-            build(mode)?;
+            build(mode, &xtask.features)?;
             qemu_gdb(mode, cpus, &mem, &display)?;
         }
         Cmd::Objdump => objdump(mode)?,
@@ -75,11 +78,15 @@ fn elf_path(mode: &str) -> PathBuf {
     Path::new("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel")
 }
 
-fn build(mode: &str) -> anyhow::Result<()> {
+fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.arg("build").arg("-p").arg("kernel").arg("--target").arg("riscv64gc-unknown-none-elf");
     if mode == "release" {
         cmd.arg("--release");
+    }
+    if !features.is_empty() {
+        let joined = features.join(",");
+        cmd.arg("--features").arg(joined);
     }
     run(&mut cmd)
 }
