@@ -18,10 +18,9 @@ static START_TEST: AtomicBool = AtomicBool::new(false);
 static HARTS_FINISHED: AtomicUsize = AtomicUsize::new(0);
 
 // 自旋锁一致性测试
-fn spinlock_test(hartid: usize) {
+fn spinlock_test(hartid: usize) -> usize {
     if hartid >= HARTS_UNDER_TEST {
-        printk!("{}hart {} idle{} (not part of spinlock test)", ANSI_YELLOW, hartid, ANSI_RESET);
-        return;
+        0;
     }
 
     // 确保所有 hart 统一开始
@@ -49,9 +48,19 @@ fn spinlock_test(hartid: usize) {
         TEST_LOCK.unlock();
     }
 
+    return HARTS_FINISHED.fetch_add(1, Ordering::SeqCst) + 1;
+}
+
+pub fn run(hartid: usize) {
+    // 运行测试
+    let result = spinlock_test(hartid);
+
     // 校验 + 打印结果
-    let finished = HARTS_FINISHED.fetch_add(1, Ordering::SeqCst) + 1;
-    if finished == HARTS_UNDER_TEST {
+    if result == 0 {
+        printk!("{}hart {} idle{} (not part of spinlock test)", ANSI_YELLOW, hartid, ANSI_RESET);
+        return;
+    }
+    if result == HARTS_UNDER_TEST {
         let expected = HARTS_UNDER_TEST * INCREMENTS_PER_HART;
         let final_value = GLOBAL_COUNTER.load(Ordering::SeqCst);
         if final_value == expected {
@@ -71,8 +80,4 @@ fn spinlock_test(hartid: usize) {
             );
         }
     }
-}
-
-pub fn run(hartid: usize) {
-    spinlock_test(hartid);
 }
