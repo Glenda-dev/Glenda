@@ -1,10 +1,12 @@
 #![no_std]
 #![no_main]
 
+mod dtb;
 mod init;
 mod lock;
 mod logo;
 mod printk;
+#[cfg(feature = "tests")]
 mod tests;
 
 use core::panic::PanicInfo;
@@ -13,7 +15,7 @@ use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 #[cfg(feature = "tests")]
-use tests::run_spinlock_tests;
+use tests::{run_printk_tests, run_spinlock_tests};
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -28,15 +30,38 @@ use tests::run_spinlock_tests;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
+    // 解析设备树
+    let dtb_result = dtb::init(dtb);
+
+    // 初始化串口驱动
+    let uart_cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
+    driver_uart::init(uart_cfg);
+
+    // 启动信息
     if hartid == 0 {
+        match dtb_result {
+            Ok(_) => {
+                printk!("Device tree blob at {:p}", dtb);
+                printk!(
+                    "UART in use: base=0x{:x}, thr=0x{:x}, lsr=0x{:x}",
+                    uart_cfg.base(),
+                    uart_cfg.thr_offset(),
+                    uart_cfg.lsr_offset()
+                );
+                printk!("{} harts detected", dtb::hart_count());
+            }
+            Err(err) => {
+                printk!("Device tree parsing failed: {:?}", err);
+                printk!("Falling back to QEMU-virt default UART @ 0x10000000");
+            }
+        }
         printk!("{}", LOGO);
         printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
-        printk!("Device tree blob at {:p}", dtb);
     }
+
     init(hartid, dtb);
     #[cfg(feature = "tests")]
     {
-        use crate::tests::run_printk_tests;
         run_printk_tests(hartid);
         run_spinlock_tests(hartid);
     }

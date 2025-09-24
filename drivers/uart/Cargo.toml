@@ -8,3 +8,7 @@ description = "16550 UART driver for Glenda"
 name = "driver_uart"
 path = "src/uart.rs"
 crate-type = ["rlib"]
+
+[dependencies]
+fdt = "0.1.5"
+spin = "0.9"

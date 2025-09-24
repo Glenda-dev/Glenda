@@ -39,11 +39,7 @@ unsafe fn sbi_hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Res
         options(nostack)
         );
     }
-    if err == 0 {
-        Ok(())
-    } else {
-        Err(err)
-    }
+    if err == 0 { Ok(()) } else { Err(err) }
 }
 
 // 由第一个进来的 hart 调用一次，启动其余参与测试的次级 hart
@@ -54,7 +50,7 @@ pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
     unsafe {
         let start_addr = secondary_start as usize;
         let opaque = dtb as usize;
-        let harts = 4; // TODO: 通过设备树获取系统中 hart 数量
+        let harts = crate::dtb::hart_count();
         for target in 0..harts {
             if target == hartid {
                 continue;
