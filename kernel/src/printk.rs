@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 
-use crate::lock::SpinLock;
 use driver_uart;
+use spin::Mutex;
 
-static PRINTK_LOCK: SpinLock = SpinLock::new();
+static PRINTK_LOCK: Mutex<()> = Mutex::new(());
 pub fn _printk(args: core::fmt::Arguments) {
-    PRINTK_LOCK.lock();
-    let _ = driver_uart::_print(args);
-    PRINTK_LOCK.unlock();
+    let _guard = PRINTK_LOCK.lock();
+    driver_uart::_print(args);
 }
 #[macro_export]
 macro_rules! printk {
