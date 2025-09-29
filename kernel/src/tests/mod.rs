@@ -1,3 +1,4 @@
+mod pmem;
 mod printk;
 mod spinlock;
 
@@ -9,4 +10,7 @@ pub fn run_printk_tests(hartid: usize) {
         return;
     }
     printk::run();
+}
+pub fn run_pmem_tests(hartid: usize) {
+    pmem::run(hartid);
 }

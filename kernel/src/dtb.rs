@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::hint::spin_loop;
@@ -7,17 +9,31 @@ use driver_uart::Config as UartConfig;
 use fdt::Fdt;
 
 #[derive(Debug, Clone, Copy)]
+pub struct MemoryRange {
+    pub start: usize,
+    pub size: usize,
+}
+
+impl MemoryRange {
+    pub fn end(&self) -> usize {
+        self.start + self.size
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct DeviceTreeInfo {
     uart: Option<UartConfig>,
     hart_count: usize,
+    memory: Option<MemoryRange>,
 }
 
 impl DeviceTreeInfo {
     fn new(fdt: &Fdt) -> Self {
         let hart_count = parse_hart_count(fdt);
         let uart = parse_uart(fdt);
+        let memory = parse_memory(fdt);
 
-        Self { uart, hart_count }
+        Self { uart, hart_count, memory }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -26,6 +42,10 @@ impl DeviceTreeInfo {
 
     fn hart_count(&self) -> usize {
         cmp::max(self.hart_count, 1)
+    }
+
+    fn memory(&self) -> Option<MemoryRange> {
+        self.memory
     }
 }
 
@@ -115,6 +135,10 @@ pub fn uart_config() -> Option<UartConfig> {
     DEVICE_TREE.get().and_then(DeviceTreeInfo::uart)
 }
 
+pub fn memory_range() -> Option<MemoryRange> {
+    DEVICE_TREE.get().and_then(DeviceTreeInfo::memory)
+}
+
 fn parse_uart(fdt: &Fdt) -> Option<UartConfig> {
     let chosen = fdt.find_node("/chosen")?;
     let stdout_path = chosen.property("stdout-path")?.as_str()?;
@@ -139,4 +163,13 @@ fn parse_hart_count(fdt: &Fdt) -> usize {
     }
 
     cmp::max(count, 1)
+}
+
+fn parse_memory(fdt: &Fdt) -> Option<MemoryRange> {
+    let memory = fdt.memory();
+    let mut regions = memory.regions();
+    regions.find_map(|region| {
+        let start = region.starting_address as usize;
+        region.size.map(|size| MemoryRange { start, size })
+    })
 }

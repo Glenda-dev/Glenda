@@ -11,11 +11,12 @@ mod tests;
 
 use core::panic::PanicInfo;
 use init::init_harts;
+use init::init_pmem;
 use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 #[cfg(feature = "tests")]
-use tests::{run_printk_tests, run_spinlock_tests};
+use tests::{run_pmem_tests, run_printk_tests, run_spinlock_tests};
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -64,6 +65,7 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     {
         run_printk_tests(hartid);
         run_spinlock_tests(hartid);
+        run_pmem_tests(hartid);
     }
 
     loop {
@@ -81,4 +83,5 @@ pub fn panic(info: &PanicInfo) -> ! {
 
 fn init(hartid: usize, dtb: *const u8) {
     init_harts(hartid, dtb);
+    init_pmem();
 }
