@@ -7,8 +7,9 @@ use core::sync::atomic::{
 };
 
 use crate::dtb;
-use crate::init::pmem;
-use crate::init::pmem::PGSIZE;
+use crate::init;
+use crate::mem::pmem;
+use crate::mem::pmem::PGSIZE;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 
@@ -46,7 +47,7 @@ unsafe impl Sync for HartSlotTable {}
 static PAGE_SLOTS: HartSlotTable = HartSlotTable::new();
 
 pub fn run(hartid: usize) {
-    pmem::pmem_init();
+    init::init_pmem();
     kernel_concurrent_alloc_test(hartid);
     if hartid == 0 {
         user_region_validation();
