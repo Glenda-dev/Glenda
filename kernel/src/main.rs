@@ -5,6 +5,7 @@ mod dtb;
 mod init;
 mod lock;
 mod logo;
+mod mem;
 mod printk;
 #[cfg(feature = "tests")]
 mod tests;

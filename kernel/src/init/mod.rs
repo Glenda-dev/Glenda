@@ -1,5 +1,5 @@
 mod harts;
-pub mod pmem;
+mod pmem;
 
 pub fn init_pmem() {
     pmem::pmem_init();
