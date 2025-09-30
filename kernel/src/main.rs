@@ -9,6 +9,7 @@ mod mem;
 mod printk;
 #[cfg(feature = "tests")]
 mod tests;
+mod utils;
 
 use core::panic::PanicInfo;
 use init::init_harts;

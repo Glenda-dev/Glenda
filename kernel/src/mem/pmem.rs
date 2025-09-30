@@ -9,6 +9,7 @@ use spin::Mutex;
 use crate::dtb;
 use crate::printk;
 use crate::printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
+use crate::utils::align::{align_down, align_up};
 
 pub const PGSIZE: usize = 4096;
 
@@ -213,16 +214,4 @@ pub fn initialize_regions() {
         u.end,
         u.allocable
     );
-}
-
-#[inline(always)]
-const fn align_up(value: usize, align: usize) -> usize {
-    debug_assert!(align.is_power_of_two());
-    (value + align - 1) & !(align - 1)
-}
-
-#[inline(always)]
-const fn align_down(value: usize, align: usize) -> usize {
-    debug_assert!(align.is_power_of_two());
-    value & !(align - 1)
 }
