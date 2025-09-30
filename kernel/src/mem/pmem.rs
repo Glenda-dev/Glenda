@@ -97,7 +97,7 @@ impl AllocRegion {
     fn free(&self, addr: usize) {
         let b = *self.bounds.get().expect("region not initialized");
         if addr < b.begin || addr >= b.end || addr % PGSIZE != 0 {
-            panic!("pmem_free: address {:#x} out of bounds [{:#x}, {:#x})", addr, b.begin, b.end);
+            panic!("pmem_free: address {:#x} out of bounds [{:#x}, {:#x}]", addr, b.begin, b.end);
         }
 
         let mut inner = self.inner.lock();
