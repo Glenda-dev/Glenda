@@ -11,6 +11,7 @@ use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
 static VM_BARRIER: MultiCoreTestBarrier = MultiCoreTestBarrier::new();
 
 pub fn run(hartid: usize) {
+    VM_BARRIER.ensure_inited(dtb::hart_count());
     if hartid == 0 {
         VM_BARRIER.init(dtb::hart_count());
         printk!("{}[TEST]{} VM test start ({} harts)", ANSI_YELLOW, ANSI_RESET, VM_BARRIER.total());

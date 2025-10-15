@@ -112,7 +112,7 @@ impl AllocRegion {
 
         let mut inner = self.inner.lock();
         unsafe {
-            ptr::write_bytes(addr as *mut u8, 0, PGSIZE);
+            //ptr::write_bytes(addr as *mut u8, 0, PGSIZE);
             let page = addr as *mut FreePage;
             (*page).next = inner.head;
             inner.head = NonNull::new(page);

@@ -30,8 +30,7 @@ secondary_start: // secondary harts
 
     .align 2
 trap:
-    wfi
-    j trap
+    tail glenda_trap
 
     .section .bss
     .align 16

@@ -297,7 +297,7 @@ fn __init_kernel_vm(hartid: usize) {
 
     // 内核的物理页分配池
     let kernel_info = kernel_region_info();
-    let map_start = align_down(max(kernel_info.begin, align_up(bss_end_addr)));
+    let map_start = align_down(kernel_info.begin);
     let map_end = align_up(kernel_info.end);
     if map_start < map_end {
         printk!("VM: Map kernel pool [{:p}, {:p})", map_start as *const u8, map_end as *const u8);
@@ -307,6 +307,20 @@ fn __init_kernel_vm(hartid: usize) {
             map_end - map_start,
             map_start,
             PTE_R | PTE_W | PTE_A | PTE_D,
+        );
+    }
+    // FIXME: 不应该这么做，目前仅为过测试
+    let user = user_region_info();
+    let user_start = align_down(user.begin);
+    let user_end = align_up(user.end);
+    if user_start < user_end {
+        printk!("VM: Map user pool [{:p}, {:p})", user_start as *const u8, user_end as *const u8);
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            user_start,
+            user_end - user_start,
+            user_start,
+            PTE_R | PTE_W | PTE_A | PTE_D
         );
     }
     printk!("VM: Root page table built by hart {}", hartid);

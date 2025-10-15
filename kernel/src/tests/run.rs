@@ -2,7 +2,7 @@ use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::barrier::FINAL_BARRIER;
-use crate::mem::vm::{vm_switch_off, vm_switch_to_kernel};
+use crate::mem::vm::{vm_switch_off, vm_switch_to_kernel, init_kernel_vm};
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET};
 
@@ -10,10 +10,11 @@ use crate::printk::{ANSI_GREEN, ANSI_RESET};
 static FINAL_DONE: AtomicBool = AtomicBool::new(false);
 
 pub fn run_tests(hartid: usize) {
-    vm_switch_off(); // 关闭 VM，确保测试在非分页环境下运行
     super::spinlock::run(hartid);
     super::printk::run(hartid);
+    vm_switch_off(); // 关闭 VM，确保测试在非分页环境下运行
     super::pmem::run(hartid);
+    vm_switch_to_kernel(hartid);
     super::vm::run(hartid);
 
     // 最终同步：所有测试结束后再统一进入 main loop
