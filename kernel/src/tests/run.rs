@@ -2,7 +2,7 @@ use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::barrier::FINAL_BARRIER;
-use crate::mem::vm::{vm_switch_off, vm_switch_to_kernel, init_kernel_vm};
+use crate::mem::vm::{init_kernel_vm, vm_switch_off, vm_switch_to_kernel};
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET};
 
@@ -14,9 +14,9 @@ pub fn run_tests(hartid: usize) {
     super::printk::run(hartid);
     vm_switch_off(); // 关闭 VM，确保测试在非分页环境下运行
     super::pmem::run(hartid);
+    init_kernel_vm(hartid);
     vm_switch_to_kernel(hartid);
     super::vm::run(hartid);
-
     // 最终同步：所有测试结束后再统一进入 main loop
     // 初始化（任意先到可执行）；如果已经 init 则忽略
     FINAL_BARRIER.ensure_inited(crate::dtb::hart_count());
@@ -35,7 +35,5 @@ pub fn run_tests(hartid: usize) {
             spin_loop();
         }
     }
-    // 在 test() 返回前所有 hart 打印进入主循环提示，避免因为后续输出被截断而误判未进入
-    printk!("Hart {} tests done, returning to main loop", hartid);
     vm_switch_to_kernel(hartid); // 恢复 VM，返回内核页表
 }

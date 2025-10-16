@@ -7,6 +7,7 @@ mod logo;
 mod mem;
 mod printk;
 mod trap;
+
 #[cfg(feature = "tests")]
 mod tests;
 
@@ -15,6 +16,7 @@ use init::init;
 use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
+
 #[cfg(feature = "tests")]
 use tests::test;
 

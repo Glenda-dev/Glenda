@@ -2,8 +2,10 @@ use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 
 use riscv::asm::wfi;
-use riscv::interrupt::supervisor::{Exception, Interrupt};
-use riscv::register::{scause::{self, Trap}, sepc, sstatus, stval};
+use riscv::register::{
+    scause::{self, Trap},
+    sepc, sstatus, stval,
+};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_trap() -> ! {
@@ -24,7 +26,9 @@ pub extern "C" fn glenda_trap() -> ! {
                 sstatus_bits
             );
             // 对于异常，直接停机以暴露问题
-            loop { wfi(); }
+            loop {
+                wfi();
+            }
         }
         Trap::Interrupt(i) => {
             printk!(
@@ -36,7 +40,9 @@ pub extern "C" fn glenda_trap() -> ! {
                 tval,
                 sstatus_bits
             );
-            loop { wfi(); }
+            loop {
+                wfi();
+            }
         }
     }
 }
