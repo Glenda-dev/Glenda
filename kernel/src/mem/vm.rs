@@ -11,7 +11,6 @@ use super::pte::{pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE, VA_MAX};
 use crate::dtb;
 use crate::printk;
-use spin::Once;
 
 #[cfg(feature = "tests")]
 use super::pte::{pte_get_flags, pte_is_table};
@@ -308,15 +307,7 @@ fn make_satp(ppn: usize) -> usize {
     SATP_SV39 | ppn
 }
 
-static INIT_KERNEL_VM: Once<()> = Once::new();
-
 pub fn init_kernel_vm(hartid: usize) {
-    INIT_KERNEL_VM.call_once(|| {
-        __init_kernel_vm(hartid);
-    });
-}
-
-fn __init_kernel_vm(hartid: usize) {
     // 权限映射, PTE_A/D 理论上硬件会帮忙做，但不确定 QEMU Virt 的具体行为，所以还是加上
     let text_start_addr = unsafe { &__text_start as *const u8 as usize };
     let text_end_addr = unsafe { &__text_end as *const u8 as usize };

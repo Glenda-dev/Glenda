@@ -3,7 +3,7 @@
 use core::cell::OnceCell;
 use core::ptr::{self, NonNull, addr_of_mut};
 
-use spin::{Mutex, Once};
+use spin::Mutex;
 
 use super::PGSIZE;
 use super::addr::{PhysAddr, align_down, align_up};
@@ -16,10 +16,63 @@ unsafe extern "C" {
     static mut __alloc_start: u8;
 }
 
-static PMEM_INIT: Once<()> = Once::new();
-
 pub fn initialize_regions(hartid: usize) {
-    PMEM_INIT.call_once(|| unsafe { _init_inner(hartid) });
+    let kernel_end = align_up(addr_of_mut!(__bss_end) as PhysAddr);
+
+    let mem_range = dtb::memory_range()
+        .unwrap_or_else(|| dtb::MemoryRange { start: 0x8000_0000, size: 128 * 1024 * 1024 });
+    let mem_end = mem_range.start + mem_range.size;
+
+    if kernel_end >= mem_end {
+        panic!("pmem_init: kernel end {:#x} beyond memory end {:#x}", kernel_end, mem_end);
+    }
+
+    let alloc_begin = addr_of_mut!(__alloc_start) as PhysAddr;
+    debug_assert!(alloc_begin >= align_up(addr_of_mut!(__bss_end) as PhysAddr));
+    debug_assert_eq!(alloc_begin & (PGSIZE - 1), 0, "__alloc_start must be 4K-aligned");
+
+    let alloc_end = mem_end;
+    let total_free = alloc_end.saturating_sub(alloc_begin);
+    printk!(
+        "PMEM: physical memory [{:#x}, {:#x}) -> {} MiB, free [{:#x}, {:#x}) -> {} MiB",
+        mem_range.start,
+        mem_end,
+        mem_range.size / (1024 * 1024),
+        alloc_begin,
+        alloc_end,
+        total_free / (1024 * 1024)
+    );
+
+    let mut kernel_split = align_up(alloc_begin + KERN_PAGES * PGSIZE);
+    if kernel_split > alloc_end {
+        kernel_split = alloc_end;
+    }
+    if kernel_split < alloc_begin {
+        kernel_split = alloc_begin;
+    }
+
+    unsafe {
+        KERNEL_REGION.init(alloc_begin, kernel_split);
+        USER_REGION.init(kernel_split, alloc_end);
+    }
+
+    let k = KERNEL_REGION.region_info();
+    let u = USER_REGION.region_info();
+    debug_assert_eq!(k.begin & (PGSIZE - 1), 0);
+    debug_assert_eq!(k.end & (PGSIZE - 1), 0);
+    debug_assert_eq!(u.begin & (PGSIZE - 1), 0);
+    debug_assert_eq!(u.end & (PGSIZE - 1), 0);
+
+    printk!(
+        "PMEM: Initialized kernel [{:#x}, {:#x}) -> {} pages, user [{:#x}, {:#x}) -> {} pages on hart {}",
+        k.begin,
+        k.end,
+        k.allocable,
+        u.begin,
+        u.end,
+        u.allocable,
+        hartid
+    );
 }
 
 #[repr(C)]
@@ -173,65 +226,6 @@ fn allocate_page(for_kernel: bool) -> Option<*mut u8> {
 
 fn region(for_kernel: bool) -> &'static AllocRegion {
     if for_kernel { &KERNEL_REGION } else { &USER_REGION }
-}
-
-unsafe fn _init_inner(hartid: usize) {
-    let kernel_end = align_up(addr_of_mut!(__bss_end) as PhysAddr);
-
-    let mem_range = dtb::memory_range()
-        .unwrap_or_else(|| dtb::MemoryRange { start: 0x8000_0000, size: 128 * 1024 * 1024 });
-    let mem_end = mem_range.start + mem_range.size;
-
-    if kernel_end >= mem_end {
-        panic!("pmem_init: kernel end {:#x} beyond memory end {:#x}", kernel_end, mem_end);
-    }
-
-    let alloc_begin = addr_of_mut!(__alloc_start) as PhysAddr;
-    debug_assert!(alloc_begin >= align_up(addr_of_mut!(__bss_end) as PhysAddr));
-    debug_assert_eq!(alloc_begin & (PGSIZE - 1), 0, "__alloc_start must be 4K-aligned");
-
-    let alloc_end = mem_end;
-    let total_free = alloc_end.saturating_sub(alloc_begin);
-    printk!(
-        "PMEM: physical memory [{:#x}, {:#x}) -> {} MiB, free [{:#x}, {:#x}) -> {} MiB",
-        mem_range.start,
-        mem_end,
-        mem_range.size / (1024 * 1024),
-        alloc_begin,
-        alloc_end,
-        total_free / (1024 * 1024)
-    );
-
-    let mut kernel_split = align_up(alloc_begin + KERN_PAGES * PGSIZE);
-    if kernel_split > alloc_end {
-        kernel_split = alloc_end;
-    }
-    if kernel_split < alloc_begin {
-        kernel_split = alloc_begin;
-    }
-
-    unsafe {
-        KERNEL_REGION.init(alloc_begin, kernel_split);
-        USER_REGION.init(kernel_split, alloc_end);
-    }
-
-    let k = KERNEL_REGION.region_info();
-    let u = USER_REGION.region_info();
-    debug_assert_eq!(k.begin & (PGSIZE - 1), 0);
-    debug_assert_eq!(k.end & (PGSIZE - 1), 0);
-    debug_assert_eq!(u.begin & (PGSIZE - 1), 0);
-    debug_assert_eq!(u.end & (PGSIZE - 1), 0);
-
-    printk!(
-        "PMEM: Initialized kernel [{:#x}, {:#x}) -> {} pages, user [{:#x}, {:#x}) -> {} pages on hart {}",
-        k.begin,
-        k.end,
-        k.allocable,
-        u.begin,
-        u.end,
-        u.allocable,
-        hartid
-    );
 }
 
 #[inline]

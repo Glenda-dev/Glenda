@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::dtb;
 use driver_uart;
 use spin::Mutex;
 
@@ -28,7 +29,7 @@ pub const ANSI_WHITE: &str = "\x1b[37m";
 // 日后需要做更 Robust 的 printk! 实现
 #[inline(always)]
 fn uart_base() -> usize {
-    0x1000_0000
+    dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base()
 }
 
 #[inline(always)]
