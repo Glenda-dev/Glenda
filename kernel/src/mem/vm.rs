@@ -403,9 +403,10 @@ pub fn vm_switch_to_kernel(hartid: usize) {
     printk!("VM: Hart {} switched to kernel page table", hartid);
 }
 
-pub fn vm_switch_off() {
+pub fn vm_switch_off(hartid: usize) {
     unsafe {
         asm!("csrw satp, zero");
         asm!("sfence.vma zero, zero");
     }
+    printk!("VM: Hart {} switching off VM", hartid);
 }

@@ -10,9 +10,9 @@ use crate::printk::{ANSI_GREEN, ANSI_RESET};
 static FINAL_DONE: AtomicBool = AtomicBool::new(false);
 
 pub fn run_tests(hartid: usize) {
+    vm_switch_off(hartid); // 关闭 VM，确保测试在非分页环境下运行
     super::spinlock::run(hartid);
     super::printk::run(hartid);
-    vm_switch_off(); // 关闭 VM，确保测试在非分页环境下运行
     super::pmem::run(hartid);
     init_kernel_vm(hartid);
     vm_switch_to_kernel(hartid);
