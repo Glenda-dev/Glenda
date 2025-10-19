@@ -7,8 +7,6 @@
 
     .macro HART_ENTRY
         csrw sie, zero
-        la   t0, trap
-        csrw stvec, t0
         la   t1, boot_stack_top
         li   t2, BOOT_STACK_SIZE
         li   t3, MAX_BOOT_HARTS
@@ -28,10 +26,7 @@ _start: // boot hart
 secondary_start: // secondary harts
     HART_ENTRY
 
-    .align 2
-trap:
-    tail glenda_trap
-
+// 启动栈放在 .bss 段，这样不会与代码混在一起
     .section .bss
     .align 16
 boot_stack:

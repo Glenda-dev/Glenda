@@ -1,6 +1,5 @@
 use crate::mem::vm::{init_kernel_vm, vm_switch_to_kernel};
-use spin::Mutex;
-use spin::Once;
+use spin::{Mutex, Once};
 
 static VM_INIT: Once<()> = Once::new();
 static VM_LOCK: Mutex<()> = Mutex::new(());

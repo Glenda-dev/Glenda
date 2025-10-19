@@ -1,10 +1,12 @@
 mod harts;
 mod pmem;
+mod trap;
 mod vm;
 
 pub fn init(hartid: usize, dtb: *const u8) {
     init_harts(hartid, dtb);
     init_pmem(hartid, dtb);
+    init_trap(hartid, dtb);
     init_vm(hartid, dtb);
 }
 
@@ -18,4 +20,8 @@ fn init_harts(hartid: usize, dtb: *const u8) {
 
 fn init_vm(hartid: usize, _dtb: *const u8) {
     vm::vm_init(hartid);
+}
+
+fn init_trap(hartid: usize, _dtb: *const u8) {
+    trap::trap_init(hartid);
 }
