@@ -10,6 +10,7 @@
         la   t1, boot_stack_top
         li   t2, BOOT_STACK_SIZE
         li   t3, MAX_BOOT_HARTS
+        mv   tp, a0           // 保存 hartid 到 tp 寄存器
         bgeu a0, t3, 1f
         mul  t2, t2, a0
         sub  sp, t1, t2

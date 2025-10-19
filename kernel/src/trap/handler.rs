@@ -137,3 +137,7 @@ pub fn timer_interrupt_handler() {
         sip::clear_pending(Interrupt::SupervisorSoft);
     }
 }
+
+pub fn uart_interrupt_handler() {
+    // 读取并处理 UART 中断、
+}

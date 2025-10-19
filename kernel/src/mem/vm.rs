@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use core::arch::asm;
+// use inline assembly removed in favor of riscv crate abstractions
 use core::panic;
 
 use super::addr::{PhysAddr, VirtAddr, align_down, align_up, vpn};
@@ -11,6 +11,8 @@ use super::pte::{pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE, VA_MAX};
 use crate::dtb;
 use crate::printk;
+use riscv::asm::sfence_vma_all;
+use riscv::register::satp::{self, Satp};
 
 #[cfg(feature = "tests")]
 use super::pte::{pte_get_flags, pte_is_table};
@@ -395,18 +397,24 @@ pub fn init_kernel_vm(hartid: usize) {
 }
 
 pub fn vm_switch_to_kernel(hartid: usize) {
-    let root_pa = (&KERNEL_PAGE_TABLE as *const PageTable) as usize;
+    let root_ppn = ((&KERNEL_PAGE_TABLE as *const PageTable) as usize) >> 12;
+    // set SATP to the new page table in Sv39 mode (ASID=0)
+    let satp_bits = make_satp(root_ppn);
+    let satp_value = Satp::from_bits(satp_bits);
     unsafe {
-        asm!("csrw satp, {}", in(reg) make_satp(root_pa >> 12));
-        asm!("sfence.vma zero, zero");
+        satp::write(satp_value);
+        // flush all TLB entries
+        sfence_vma_all();
     }
     printk!("VM: Hart {} switched to kernel page table", hartid);
 }
 
 pub fn vm_switch_off(hartid: usize) {
+    // disable paging (Bare mode)
+    let satp_value = Satp::from_bits(0);
     unsafe {
-        asm!("csrw satp, zero");
-        asm!("sfence.vma zero, zero");
+        satp::write(satp_value);
+        sfence_vma_all();
     }
     printk!("VM: Hart {} switching off VM", hartid);
 }

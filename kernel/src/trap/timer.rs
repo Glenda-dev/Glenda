@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use super::clint::{get_mtime, get_mtimecmp, set_mtimecmp};
 use super::vector::timer_vector;
-use riscv::register::mtvec::Mtvec;
-use riscv::register::{mie, mscratch, mstatus, mtvec};
+use riscv::register::mtvec::{self, Mtvec};
+use riscv::register::{mie, mscratch, mstatus};
 use spin::Mutex;
 struct SysTimer {
     ticks: usize,
@@ -24,9 +24,8 @@ pub fn init(hartid: usize) {
         // 存放到临时寄存器, 便于与trap.S中的timer_vector协作
         mscratch::write(cur_mscratch.as_mut_ptr() as usize);
         // 设置 M-mode 中断处理函数
-        let timer_vec =
-            Mtvec::new(timer_vector as usize, riscv::register::mtvec::TrapMode::Vectored);
-        Mtvec::new(timer_vector as usize, riscv::register::mtvec::TrapMode::Vectored);
+        let timer_vec = Mtvec::new(timer_vector as usize, mtvec::TrapMode::Vectored);
+        Mtvec::new(timer_vector as usize, mtvec::TrapMode::Vectored);
         mtvec::write(timer_vec);
         // 打开 M-mode 中断总开关
         mstatus::set_mie();

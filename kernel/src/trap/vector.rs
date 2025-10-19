@@ -1,4 +1,5 @@
 use core::arch::asm;
+use riscv::register::stvec::{self, Stvec};
 /// 使用内联汇编实现的 S-mode 陷阱向量处理器
 /// 这个函数会保存所有通用寄存器，调用 trap_kernel_handler，然后恢复寄存器
 #[unsafe(no_mangle)]
@@ -6,6 +7,8 @@ use core::arch::asm;
 pub extern "C" fn kernel_vector() -> ! {
     unsafe {
         asm!(
+            // Align entry to 4-byte boundary
+            ".p2align 2",
             // 为栈指针减少 256 字节以容纳 32 个 64 位寄存器
             "addi sp, sp, -256",
             // 保存所有通用寄存器到栈上
@@ -89,6 +92,8 @@ pub extern "C" fn kernel_vector() -> ! {
 pub extern "C" fn timer_vector() -> ! {
     unsafe {
         asm!(
+            // Align entry to 4-byte boundary
+            ".p2align 2",
             // 交换 a0 和 mscratch，使用 a0 作为临时寄存器指针
             "csrrw a0, mscratch, a0",
             // 保存 a1, a2, a3 到 mscratch 指向的内存
@@ -119,8 +124,10 @@ pub extern "C" fn timer_vector() -> ! {
 }
 
 pub fn set_vector() {
-    let vector_addr = kernel_vector as usize;
+    let kernel_vec_addr = kernel_vector as usize;
+    let vec = Stvec::new(kernel_vec_addr, stvec::TrapMode::Direct);
     unsafe {
-        asm!("csrw stvec, {}", in(reg) vector_addr);
+        // set supervisor trap vector address
+        stvec::write(vec);
     }
 }

@@ -41,15 +41,6 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     let uart_cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
     driver_uart::init(uart_cfg);
 
-    // TODO: 保存HARTID以备后用
-
-    unsafe {
-        asm!(
-            "mv tp, {hartid}",
-            hartid = in(reg) hartid,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
     // 启动信息
     if hartid == 0 {
         match dtb_result {
