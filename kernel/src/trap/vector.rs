@@ -118,7 +118,7 @@ pub extern "C" fn timer_vector() -> ! {
     }
 }
 
-pub fn set_vector(hartid: usize) {
+pub fn set_vector() {
     let vector_addr = kernel_vector as usize;
     unsafe {
         asm!("csrw stvec, {}", in(reg) vector_addr);

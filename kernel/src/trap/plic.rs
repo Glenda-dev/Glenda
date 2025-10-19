@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::ptr::{read_volatile, write_volatile};
 use driver_uart::UART_IRQ;
 

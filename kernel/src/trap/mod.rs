@@ -16,7 +16,7 @@ pub fn inittraps() {
 
 pub fn inittraps_hart(hartid: usize) {
     plic::init_hart(hartid);
-    vector::set_vector(hartid);
+    vector::set_vector();
     // 启用 S-mode 中断
     unsafe {
         sstatus::set_sie();
