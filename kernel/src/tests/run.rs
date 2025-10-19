@@ -14,6 +14,7 @@ pub fn run_tests(hartid: usize) {
     super::spinlock::run(hartid);
     super::printk::run(hartid);
     super::pmem::run(hartid);
+    super::trap::run(hartid);
     init_kernel_vm(hartid);
     vm_switch_to_kernel(hartid);
     super::vm::run(hartid);

@@ -1,5 +1,3 @@
-use core::num::NonZeroUsize;
-
 use super::clint::{get_mtime, get_mtimecmp, set_mtimecmp};
 use super::vector::timer_vector;
 use riscv::register::mtvec::Mtvec;

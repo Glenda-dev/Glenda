@@ -5,7 +5,7 @@ mod clint;
 mod context;
 mod handler;
 mod plic;
-mod timer;
+pub mod timer;
 mod vector;
 
 pub fn inittraps() {
