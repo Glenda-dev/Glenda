@@ -12,6 +12,7 @@ mod trap;
 mod tests;
 
 use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicBool, Ordering};
 use init::init;
 use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
@@ -40,8 +41,12 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     let uart_cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
     driver_uart::init(uart_cfg);
 
-    // 启动信息
-    if hartid == 0 {
+    static START_BANNER_PRINTED: AtomicBool = AtomicBool::new(false);
+
+    if START_BANNER_PRINTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
         match dtb_result {
             Ok(_) => {
                 printk!("Device tree blob at {:p}", dtb);
