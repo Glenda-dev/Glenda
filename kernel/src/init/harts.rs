@@ -1,15 +1,6 @@
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
-use core::arch::asm;
 use core::sync::atomic::{AtomicBool, Ordering};
-
-/*
- Hart State Management[1]
-
- [1]: https://www.scs.stanford.edu/~zyedidia/docs/riscv/riscv-sbi.pdf, Chapter Nine
-*/
-const SBI_EXT_HSM: usize = 0x48534d;
-const SBI_FUNC_HART_START: usize = 0;
 
 static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
 /*
@@ -22,22 +13,13 @@ unsafe extern "C" {
     fn secondary_start(hartid: usize, dtb: *const u8) -> !;
 }
 
+unsafe extern "C" {
+    fn sbi_hart_start_asm(hartid: usize, start_addr: usize, opaque: usize) -> isize;
+}
+
 #[inline(always)]
 unsafe fn sbi_hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Result<(), isize> {
-    let mut err: isize;
-    unsafe {
-        asm!(
-            "ecall",
-            in("a0") hartid,
-            in("a1") start_addr,
-            in("a2") opaque,
-            in("a6") SBI_FUNC_HART_START,
-            in("a7") SBI_EXT_HSM,
-            lateout("a0") err,
-            lateout("a1") _,
-        options(nostack)
-        );
-    }
+    let err = unsafe { sbi_hart_start_asm(hartid, start_addr, opaque) };
     if err == 0 { Ok(()) } else { Err(err) }
 }
 

@@ -2,10 +2,10 @@ use super::context::TrapContext;
 use super::timer;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
-use core::arch::asm;
 use core::panic;
 use riscv::interrupt::supervisor::Interrupt;
 use riscv::register::{
+    mhartid,
     scause::{self, Trap},
     sepc, sip, sstatus, stval,
 };
@@ -119,15 +119,7 @@ fn interrupt_handler(
 pub fn external_interrupt_handler() {}
 
 pub fn timer_interrupt_handler() {
-    // Get hart id
-    let mut hartid = 0;
-    unsafe {
-        asm!(
-            "mv {hartid}, tp",
-            hartid = out(reg) hartid,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
+    let hartid = mhartid::read();
     if hartid == 0 {
         timer::update();
     }

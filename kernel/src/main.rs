@@ -11,7 +11,6 @@ mod trap;
 #[cfg(feature = "tests")]
 mod tests;
 
-use core::arch::asm;
 use core::panic::PanicInfo;
 use init::init;
 use logo::LOGO;
