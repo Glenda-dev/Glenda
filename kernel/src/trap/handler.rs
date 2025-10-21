@@ -1,13 +1,13 @@
 use super::context::TrapContext;
 use super::timer;
+use crate::dtb;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use core::panic;
 use riscv::interrupt::supervisor::Interrupt;
 use riscv::register::{
-    mhartid,
     scause::{self, Trap},
-    sepc, sip, sstatus, stval,
+    sepc, sip, sscratch, sstatus, stval,
 };
 
 const EXCEPTION_INFO: [&str; 16] = [
@@ -98,28 +98,42 @@ fn interrupt_handler(
     sstatus_bits: usize,
     _ctx: &mut TrapContext,
 ) {
-    printk!(
-        "{}TRAP(Interrupt){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
-        ANSI_YELLOW,
-        ANSI_RESET,
-        e,
-        INTERRUPT_INFO.get(e).unwrap_or(&"Unknown Interrupt"),
-        epc,
-        tval,
-        sstatus_bits
-    );
     match e {
         9 => external_interrupt_handler(),
         1 => timer_interrupt_handler(),
-        _ => {}
+        // 剩下的被认为是需要打印的内容
+        _ => {
+            printk!(
+                "{}TRAP(Interrupt){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
+                ANSI_YELLOW,
+                ANSI_RESET,
+                e,
+                INTERRUPT_INFO.get(e).unwrap_or(&"Unknown Interrupt"),
+                epc,
+                tval,
+                sstatus_bits
+            );
+        }
     }
 }
 
 // 外设中断处理 (基于PLIC，lab-3只需要识别和处理UART中断)
-pub fn external_interrupt_handler() {}
+pub fn external_interrupt_handler() {
+    let hartid = current_hartid();
+    let id = super::plic::claim(hartid);
+    if id == 0 {
+        return;
+    }
+
+    if id == driver_uart::UART_IRQ {
+        uart_interrupt_handler();
+    }
+
+    super::plic::complete(hartid, id);
+}
 
 pub fn timer_interrupt_handler() {
-    let hartid = mhartid::read();
+    let hartid = current_hartid();
     if hartid == 0 {
         timer::update();
     }
@@ -131,5 +145,35 @@ pub fn timer_interrupt_handler() {
 }
 
 pub fn uart_interrupt_handler() {
-    // 读取并处理 UART 中断、
+    let cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
+    let base = cfg.base();
+    let lsr = (base + cfg.lsr_offset()) as *const u8;
+    let rbr = (base + cfg.thr_offset()) as *const u8;
+    const LSR_DR: u8 = 0x01;
+
+    loop {
+        let status = unsafe { core::ptr::read_volatile(lsr) };
+        if (status & LSR_DR) == 0 {
+            break;
+        }
+        let b = unsafe { core::ptr::read_volatile(rbr) };
+        match b {
+            b'\r' | b'\n' => {
+                driver_uart::print!("\n");
+            }
+            0x08 | 0x7f => {
+                driver_uart::print!("\x08 \x08");
+            }
+            _ => {
+                let ch = b as char;
+                driver_uart::print!("{}", ch);
+            }
+        }
+    }
+}
+
+#[inline(always)]
+fn current_hartid() -> usize {
+    // 从 sscratch 读取在 inittraps_hart 写入的 hartid
+    sscratch::read()
 }

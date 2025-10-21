@@ -3,6 +3,7 @@ use crate::dtb;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
 use crate::trap::timer;
+
 /// 运行时钟滴答测试和 UART 输出测试
 pub fn run(hartid: usize) {
     timer_tick_test(hartid);
@@ -53,8 +54,7 @@ fn uart_output_test(hartid: usize) {
     while UART_BARRIER.total() == 0 {}
     UART_BARRIER.wait_start();
 
-    // 所有 hart 输出测试信息
-    driver_uart::print!("[hart {}] UART test\n", hartid);
+    printk!("[hart {}] UART test", hartid);
 
     if UART_BARRIER.finish_and_last() {
         printk!("{}[PASS]{} UART output test", ANSI_GREEN, ANSI_RESET);

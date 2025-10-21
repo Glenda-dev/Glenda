@@ -25,6 +25,7 @@ pub struct DeviceTreeInfo {
     uart: Option<UartConfig>,
     hart_count: usize,
     memory: Option<MemoryRange>,
+    plic_base: Option<usize>,
 }
 
 impl DeviceTreeInfo {
@@ -32,8 +33,9 @@ impl DeviceTreeInfo {
         let hart_count = parse_hart_count(fdt);
         let uart = parse_uart(fdt);
         let memory = parse_memory(fdt);
+        let plic_base = parse_plic_base(fdt);
 
-        Self { uart, hart_count, memory }
+        Self { uart, hart_count, memory, plic_base }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -46,6 +48,10 @@ impl DeviceTreeInfo {
 
     fn memory(&self) -> Option<MemoryRange> {
         self.memory
+    }
+
+    fn plic_base(&self) -> Option<usize> {
+        self.plic_base
     }
 }
 
@@ -139,6 +145,10 @@ pub fn memory_range() -> Option<MemoryRange> {
     DEVICE_TREE.get().and_then(DeviceTreeInfo::memory)
 }
 
+pub fn plic_base() -> Option<usize> {
+    DEVICE_TREE.get().and_then(DeviceTreeInfo::plic_base)
+}
+
 fn parse_uart(fdt: &Fdt) -> Option<UartConfig> {
     let chosen = fdt.find_node("/chosen")?;
     let stdout_path = chosen.property("stdout-path")?.as_str()?;
@@ -172,4 +182,22 @@ fn parse_memory(fdt: &Fdt) -> Option<MemoryRange> {
         let start = region.starting_address as usize;
         region.size.map(|size| MemoryRange { start, size })
     })
+}
+
+fn parse_plic_base(fdt: &Fdt) -> Option<usize> {
+    for node in fdt.all_nodes() {
+        let is_plic = node
+            .compatible()
+            .map(|c| c.all().any(|s| s.contains("riscv,plic0") || s.contains("sifive,plic-1")))
+            .unwrap_or(false);
+        if !is_plic {
+            continue;
+        }
+        if let Some(mut regs) = node.reg() {
+            if let Some(region) = regs.next() {
+                return Some(region.starting_address as usize);
+            }
+        }
+    }
+    None
 }

@@ -365,6 +365,47 @@ pub fn init_kernel_vm(hartid: usize) {
     printk!("VM: Map UART @ {:p}", uart_base as *const u8);
     vm_mappages(&KERNEL_PAGE_TABLE, uart_base, uart_size, uart_base, PTE_R | PTE_W | PTE_A | PTE_D);
 
+    // PLIC 映射
+    let plic_base = match dtb::plic_base() {
+        Some(b) => b,
+        None => {
+            printk!("[WARNING] PLIC not found in DTB; skipping PLIC mapping");
+            printk!("[WARNING] External interrupts may fault under VM");
+            return;
+        }
+    };
+    let plic_low_start = plic_base;
+    let plic_low_end = plic_base + 0x3000;
+    printk!(
+        "VM: Map PLIC low [{:p}, {:p})",
+        plic_low_start as *const u8,
+        plic_low_end as *const u8
+    );
+    vm_mappages(
+        &KERNEL_PAGE_TABLE,
+        align_down(plic_low_start),
+        align_up(plic_low_end) - align_down(plic_low_start),
+        align_down(plic_low_start),
+        PTE_R | PTE_W | PTE_A | PTE_D,
+    );
+
+    let plic_ctx_start = plic_base + 0x200000;
+    let harts = crate::dtb::hart_count();
+    let max_ctx_index = if harts > 0 { (harts - 1) * 2 + 1 } else { 1 };
+    let plic_ctx_end = plic_ctx_start + (max_ctx_index + 1) * 0x1000;
+    printk!(
+        "VM: Map PLIC ctx [{:p}, {:p})",
+        plic_ctx_start as *const u8,
+        plic_ctx_end as *const u8
+    );
+    vm_mappages(
+        &KERNEL_PAGE_TABLE,
+        align_down(plic_ctx_start),
+        align_up(plic_ctx_end) - align_down(plic_ctx_start),
+        align_down(plic_ctx_start),
+        PTE_R | PTE_W | PTE_A | PTE_D,
+    );
+
     // 内核的物理页分配池
     let kernel_info = kernel_region_info();
     let map_start = align_down(kernel_info.begin);
