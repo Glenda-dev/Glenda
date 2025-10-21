@@ -3,6 +3,7 @@ use super::clint::{get_mtime, get_mtimecmp, set_mtimecmp};
 use super::vector::timer_vector_base;
 use riscv::register::mtvec::{self, Mtvec};
 use riscv::register::{mie, mscratch, mstatus};
+use riscv::register::time;
 use spin::Mutex;
 struct SysTimer {
     ticks: usize,
@@ -42,4 +43,19 @@ pub fn update() {
 pub fn get_ticks() -> usize {
     let sys_timer = SYS_TIMER.lock();
     sys_timer.ticks
+}
+
+#[inline(always)]
+fn time_now() -> u64 { time::read() as u64 }
+
+pub fn program_next_tick() {
+    let next = time_now().wrapping_add(INTERVAL as u64);
+    // FIXME: 错误处理
+    let _ = crate::sbi::set_timer(next);
+}
+
+pub fn start(hartid: usize) {
+    if hartid == 0 {
+        program_next_tick();
+    }
 }

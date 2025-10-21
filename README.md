@@ -30,8 +30,8 @@ A simple microkernel written in Rust for RISC-V architecture as a learning proje
       - [x] UART
       - [x] DTB
     - [ ] Interrupts
-      - [ ] Timer
-      - [ ] UART
+      - [x] Timer
+      - [x] UART
   - [ ] Device Tree Support
     - [x] UART
     - [x] CPU
@@ -40,8 +40,8 @@ A simple microkernel written in Rust for RISC-V architecture as a learning proje
     - [x] Physical Memory
     - [x] Virtual Memory
   - [ ] Interrupt Handling
-    - [ ] UART Interrupt
-    - [ ] Timer Interrupt
+    - [x] UART Interrupt
+    - [x] Timer Interrupt
 - [ ] Devices Drivers
   - [x] UART
 ## Requirements

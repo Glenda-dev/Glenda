@@ -6,6 +6,7 @@ mod init;
 mod logo;
 mod mem;
 mod printk;
+mod sbi;
 mod trap;
 
 #[cfg(feature = "tests")]

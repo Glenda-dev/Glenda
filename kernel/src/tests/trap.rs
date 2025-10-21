@@ -3,6 +3,7 @@ use crate::dtb;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
 use crate::trap::timer;
+use riscv::register::sie;
 
 /// 运行时钟滴答测试和 UART 输出测试
 pub fn run(hartid: usize) {
@@ -15,6 +16,8 @@ fn timer_tick_test(hartid: usize) {
     TIMER_BARRIER.ensure_inited(dtb::hart_count());
     if hartid == 0 {
         TIMER_BARRIER.init(dtb::hart_count());
+        unsafe { sie::set_stimer(); }
+        timer::start(hartid);
         printk!(
             "{}[TEST]{} Timer tick test start ({} harts)",
             ANSI_YELLOW,
@@ -35,6 +38,7 @@ fn timer_tick_test(hartid: usize) {
 
     if TIMER_BARRIER.finish_and_last() {
         printk!("{}[PASS]{} Timer tick test", ANSI_GREEN, ANSI_RESET);
+        unsafe { sie::clear_stimer(); }
     }
 }
 

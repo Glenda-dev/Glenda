@@ -11,6 +11,7 @@ use super::pte::{pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE, VA_MAX};
 use crate::dtb;
 use crate::printk;
+use spin::Once;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp::{self, Satp};
 
@@ -310,131 +311,134 @@ fn make_satp(ppn: usize) -> usize {
 }
 
 pub fn init_kernel_vm(hartid: usize) {
-    // 权限映射, PTE_A/D 理论上硬件会帮忙做，但不确定 QEMU Virt 的具体行为，所以还是加上
-    let text_start_addr = unsafe { &__text_start as *const u8 as usize };
-    let text_end_addr = unsafe { &__text_end as *const u8 as usize };
-    printk!("VM: Map .text [{:p}, {:p})", text_start_addr as *const u8, text_end_addr as *const u8);
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        text_start_addr,
-        text_end_addr - text_start_addr,
-        text_start_addr,
-        PTE_R | PTE_X | PTE_A,
-    );
+    static BUILD_ONCE: Once<()> = Once::new();
+    BUILD_ONCE.call_once(|| {
+        // 权限映射, PTE_A/D 理论上硬件会帮忙做，但不确定 QEMU Virt 的具体行为，所以还是加上
+        let text_start_addr = unsafe { &__text_start as *const u8 as usize };
+        let text_end_addr = unsafe { &__text_end as *const u8 as usize };
+        printk!("VM: Map .text [{:p}, {:p})", text_start_addr as *const u8, text_end_addr as *const u8);
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            text_start_addr,
+            text_end_addr - text_start_addr,
+            text_start_addr,
+            PTE_R | PTE_X | PTE_A,
+        );
 
-    let rodata_start_addr = unsafe { &__rodata_start as *const u8 as usize };
-    let rodata_end_addr = unsafe { &__rodata_end as *const u8 as usize };
-    printk!(
-        "VM: Map .rodata [{:p}, {:p})",
-        rodata_start_addr as *const u8,
-        rodata_end_addr as *const u8
-    );
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        rodata_start_addr,
-        rodata_end_addr - rodata_start_addr,
-        rodata_start_addr,
-        PTE_R | PTE_A,
-    );
+        let rodata_start_addr = unsafe { &__rodata_start as *const u8 as usize };
+        let rodata_end_addr = unsafe { &__rodata_end as *const u8 as usize };
+        printk!(
+            "VM: Map .rodata [{:p}, {:p})",
+            rodata_start_addr as *const u8,
+            rodata_end_addr as *const u8
+        );
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            rodata_start_addr,
+            rodata_end_addr - rodata_start_addr,
+            rodata_start_addr,
+            PTE_R | PTE_A,
+        );
 
-    let data_start_addr = unsafe { &__data_start as *const u8 as usize };
-    let data_end_addr = unsafe { &__data_end as *const u8 as usize };
-    printk!("VM: Map .data [{:p}, {:p})", data_start_addr as *const u8, data_end_addr as *const u8);
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        data_start_addr,
-        data_end_addr - data_start_addr,
-        data_start_addr,
-        PTE_R | PTE_W | PTE_A | PTE_D,
-    );
+        let data_start_addr = unsafe { &__data_start as *const u8 as usize };
+        let data_end_addr = unsafe { &__data_end as *const u8 as usize };
+        printk!("VM: Map .data [{:p}, {:p})", data_start_addr as *const u8, data_end_addr as *const u8);
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            data_start_addr,
+            data_end_addr - data_start_addr,
+            data_start_addr,
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
 
-    let bss_start_addr = unsafe { &__bss_start as *const u8 as usize };
-    let bss_end_addr = unsafe { &__bss_end as *const u8 as usize };
-    printk!("VM: Map .bss [{:p}, {:p})", bss_start_addr as *const u8, bss_end_addr as *const u8);
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        bss_start_addr,
-        bss_end_addr - bss_start_addr,
-        bss_start_addr,
-        PTE_R | PTE_W | PTE_A | PTE_D,
-    );
+        let bss_start_addr = unsafe { &__bss_start as *const u8 as usize };
+        let bss_end_addr = unsafe { &__bss_end as *const u8 as usize };
+        printk!("VM: Map .bss [{:p}, {:p})", bss_start_addr as *const u8, bss_end_addr as *const u8);
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            bss_start_addr,
+            bss_end_addr - bss_start_addr,
+            bss_start_addr,
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
 
-    // MMIO 映射
-    let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();
-    let uart_size = PGSIZE;
-    printk!("VM: Map UART @ {:p}", uart_base as *const u8);
-    vm_mappages(&KERNEL_PAGE_TABLE, uart_base, uart_size, uart_base, PTE_R | PTE_W | PTE_A | PTE_D);
+        // MMIO 映射
+        let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();
+        let uart_size = PGSIZE;
+        printk!("VM: Map UART @ {:p}", uart_base as *const u8);
+        vm_mappages(&KERNEL_PAGE_TABLE, uart_base, uart_size, uart_base, PTE_R | PTE_W | PTE_A | PTE_D);
 
-    // PLIC 映射
-    let plic_base = match dtb::plic_base() {
-        Some(b) => b,
-        None => {
-            printk!("[WARNING] PLIC not found in DTB; skipping PLIC mapping");
-            printk!("[WARNING] External interrupts may fault under VM");
-            return;
+        // PLIC 映射
+        let plic_base = match dtb::plic_base() {
+            Some(b) => b,
+            None => {
+                printk!("[WARNING] PLIC not found in DTB; skipping PLIC mapping");
+                printk!("[WARNING] External interrupts may fault under VM");
+                return;
+            }
+        };
+        let plic_low_start = plic_base;
+        let plic_low_end = plic_base + 0x3000;
+        printk!(
+            "VM: Map PLIC low [{:p}, {:p})",
+            plic_low_start as *const u8,
+            plic_low_end as *const u8
+        );
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            align_down(plic_low_start),
+            align_up(plic_low_end) - align_down(plic_low_start),
+            align_down(plic_low_start),
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
+
+        let plic_ctx_start = plic_base + 0x200000;
+        let harts = crate::dtb::hart_count();
+        let max_ctx_index = if harts > 0 { (harts - 1) * 2 + 1 } else { 1 };
+        let plic_ctx_end = plic_ctx_start + (max_ctx_index + 1) * 0x1000;
+        printk!(
+            "VM: Map PLIC ctx [{:p}, {:p})",
+            plic_ctx_start as *const u8,
+            plic_ctx_end as *const u8
+        );
+        vm_mappages(
+            &KERNEL_PAGE_TABLE,
+            align_down(plic_ctx_start),
+            align_up(plic_ctx_end) - align_down(plic_ctx_start),
+            align_down(plic_ctx_start),
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
+
+        // 内核的物理页分配池
+        let kernel_info = kernel_region_info();
+        let map_start = align_down(kernel_info.begin);
+        let map_end = align_up(kernel_info.end);
+        if map_start < map_end {
+            printk!("VM: Map kernel pool [{:p}, {:p})", map_start as *const u8, map_end as *const u8);
+            vm_mappages(
+                &KERNEL_PAGE_TABLE,
+                map_start,
+                map_end - map_start,
+                map_start,
+                PTE_R | PTE_W | PTE_A | PTE_D,
+            );
         }
-    };
-    let plic_low_start = plic_base;
-    let plic_low_end = plic_base + 0x3000;
-    printk!(
-        "VM: Map PLIC low [{:p}, {:p})",
-        plic_low_start as *const u8,
-        plic_low_end as *const u8
-    );
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        align_down(plic_low_start),
-        align_up(plic_low_end) - align_down(plic_low_start),
-        align_down(plic_low_start),
-        PTE_R | PTE_W | PTE_A | PTE_D,
-    );
-
-    let plic_ctx_start = plic_base + 0x200000;
-    let harts = crate::dtb::hart_count();
-    let max_ctx_index = if harts > 0 { (harts - 1) * 2 + 1 } else { 1 };
-    let plic_ctx_end = plic_ctx_start + (max_ctx_index + 1) * 0x1000;
-    printk!(
-        "VM: Map PLIC ctx [{:p}, {:p})",
-        plic_ctx_start as *const u8,
-        plic_ctx_end as *const u8
-    );
-    vm_mappages(
-        &KERNEL_PAGE_TABLE,
-        align_down(plic_ctx_start),
-        align_up(plic_ctx_end) - align_down(plic_ctx_start),
-        align_down(plic_ctx_start),
-        PTE_R | PTE_W | PTE_A | PTE_D,
-    );
-
-    // 内核的物理页分配池
-    let kernel_info = kernel_region_info();
-    let map_start = align_down(kernel_info.begin);
-    let map_end = align_up(kernel_info.end);
-    if map_start < map_end {
-        printk!("VM: Map kernel pool [{:p}, {:p})", map_start as *const u8, map_end as *const u8);
-        vm_mappages(
-            &KERNEL_PAGE_TABLE,
-            map_start,
-            map_end - map_start,
-            map_start,
-            PTE_R | PTE_W | PTE_A | PTE_D,
-        );
-    }
-    // FIXME: 不应该这么做，目前仅为过测试
-    let user = user_region_info();
-    let user_start = align_down(user.begin);
-    let user_end = align_up(user.end);
-    if user_start < user_end {
-        printk!("VM: Map user pool [{:p}, {:p})", user_start as *const u8, user_end as *const u8);
-        vm_mappages(
-            &KERNEL_PAGE_TABLE,
-            user_start,
-            user_end - user_start,
-            user_start,
-            PTE_R | PTE_W | PTE_A | PTE_D,
-        );
-    }
-    printk!("VM: Root page table built by hart {}", hartid);
+        // FIXME: 不应该这么做，目前仅为过测试
+        let user = user_region_info();
+        let user_start = align_down(user.begin);
+        let user_end = align_up(user.end);
+        if user_start < user_end {
+            printk!("VM: Map user pool [{:p}, {:p})", user_start as *const u8, user_end as *const u8);
+            vm_mappages(
+                &KERNEL_PAGE_TABLE,
+                user_start,
+                user_end - user_start,
+                user_start,
+                PTE_R | PTE_W | PTE_A | PTE_D,
+            );
+        }
+        printk!("VM: Root page table built by hart {}", hartid);
+    });
 }
 
 pub fn vm_switch_to_kernel(hartid: usize) {

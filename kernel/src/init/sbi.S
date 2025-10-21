@@ -12,3 +12,15 @@ sbi_hart_start_asm:
     li   a7, 0x48534d
     ecall
     ret
+
+// SBI TIME extension: set_timer
+// a0 = stime_value (absolute time in ticks)
+// a6 = function id (0)
+// a7 = extension id ('TIME' = 0x54494D45)
+// returns: a0 = error code (isize), a1 = value (ignored)
+.globl sbi_set_timer_asm
+sbi_set_timer_asm:
+    li   a6, 0
+    li   a7, 0x54494D45
+    ecall
+    ret

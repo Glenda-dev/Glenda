@@ -100,7 +100,10 @@ fn interrupt_handler(
 ) {
     match e {
         9 => external_interrupt_handler(),
-        1 => timer_interrupt_handler(),
+        // S-mode timer interrupt
+        5 => timer_interrupt_handler_stip(),
+        // S-mode software interrupt
+        1 => timer_interrupt_handler_ssip(),
         // 剩下的被认为是需要打印的内容
         _ => {
             printk!(
@@ -132,16 +135,22 @@ pub fn external_interrupt_handler() {
     super::plic::complete(hartid, id);
 }
 
-pub fn timer_interrupt_handler() {
+pub fn timer_interrupt_handler_ssip() {
     let hartid = current_hartid();
     if hartid == 0 {
         timer::update();
     }
-    // 清除 SSIP bit (S-mode software interrupt pending)
-    // 宣布 S-mode 软件中断处理完成
     unsafe {
         sip::clear_pending(Interrupt::SupervisorSoft);
     }
+}
+
+pub fn timer_interrupt_handler_stip() {
+    let hartid = current_hartid();
+    if hartid == 0 {
+        timer::update();
+    }
+    timer::program_next_tick();
 }
 
 pub fn uart_interrupt_handler() {

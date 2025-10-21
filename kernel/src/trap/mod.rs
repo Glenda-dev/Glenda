@@ -33,6 +33,12 @@ pub fn inittraps_hart(hartid: usize) {
         sstatus::set_sie();
         sie::set_sext();
         sie::set_ssoft();
+        // 在测试模式下，定时器中断的开启/关闭由用例控制 (会影响 VM 测试)
+        #[cfg(not(feature = "tests"))]
+        {
+            sie::set_stimer();
+            crate::trap::timer::start(hartid);
+        }
     }
     printk!("TRAP: Initialized for hart {}", hartid);
 }
