@@ -29,11 +29,18 @@ fn timer_tick_test(hartid: usize) {
     while TIMER_BARRIER.total() == 0 {}
     TIMER_BARRIER.wait_start();
 
-    // 每个 hart 等待若干个 timer tick
+    let base = timer::get_ticks();
+    let mut last = base;
+
     const TICKS_TO_WAIT: usize = 10;
     for _ in 0..TICKS_TO_WAIT {
-        let current_tick = timer::get_ticks();
-        printk!("[hart {}] di da, ticks={}", hartid, current_tick);
+        loop {
+            let cur = timer::get_ticks();
+            if cur > last { last = cur; break; }
+            core::hint::spin_loop();
+        }
+        let delta = last.saturating_sub(base);
+        printk!("[hart {}] di da, ticks={}", hartid, delta);
     }
 
     if TIMER_BARRIER.finish_and_last() {

@@ -4,14 +4,12 @@ use super::vector::timer_vector_base;
 use riscv::register::mtvec::{self, Mtvec};
 use riscv::register::{mie, mscratch, mstatus};
 use riscv::register::time;
-use spin::Mutex;
-struct SysTimer {
-    ticks: usize,
-}
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 static mut MSCRATCH: [[usize; 5]; 8] = [[0; 5]; 8];
 const INTERVAL: usize = 1000000; // 100ms
-static SYS_TIMER: Mutex<SysTimer> = Mutex::new(SysTimer { ticks: 0 });
+
+static SYS_TICKS: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init(hartid: usize) {
     // 设置初始值 cmp_time = cur_time + time_interval
@@ -33,16 +31,13 @@ pub fn init(hartid: usize) {
     }
 }
 pub fn create() {
-    let mut sys_timer = SYS_TIMER.lock();
-    sys_timer.ticks = 0;
+    SYS_TICKS.store(0, Ordering::Relaxed);
 }
 pub fn update() {
-    let mut sys_timer = SYS_TIMER.lock();
-    sys_timer.ticks += 1;
+    SYS_TICKS.fetch_add(1, Ordering::Relaxed);
 }
 pub fn get_ticks() -> usize {
-    let sys_timer = SYS_TIMER.lock();
-    sys_timer.ticks
+    SYS_TICKS.load(Ordering::Relaxed)
 }
 
 #[inline(always)]
