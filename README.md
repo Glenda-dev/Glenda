@@ -68,6 +68,13 @@ cargo xtask test
 cargo xtask gdb
 gdb-multiarch -ex "target remote :1234" -ex "set architecture riscv:rv64" -ex "file target/riscv64imac-unknown-none-elf/debug/glenda"
 ```
+
+## Features
+- Unicode support for UART
+```sh
+cargo xtask --features=unicode run
+```
+
 ## Known Issues
 - Nothing here
 

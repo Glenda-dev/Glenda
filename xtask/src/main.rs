@@ -6,10 +6,10 @@ use which::which;
 #[derive(Parser, Debug)]
 #[command(name = "xtask", version, about = "Glenda Build System")]
 struct Xtask {
-    #[arg(long)]
+    #[arg(long, global = true)]
     release: bool,
 
-    #[arg(long = "features", value_delimiter = ',', num_args(0..))]
+    #[arg(long = "features", value_delimiter = ',', num_args(0..), global = true)]
     features: Vec<String>,
 
     #[command(subcommand)]
@@ -83,7 +83,11 @@ fn main() -> anyhow::Result<()> {
             qemu_gdb(mode, cpus, &mem, &display)?;
         }
         Cmd::Test { cpus, mem, display } => {
-            build(mode, &Vec::from([String::from("tests")]))?;
+            let mut feats = xtask.features.clone();
+            if !feats.iter().any(|f| f == "tests") {
+                feats.push(String::from("tests"));
+            }
+            build(mode, &feats)?;
             qemu_run(mode, cpus, &mem, &display)?;
         }
         Cmd::Objdump => objdump(mode)?,
