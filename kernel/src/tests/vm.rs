@@ -44,7 +44,7 @@ fn vm_func_test() {
     }
 
     uart_puts("--- vm_func_test: test 1 ---\n");
-    let table = unsafe { &*test_pgtbl };
+    let table = unsafe { &mut *test_pgtbl };
     uart_puts("Mapped VA ");
     uart_hex(0);
     uart_puts(" -> PA ");
@@ -110,7 +110,7 @@ fn vm_mapping_test() {
     // pmem_alloc 已经将内存清零
     let pgtbl = pmem_alloc(true) as *mut PageTable;
     assert!(!pgtbl.is_null(), "vm_mapping_test: pgtbl alloc failed");
-    let table = unsafe { &*pgtbl };
+    let table = unsafe { &mut *pgtbl };
     // 2. 准备测试条件
     let va_1: usize = 0x100000;
     let va_2: usize = 0x8000;
