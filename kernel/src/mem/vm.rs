@@ -183,6 +183,11 @@ pub fn vm_unmappages(table: &PageTable, va: VirtAddr, size: usize, free: bool) {
     }
 }
 
+/// Map pages into the kernel root page table directly
+pub fn vm_map_kernel_pages(va: VirtAddr, size: usize, pa: PhysAddr, perm: usize) {
+    vm_mappages(&KERNEL_PAGE_TABLE, va, size, pa, perm);
+}
+
 #[cfg(feature = "tests")]
 pub fn vm_print(table: &PageTable) {
     #[inline(always)]

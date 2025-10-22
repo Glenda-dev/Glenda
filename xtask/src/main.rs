@@ -101,6 +101,7 @@ fn elf_path(mode: &str) -> PathBuf {
 }
 
 fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+    build_service_bin()?;
     let mut cmd = Command::new("cargo");
     cmd.arg("build").arg("-p").arg("kernel").arg("--target").arg("riscv64gc-unknown-none-elf");
     if mode == "release" {
@@ -111,6 +112,56 @@ fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
         cmd.arg("--features").arg(joined);
     }
     run(&mut cmd)
+}
+
+fn build_service_bin() -> anyhow::Result<()> {
+    use std::fs;
+    let hello_c = Path::new("service").join("hello.c");
+    if !hello_c.exists() {
+        return Ok(());
+    }
+    let start_s = Path::new("service").join("start.S");
+    let out_elf = Path::new("service").join("hello.elf");
+    let out_bin = Path::new("service").join("hello.bin");
+    let gcc = which("riscv64-unknown-elf-gcc").or_else(|_| which("riscv64-linux-gnu-gcc"));
+    let objcopy = which("riscv64-unknown-elf-objcopy").or_else(|_| which("llvm-objcopy"));
+    if gcc.is_err() || objcopy.is_err() {
+        eprintln!("[ WARN ] RISC-V gcc/objcopy not found; skipping service/hello build");
+        return Ok(());
+    }
+    let gcc = gcc?;
+    let objcopy = objcopy?;
+    // Compile ELF
+    let mut cmd = Command::new(&gcc);
+    cmd.args([
+        "-nostdlib",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-fno-stack-protector",
+        "-march=rv64gc",
+        "-mabi=lp64d",
+        "-Os",
+        "-Wl,-n",
+        "-Wl,--build-id=none",
+        "-Wl,-Ttext=0",
+        "-I",
+        "include",
+        start_s.to_str().unwrap(),
+        hello_c.to_str().unwrap(),
+        "-o",
+        out_elf.to_str().unwrap(),
+    ]);
+    run(&mut cmd)?;
+    let mut oc = Command::new(&objcopy);
+    if oc.get_program().to_string_lossy().contains("llvm-objcopy") {
+        oc.args(["-O", "binary", out_elf.to_str().unwrap(), out_bin.to_str().unwrap()]);
+    } else {
+        oc.args(["-O", "binary", out_elf.to_str().unwrap(), out_bin.to_str().unwrap()]);
+    }
+    run(&mut oc)?;
+    eprintln!("[ INFO ] Built service/hello.bin for embedding");
+    let _ = fs::metadata(&out_bin)?;
+    Ok(())
 }
 
 fn qemu_cmd() -> anyhow::Result<String> {

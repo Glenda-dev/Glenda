@@ -8,6 +8,7 @@ mod mem;
 mod printk;
 mod sbi;
 mod trap;
+mod user;
 
 #[cfg(feature = "tests")]
 mod tests;
@@ -72,6 +73,9 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     #[cfg(feature = "tests")]
     {
         test(hartid);
+        if hartid == 0 {
+            user::launch_first_user();
+        }
     }
     printk!("{}Hart {} entering main loop{}", ANSI_BLUE, hartid, ANSI_RESET);
     loop {

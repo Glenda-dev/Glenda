@@ -77,8 +77,15 @@ fn exception_handler(
     epc: usize,
     tval: usize,
     sstatus_bits: usize,
-    _ctx: &mut TrapContext,
+    ctx: &mut TrapContext,
 ) {
+    // 8: Environment call from U-mode (syscall)
+    if e == 8 {
+        handle_user_syscall(ctx);
+        // advance sepc to next instruction
+        unsafe { sepc::write(epc.wrapping_add(4)); }
+        return;
+    }
     printk!(
         "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
         ANSI_RED,
@@ -90,6 +97,19 @@ fn exception_handler(
         sstatus_bits
     );
     panic!("Kernel panic due to exception");
+}
+
+fn handle_user_syscall(ctx: &mut TrapContext) {
+    // TODO: Add Real Linux Syscall for compatibility
+    match ctx.a7 {
+        1 => {
+            // SYS_helloworld
+            printk!("proczero: hello world!\n");
+        }
+        n => {
+            printk!("syscall: unknown number {}\n", n);
+        }
+    }
 }
 
 /// 处理中断情况
