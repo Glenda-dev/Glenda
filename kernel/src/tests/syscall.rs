@@ -4,7 +4,7 @@ use crate::proc::launch;
 
 // 由 build.rs 生成，这个文件可能为空
 // FIXME: 由于 xtask 构建流程的问题，暂时无法使用 OUT_DIR
-include!(concat!(env!("OUT_DIR"), "/proc_payload.rs"));
+include!("../../../target/proc_payload.rs");
 
 // 故提供一个 Fallback example
 static USER_INIT_CODE: [u8; 20] = [

@@ -132,14 +132,14 @@ fn build_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
 }
 
 fn link_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
-    let out_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| String::from("target"));
     let service_bin =
-        std::path::Path::new(&out_dir).join("service").join("hello").join("hello.bin");
-    let out_file = std::path::Path::new(&out_dir).join("proc_payload.rs");
+        std::path::Path::new("target").join("service").join("hello").join("hello.bin");
+    let service_bin_str = "service/hello/hello.bin";
+    let out_file = std::path::Path::new("target").join("proc_payload.rs");
     if service_bin.exists() {
         let content = format!(
             "pub const PROC_PAYLOAD: &[u8] = include_bytes!(\"{}\");\npub const HAS_PROC_PAYLOAD: bool = true;\n",
-            service_bin.display()
+            service_bin_str
         );
         std::fs::write(&out_file, content).unwrap();
     } else {
