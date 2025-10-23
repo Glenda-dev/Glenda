@@ -2,5 +2,5 @@ use crate::printk;
 
 pub fn handle() {
     // syscall handler implementation
-    printk!("hello world!");
+    printk!("proczero: hello world!");
 }
