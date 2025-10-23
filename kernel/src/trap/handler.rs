@@ -3,14 +3,15 @@ use super::timer;
 use crate::dtb;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
+use crate::syscall;
 use core::panic;
-#[cfg(feature = "unicode")]
-use spin::Mutex;
 use riscv::interrupt::supervisor::Interrupt;
 use riscv::register::{
     scause::{self, Trap},
     sepc, sip, sscratch, sstatus, stval,
 };
+#[cfg(feature = "unicode")]
+use spin::Mutex;
 
 const EXCEPTION_INFO: [&str; 16] = [
     "Instruction address misaligned", // 0
@@ -83,7 +84,9 @@ fn exception_handler(
     if e == 8 {
         handle_user_syscall(ctx);
         // advance sepc to next instruction
-        unsafe { sepc::write(epc.wrapping_add(4)); }
+        unsafe {
+            sepc::write(epc.wrapping_add(4));
+        }
         return;
     }
     printk!(
@@ -104,10 +107,10 @@ fn handle_user_syscall(ctx: &mut TrapContext) {
     match ctx.a7 {
         1 => {
             // SYS_helloworld
-            printk!("proczero: hello world!\n");
+            syscall::helloworld::handle();
         }
         n => {
-            printk!("syscall: unknown number {}\n", n);
+            printk!("SYSCALL: unknown number {}\n", n);
         }
     }
 }
@@ -284,16 +287,28 @@ impl ConsoleEcho {
         self.len = 0;
     }
     fn push_width(&mut self, w: u8) {
-        if w == 0 { return; }
-        if self.len < LINEBUF_CAP { self.widths[self.len] = w; self.len += 1; }
-        else {
+        if w == 0 {
+            return;
+        }
+        if self.len < LINEBUF_CAP {
+            self.widths[self.len] = w;
+            self.len += 1;
+        } else {
             let mut i = 1;
-            while i < LINEBUF_CAP { self.widths[i-1] = self.widths[i]; i += 1; }
-            self.widths[LINEBUF_CAP-1] = w;
+            while i < LINEBUF_CAP {
+                self.widths[i - 1] = self.widths[i];
+                i += 1;
+            }
+            self.widths[LINEBUF_CAP - 1] = w;
         }
     }
     fn pop_width(&mut self) -> Option<u8> {
-        if self.len == 0 { None } else { self.len -= 1; Some(self.widths[self.len]) }
+        if self.len == 0 {
+            None
+        } else {
+            self.len -= 1;
+            Some(self.widths[self.len])
+        }
     }
 }
 

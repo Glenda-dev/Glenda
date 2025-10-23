@@ -6,9 +6,10 @@ mod init;
 mod logo;
 mod mem;
 mod printk;
+mod proc;
 mod sbi;
+mod syscall;
 mod trap;
-mod user;
 
 #[cfg(feature = "tests")]
 mod tests;
@@ -19,9 +20,6 @@ use init::init;
 use logo::LOGO;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
-
-#[cfg(feature = "tests")]
-use tests::test;
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -72,10 +70,8 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
     #[cfg(feature = "tests")]
     {
-        test(hartid);
-        if hartid == 0 {
-            user::launch_first_user();
-        }
+        tests::test(hartid);
+        tests::test_user(hartid);
     }
     printk!("{}Hart {} entering main loop{}", ANSI_BLUE, hartid, ANSI_RESET);
     loop {

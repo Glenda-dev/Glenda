@@ -1,8 +1,8 @@
 .section .text
 .align 2
 
-.globl enter_user
-enter_user:
+.globl enter_proc
+enter_proc:
     // a0 = entry PC (VA)
     // a1 = user SP (VA)
     // Set user stack pointer

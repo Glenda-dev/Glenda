@@ -101,7 +101,13 @@ fn elf_path(mode: &str) -> PathBuf {
 }
 
 fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
-    build_service_bin()?;
+    build_service(mode, features)?;
+    link_service(mode, features)?;
+    build_kernel(mode, features)?;
+    Ok(())
+}
+
+fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.arg("build").arg("-p").arg("kernel").arg("--target").arg("riscv64gc-unknown-none-elf");
     if mode == "release" {
@@ -114,53 +120,38 @@ fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-fn build_service_bin() -> anyhow::Result<()> {
-    use std::fs;
-    let hello_c = Path::new("service").join("hello.c");
-    if !hello_c.exists() {
-        return Ok(());
+fn build_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+    let mut cmd = Command::new("make");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    cmd.current_dir(format!("{}/../service/hello", manifest_dir));
+    cmd.arg("CROSS_COMPILE=riscv64-unknown-elf-");
+    if mode == "debug" {
+        cmd.arg("CFLAGS+=\"-g\"");
     }
-    let start_s = Path::new("service").join("start.S");
-    let out_elf = Path::new("service").join("hello.elf");
-    let out_bin = Path::new("service").join("hello.bin");
-    let gcc = which("riscv64-unknown-elf-gcc").or_else(|_| which("riscv64-linux-gnu-gcc"));
-    let objcopy = which("riscv64-unknown-elf-objcopy").or_else(|_| which("llvm-objcopy"));
-    if gcc.is_err() || objcopy.is_err() {
-        eprintln!("[ WARN ] RISC-V gcc/objcopy not found; skipping service/hello build");
-        return Ok(());
-    }
-    let gcc = gcc?;
-    let objcopy = objcopy?;
-    // Compile ELF
-    let mut cmd = Command::new(&gcc);
-    cmd.args([
-        "-nostdlib",
-        "-ffreestanding",
-        "-fno-builtin",
-        "-fno-stack-protector",
-        "-march=rv64gc",
-        "-mabi=lp64d",
-        "-Os",
-        "-Wl,-n",
-        "-Wl,--build-id=none",
-        "-Wl,-Ttext=0",
-        "-I",
-        "include",
-        start_s.to_str().unwrap(),
-        hello_c.to_str().unwrap(),
-        "-o",
-        out_elf.to_str().unwrap(),
-    ]);
-    run(&mut cmd)?;
-    let mut oc = Command::new(&objcopy);
-    if oc.get_program().to_string_lossy().contains("llvm-objcopy") {
-        oc.args(["-O", "binary", out_elf.to_str().unwrap(), out_bin.to_str().unwrap()]);
+    run(&mut cmd)
+}
+
+fn link_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+    let out_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| String::from("target"));
+    let service_bin =
+        std::path::Path::new(&out_dir).join("service").join("hello").join("hello.bin");
+    let out_file = std::path::Path::new(&out_dir).join("proc_payload.rs");
+    if service_bin.exists() {
+        let content = format!(
+            "pub const PROC_PAYLOAD: &[u8] = include_bytes!(\"{}\");\npub const HAS_PROC_PAYLOAD: bool = true;\n",
+            service_bin.display()
+        );
+        std::fs::write(&out_file, content).unwrap();
     } else {
-        oc.args(["-O", "binary", out_elf.to_str().unwrap(), out_bin.to_str().unwrap()]);
+        println!(
+            "[ WARN ] Service binary not found: {}, generating empty payload",
+            service_bin.display(),
+        );
+        let content = String::from(
+            "pub const PROC_PAYLOAD: &[u8] = &[];\npub const HAS_PROC_PAYLOAD: bool = false;\n",
+        );
+        std::fs::write(&out_file, content).unwrap();
     }
-    run(&mut oc)?;
-    eprintln!("[ INFO ] Built service/hello.bin for embedding");
-    let _ = fs::metadata(&out_bin)?;
     Ok(())
 }
 

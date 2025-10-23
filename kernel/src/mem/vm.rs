@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 // use inline assembly removed in favor of riscv crate abstractions
-use core::panic;
 use core::cell::UnsafeCell;
+use core::panic;
 
 use super::addr::{PhysAddr, VirtAddr, align_down, align_up, vpn};
 use super::pmem::{kernel_region_info, pmem_alloc, pmem_free, user_region_info};
@@ -12,9 +12,9 @@ use super::pte::{pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE, VA_MAX};
 use crate::dtb;
 use crate::printk;
-use spin::{Mutex, Once};
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp::{self, Satp};
+use spin::{Mutex, Once};
 
 #[cfg(feature = "tests")]
 use super::pte::{pte_get_flags, pte_is_table};
@@ -50,7 +50,9 @@ struct KernelPageTableCell {
 unsafe impl Sync for KernelPageTableCell {}
 
 impl KernelPageTableCell {
-    const fn new() -> Self { Self { cell: UnsafeCell::new(PageTable { entries: [0; PGNUM] }), lock: Mutex::new(()) } }
+    const fn new() -> Self {
+        Self { cell: UnsafeCell::new(PageTable { entries: [0; PGNUM] }), lock: Mutex::new(()) }
+    }
 
     #[inline]
     fn with_mut<T>(&self, f: impl FnOnce(&mut PageTable) -> T) -> T {
@@ -62,8 +64,8 @@ impl KernelPageTableCell {
 static KERNEL_PAGE_TABLE: KernelPageTableCell = KernelPageTableCell::new();
 
 impl PageTable {
-    // walk_create: 只支持 4KB 页；中间层遇到 leaf(=大页) 视为错误返回 None
-    fn walk_create(&mut self, va: VirtAddr, alloc: bool) -> Option<*mut Pte> {
+    // walk: 只支持 4KB 页；中间层遇到 leaf(=大页) 视为错误返回 None
+    fn walk(&mut self, va: VirtAddr, alloc: bool) -> Option<*mut Pte> {
         if va >= VA_MAX {
             return None;
         }
@@ -97,8 +99,8 @@ impl PageTable {
         Some(unsafe { &mut (*table).entries[vpn(va)[0]] as *mut Pte })
     }
 
-    // walk_lookup: 只读查询 PTE；不分配、不修改
-    fn walk_lookup(&self, va: VirtAddr) -> Option<*mut Pte> {
+    // lookup: 只读查询 PTE；不分配、不修改
+    fn lookup(&self, va: VirtAddr) -> Option<*mut Pte> {
         if va >= VA_MAX {
             return None;
         }
@@ -128,7 +130,7 @@ impl PageTable {
         let mut pa_cur = align_down(pa);
         let last = end - PGSIZE;
         while a <= last {
-            let pte = match self.walk_create(a, true) {
+            let pte = match self.walk(a, true) {
                 Some(p) => p,
                 None => return false,
             };
@@ -164,7 +166,7 @@ impl PageTable {
         let mut a = start;
         let last = end - PGSIZE;
         while a <= last {
-            let pte = match self.walk_lookup(a) {
+            let pte = match self.lookup(a) {
                 Some(p) => p,
                 None => return false,
             };
@@ -190,7 +192,7 @@ impl PageTable {
 }
 
 pub fn vm_getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
-    match table.walk_lookup(va) {
+    match table.lookup(va) {
         Some(p) => p,
         None => panic!("vm_getpte: failed for VA {:#x}", va),
     }
@@ -361,7 +363,11 @@ pub fn init_kernel_vm(hartid: usize) {
         // 权限映射, PTE_A/D 理论上硬件会帮忙做，但不确定 QEMU Virt 的具体行为，所以还是加上
         let text_start_addr = unsafe { &__text_start as *const u8 as usize };
         let text_end_addr = unsafe { &__text_end as *const u8 as usize };
-        printk!("VM: Map .text [{:p}, {:p})", text_start_addr as *const u8, text_end_addr as *const u8);
+        printk!(
+            "VM: Map .text [{:p}, {:p})",
+            text_start_addr as *const u8,
+            text_end_addr as *const u8
+        );
         vm_mappages(
             kpt,
             text_start_addr,
@@ -387,7 +393,11 @@ pub fn init_kernel_vm(hartid: usize) {
 
         let data_start_addr = unsafe { &__data_start as *const u8 as usize };
         let data_end_addr = unsafe { &__data_end as *const u8 as usize };
-        printk!("VM: Map .data [{:p}, {:p})", data_start_addr as *const u8, data_end_addr as *const u8);
+        printk!(
+            "VM: Map .data [{:p}, {:p})",
+            data_start_addr as *const u8,
+            data_end_addr as *const u8
+        );
         vm_mappages(
             kpt,
             data_start_addr,
@@ -398,7 +408,11 @@ pub fn init_kernel_vm(hartid: usize) {
 
         let bss_start_addr = unsafe { &__bss_start as *const u8 as usize };
         let bss_end_addr = unsafe { &__bss_end as *const u8 as usize };
-        printk!("VM: Map .bss [{:p}, {:p})", bss_start_addr as *const u8, bss_end_addr as *const u8);
+        printk!(
+            "VM: Map .bss [{:p}, {:p})",
+            bss_start_addr as *const u8,
+            bss_end_addr as *const u8
+        );
         vm_mappages(
             kpt,
             bss_start_addr,
@@ -459,7 +473,11 @@ pub fn init_kernel_vm(hartid: usize) {
         let map_start = align_down(kernel_info.begin);
         let map_end = align_up(kernel_info.end);
         if map_start < map_end {
-            printk!("VM: Map kernel pool [{:p}, {:p})", map_start as *const u8, map_end as *const u8);
+            printk!(
+                "VM: Map kernel pool [{:p}, {:p})",
+                map_start as *const u8,
+                map_end as *const u8
+            );
             vm_mappages(
                 kpt,
                 map_start,
@@ -473,7 +491,11 @@ pub fn init_kernel_vm(hartid: usize) {
         let user_start = align_down(user.begin);
         let user_end = align_up(user.end);
         if user_start < user_end {
-            printk!("VM: Map user pool [{:p}, {:p})", user_start as *const u8, user_end as *const u8);
+            printk!(
+                "VM: Map user pool [{:p}, {:p})",
+                user_start as *const u8,
+                user_end as *const u8
+            );
             vm_mappages(
                 kpt,
                 user_start,

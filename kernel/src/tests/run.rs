@@ -38,3 +38,7 @@ pub fn run_tests(hartid: usize) {
     }
     vm_switch_to_kernel(hartid); // 恢复 VM，返回内核页表
 }
+
+pub fn run_tests_user(hartid: usize) {
+    super::syscall::run(hartid);
+}
