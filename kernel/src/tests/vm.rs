@@ -51,31 +51,31 @@ fn vm_func_test() {
     uart_puts(" -> PA ");
     uart_hex(mem[0]);
     uart_puts(" (R)\n");
-    vm_mappages(table, 0, PGSIZE, mem[0], PTE_R);
+    vm_mappages(table, 0, mem[0], PGSIZE, PTE_R);
     uart_puts("Mapped VA ");
     uart_hex(PGSIZE * 10);
     uart_puts(" -> PA ");
     uart_hex(mem[1]);
     uart_puts(" (R W)\n");
-    vm_mappages(table, PGSIZE * 10, PGSIZE, mem[1], PTE_R | PTE_W);
+    vm_mappages(table, PGSIZE * 10, mem[1], PGSIZE, PTE_R | PTE_W);
     uart_puts("Mapped VA ");
     uart_hex(PGSIZE * 512);
     uart_puts(" -> PA ");
     uart_hex(mem[2]);
     uart_puts(" (R X)\n");
-    vm_mappages(table, PGSIZE * 512, PGSIZE, mem[2], PTE_R | PTE_X);
+    vm_mappages(table, PGSIZE * 512, mem[2], PGSIZE, PTE_R | PTE_X);
     uart_puts("Mapped VA ");
     uart_hex(PGSIZE * 512 * 512);
     uart_puts(" -> PA ");
     uart_hex(mem[3]);
     uart_puts(" (R X)\n");
-    vm_mappages(table, PGSIZE * 512 * 512, PGSIZE, mem[3], PTE_R | PTE_X);
+    vm_mappages(table, PGSIZE * 512 * 512, mem[3], PGSIZE, PTE_R | PTE_X);
     uart_puts("Mapped VA ");
     uart_hex(VA_MAX - PGSIZE);
     uart_puts(" -> PA ");
     uart_hex(mem[4]);
     uart_puts(" (W)\n");
-    vm_mappages(table, VA_MAX - PGSIZE, PGSIZE, mem[4], PTE_W);
+    vm_mappages(table, VA_MAX - PGSIZE, mem[4], PGSIZE, PTE_W);
     uart_puts("Page table after mapping:\n");
     vm_print(table);
 
@@ -85,7 +85,7 @@ fn vm_func_test() {
     uart_puts(" -> PA ");
     uart_hex(mem[0]);
     uart_puts(" (W)\n");
-    vm_mappages(table, 0, PGSIZE, mem[0], PTE_W);
+    vm_mappages(table, 0, mem[0], PGSIZE, PTE_W);
     uart_puts("Unmapped VA ");
     uart_hex(PGSIZE * 10);
     uart_puts("\n");
@@ -126,13 +126,13 @@ fn vm_mapping_test() {
     uart_puts(" -> PA ");
     uart_hex(pa_1);
     uart_puts(" (R W)\n");
-    vm_mappages(table, va_1, PGSIZE, pa_1, PTE_R | PTE_W);
+    vm_mappages(table, va_1, pa_1, PGSIZE, PTE_R | PTE_W);
     uart_puts("Mapping VA ");
     uart_hex(va_2);
     uart_puts(" -> PA ");
     uart_hex(pa_2);
     uart_puts(" (R W X)\n");
-    vm_mappages(table, va_2, PGSIZE, pa_2, PTE_R | PTE_W | PTE_X);
+    vm_mappages(table, va_2, pa_2, PGSIZE, PTE_R | PTE_W | PTE_X);
 
     // 4. 验证映射结果
     let pte_1_ptr = vm_getpte(table, va_1);

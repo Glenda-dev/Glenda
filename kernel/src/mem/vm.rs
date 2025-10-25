@@ -38,7 +38,7 @@ pub fn vm_getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
     }
 }
 
-pub fn vm_mappages(table: &mut PageTable, va: VirtAddr, size: usize, pa: PhysAddr, perm: usize) {
+pub fn vm_mappages(table: &mut PageTable, va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
     if !table.map(va, pa, size, perm) {
         panic!("vm_mappages: failed map VA {:#x} -> PA {:#x}", va, pa);
     }
@@ -52,7 +52,7 @@ pub fn vm_unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: boo
 
 pub fn vm_map_kernel_pages(va: VirtAddr, size: usize, pa: PhysAddr, perm: usize) {
     KERNEL_PAGE_TABLE.with_mut(|pt| {
-        vm_mappages(pt, va, size, pa, perm);
+        vm_mappages(pt, va, pa, size, perm);
     });
     sfence_vma_all();
 }
@@ -199,8 +199,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             text_start_addr,
-            text_end_addr - text_start_addr,
             text_start_addr,
+            text_end_addr - text_start_addr,
             PTE_R | PTE_X | PTE_A,
         );
 
@@ -214,8 +214,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             rodata_start_addr,
-            rodata_end_addr - rodata_start_addr,
             rodata_start_addr,
+            rodata_end_addr - rodata_start_addr,
             PTE_R | PTE_A,
         );
 
@@ -229,8 +229,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             data_start_addr,
-            data_end_addr - data_start_addr,
             data_start_addr,
+            data_end_addr - data_start_addr,
             PTE_R | PTE_W | PTE_A | PTE_D,
         );
 
@@ -244,8 +244,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             bss_start_addr,
-            bss_end_addr - bss_start_addr,
             bss_start_addr,
+            bss_end_addr - bss_start_addr,
             PTE_R | PTE_W | PTE_A | PTE_D,
         );
 
@@ -253,7 +253,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();
         let uart_size = PGSIZE;
         printk!("VM: Map UART @ {:p}", uart_base as *const u8);
-        vm_mappages(kpt, uart_base, uart_size, uart_base, PTE_R | PTE_W | PTE_A | PTE_D);
+        vm_mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
 
         // PLIC 映射
         let plic_base = match dtb::plic_base() {
@@ -274,8 +274,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             align_down(plic_low_start),
-            align_up(plic_low_end) - align_down(plic_low_start),
             align_down(plic_low_start),
+            align_up(plic_low_end) - align_down(plic_low_start),
             PTE_R | PTE_W | PTE_A | PTE_D,
         );
 
@@ -291,8 +291,8 @@ pub fn init_kernel_vm(hartid: usize) {
         vm_mappages(
             kpt,
             align_down(plic_ctx_start),
-            align_up(plic_ctx_end) - align_down(plic_ctx_start),
             align_down(plic_ctx_start),
+            align_up(plic_ctx_end) - align_down(plic_ctx_start),
             PTE_R | PTE_W | PTE_A | PTE_D,
         );
 
@@ -309,8 +309,8 @@ pub fn init_kernel_vm(hartid: usize) {
             vm_mappages(
                 kpt,
                 map_start,
-                map_end - map_start,
                 map_start,
+                map_end - map_start,
                 PTE_R | PTE_W | PTE_A | PTE_D,
             );
         }
@@ -327,8 +327,8 @@ pub fn init_kernel_vm(hartid: usize) {
             vm_mappages(
                 kpt,
                 user_start,
-                user_end - user_start,
                 user_start,
+                user_end - user_start,
                 PTE_R | PTE_W | PTE_A | PTE_D,
             );
         }
