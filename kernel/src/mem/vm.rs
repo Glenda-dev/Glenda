@@ -1,34 +1,21 @@
-#![allow(dead_code)]
-
-// use inline assembly removed in favor of riscv crate abstractions
-use core::cell::UnsafeCell;
 use core::panic;
 
-use super::addr::{PhysAddr, VirtAddr, align_down, align_up, vpn};
-use super::pmem::{kernel_region_info, pmem_alloc, pmem_free, user_region_info};
+use super::addr::{PhysAddr, VirtAddr, align_down, align_up};
+use super::pgtbl::{PageTable, PageTableCell};
+use super::pmem::{kernel_region_info, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_V, PTE_W, PTE_X, Pte};
-use super::pte::{pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
-
-use super::{PGNUM, PGSIZE, VA_MAX};
+use super::pte::{pte_is_leaf, pte_is_valid, pte_to_pa};
+use super::{PGNUM, PGSIZE};
 use crate::dtb;
 use crate::printk;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp::{self, Satp};
-use spin::{Mutex, Once};
+use spin::Once;
 
 #[cfg(feature = "tests")]
 use super::pte::{pte_get_flags, pte_is_table};
 #[cfg(feature = "tests")]
 use crate::printk::{uart_hex, uart_puts};
-
-const SATP_SV39: usize = 8 << 60;
-
-// align 4096, 防止 sfence.vma 直接 TRAP
-#[repr(C, align(4096))]
-#[derive(Clone, Copy)]
-pub struct PageTable {
-    entries: [Pte; PGNUM],
-}
 
 // see linker.ld
 unsafe extern "C" {
@@ -42,171 +29,12 @@ unsafe extern "C" {
     static __bss_end: u8;
 }
 
-unsafe impl Sync for PageTable {}
-struct KernelPageTableCell {
-    cell: UnsafeCell<PageTable>,
-    lock: Mutex<()>,
-}
-unsafe impl Sync for KernelPageTableCell {}
-
-impl KernelPageTableCell {
-    const fn new() -> Self {
-        Self { cell: UnsafeCell::new(PageTable { entries: [0; PGNUM] }), lock: Mutex::new(()) }
-    }
-
-    #[inline]
-    fn with_mut<T>(&self, f: impl FnOnce(&mut PageTable) -> T) -> T {
-        let _g = self.lock.lock();
-        unsafe { f(&mut *self.cell.get()) }
-    }
-}
-
-static KERNEL_PAGE_TABLE: KernelPageTableCell = KernelPageTableCell::new();
-
-impl PageTable {
-    // walk: 只支持 4KB 页；中间层遇到 leaf(=大页) 视为错误返回 None
-    fn walk(&mut self, va: VirtAddr, alloc: bool) -> Option<*mut Pte> {
-        if va >= VA_MAX {
-            return None;
-        }
-        let mut table: *mut PageTable = self as *mut PageTable;
-        // 访问顺序：L2 -> L1，最后返回 L0 的 PTE 指针
-        for level in (1..3).rev() {
-            let idx = vpn(va)[level];
-            let pte_ref = unsafe { &mut (*table).entries[idx] };
-            if pte_is_valid(*pte_ref) {
-                if pte_is_leaf(*pte_ref) {
-                    // 不支持大页
-                    return None;
-                }
-                // 进入下一层表
-                table = pte_to_pa(*pte_ref) as *mut PageTable;
-            } else {
-                if !alloc {
-                    return None;
-                }
-                let new_table = pmem_alloc(true) as *mut PageTable;
-                if new_table.is_null() {
-                    return None;
-                }
-                unsafe {
-                    core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
-                    *pte_ref = pa_to_pte(new_table as usize, PTE_V); // 仅 V 置位表示中间层
-                }
-                table = new_table;
-            }
-        }
-        Some(unsafe { &mut (*table).entries[vpn(va)[0]] as *mut Pte })
-    }
-
-    // lookup: 只读查询 PTE；不分配、不修改
-    fn lookup(&self, va: VirtAddr) -> Option<*mut Pte> {
-        if va >= VA_MAX {
-            return None;
-        }
-        let mut table: *const PageTable = self as *const PageTable;
-        for level in (1..3).rev() {
-            let idx = vpn(va)[level];
-            let pte = unsafe { (*table).entries[idx] };
-            if pte_is_valid(pte) {
-                if pte_is_leaf(pte) {
-                    return None;
-                }
-                table = pte_to_pa(pte) as *const PageTable;
-            } else {
-                return None;
-            }
-        }
-        Some(unsafe { &((*table).entries[vpn(va)[0]]) as *const Pte as *mut Pte })
-    }
-
-    fn map(&mut self, va: VirtAddr, pa: PhysAddr, len: usize, flags: usize) -> bool {
-        if len == 0 {
-            return false;
-        }
-        let start = align_down(va);
-        let end = align_up(va + len);
-        let mut a = start;
-        let mut pa_cur = align_down(pa);
-        let last = end - PGSIZE;
-        while a <= last {
-            let pte = match self.walk(a, true) {
-                Some(p) => p,
-                None => return false,
-            };
-            let cur = unsafe { *pte };
-            if pte_is_valid(cur) {
-                // 已存在映射：允许对同一物理页更新权限；若物理页不同则视为冲突
-                if !pte_is_leaf(cur) || pte_to_pa(cur) != pa_cur {
-                    return false; // 冲突或结构错误
-                }
-                unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | PTE_V);
-                }
-            } else {
-                unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | PTE_V);
-                }
-            }
-            if a == last {
-                break;
-            }
-            a += PGSIZE;
-            pa_cur += PGSIZE;
-        }
-        true
-    }
-
-    fn unmap(&mut self, va: VirtAddr, len: usize, free: bool) -> bool {
-        if len == 0 {
-            return false;
-        }
-        let start = align_down(va);
-        let end = align_up(va + len);
-        let mut a = start;
-        let last = end - PGSIZE;
-        while a <= last {
-            let pte = match self.lookup(a) {
-                Some(p) => p,
-                None => return false,
-            };
-            let old = unsafe { *pte };
-            if !pte_is_valid(old) || !pte_is_leaf(old) {
-                return false;
-            }
-            let pa = pte_to_pa(old);
-            if free {
-                match get_region(pa) {
-                    Some(for_kernel) => pmem_free(pa, for_kernel),
-                    None => panic!("vm_unmappages: PA {:#x} out of bounds", pa),
-                };
-            }
-            unsafe { *pte = 0 }; // 清除映射
-            if a == last {
-                break;
-            }
-            a += PGSIZE;
-        }
-        true
-    }
-}
+static KERNEL_PAGE_TABLE: PageTableCell = PageTableCell::new();
 
 pub fn vm_getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
     match table.lookup(va) {
         Some(p) => p,
         None => panic!("vm_getpte: failed for VA {:#x}", va),
-    }
-}
-
-fn get_region(pa: PhysAddr) -> Option<bool> {
-    let kern_region = kernel_region_info();
-    let user_region = user_region_info();
-    if pa >= kern_region.begin && pa < kern_region.end {
-        return Some(true);
-    } else if pa >= user_region.begin && pa < user_region.end {
-        return Some(false);
-    } else {
-        return None;
     }
 }
 
@@ -353,7 +181,7 @@ pub fn vm_print(table: &PageTable) {
 
 #[inline(always)]
 fn make_satp(ppn: usize) -> usize {
-    SATP_SV39 | ppn
+    satp::Mode::Sv39.into_usize() | ppn
 }
 
 pub fn init_kernel_vm(hartid: usize) {
@@ -511,10 +339,8 @@ pub fn init_kernel_vm(hartid: usize) {
 pub fn vm_switch_to_kernel(hartid: usize) {
     let root_ppn = (KERNEL_PAGE_TABLE.cell.get() as usize) >> 12;
     // set SATP to the new page table in Sv39 mode (ASID=0)
-    let satp_bits = make_satp(root_ppn);
-    let satp_value = Satp::from_bits(satp_bits);
     unsafe {
-        satp::write(satp_value);
+        satp::set(satp::Mode::Sv39, 0, root_ppn);
         // flush all TLB entries
         sfence_vma_all();
     }
@@ -522,10 +348,8 @@ pub fn vm_switch_to_kernel(hartid: usize) {
 }
 
 pub fn vm_switch_off(hartid: usize) {
-    // disable paging (Bare mode)
-    let satp_value = Satp::from_bits(0);
     unsafe {
-        satp::write(satp_value);
+        satp::set(satp::Mode::Bare, 0, 0);
         sfence_vma_all();
     }
     printk!("VM: Hart {} switching off VM", hartid);

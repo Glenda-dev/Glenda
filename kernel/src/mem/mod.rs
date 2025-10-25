@@ -7,6 +7,7 @@ pub const VA_MAX: usize = 1 << 38;
 pub const KERN_PAGES: usize = 8192;
 
 pub mod addr;
+pub mod pgtbl;
 pub mod pmem;
 pub mod pte;
 pub mod vm;

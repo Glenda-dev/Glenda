@@ -233,3 +233,15 @@ pub fn kernel_pool_range() -> (PhysAddr, PhysAddr) {
     let info = KERNEL_REGION.region_info();
     (info.begin, info.end)
 }
+
+pub fn get_region(pa: PhysAddr) -> Option<bool> {
+    let kern_region = kernel_region_info();
+    let user_region = user_region_info();
+    if pa >= kern_region.begin && pa < kern_region.end {
+        return Some(true);
+    } else if pa >= user_region.begin && pa < user_region.end {
+        return Some(false);
+    } else {
+        return None;
+    }
+}
