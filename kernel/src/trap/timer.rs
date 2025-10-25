@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use super::clint::{get_mtime, get_mtimecmp, set_mtimecmp};
-use super::vector::timer_vector_base;
-use riscv::register::mtvec::{self, Mtvec};
-use riscv::register::{mie, mscratch, mstatus};
-use riscv::register::time;
+use super::handler::vector::timer_vector_base;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use riscv::register::mtvec::{self, Mtvec};
+use riscv::register::time;
+use riscv::register::{mie, mscratch, mstatus};
 
 static mut MSCRATCH: [[usize; 5]; 8] = [[0; 5]; 8];
 const INTERVAL: usize = 1000000; // 100ms
@@ -41,7 +41,9 @@ pub fn get_ticks() -> usize {
 }
 
 #[inline(always)]
-fn time_now() -> u64 { time::read() as u64 }
+fn time_now() -> u64 {
+    time::read() as u64
+}
 
 pub fn program_next_tick() {
     let next = time_now().wrapping_add(INTERVAL as u64);

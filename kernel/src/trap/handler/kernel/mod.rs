@@ -2,8 +2,8 @@ mod external;
 mod timer;
 mod uart;
 
-use super::super::context::TrapContext;
-use super::user::handle_syscall;
+use super::super::TrapContext;
+use super::user;
 use super::{EXCEPTION_INFO, INTERRUPT_INFO};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
@@ -46,7 +46,7 @@ fn exception_handler(
 ) {
     // 8: Environment call from U-mode (syscall)
     if e == 8 {
-        handle_syscall(ctx);
+        user::syscall::interrupt_handler(ctx);
         // advance sepc to next instruction
         unsafe {
             sepc::write(epc.wrapping_add(4));

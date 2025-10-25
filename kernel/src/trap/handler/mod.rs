@@ -1,5 +1,6 @@
 mod kernel;
 mod user;
+pub mod vector;
 
 const EXCEPTION_INFO: [&str; 16] = [
     "Instruction address misaligned", // 0

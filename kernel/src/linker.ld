@@ -13,6 +13,12 @@ SECTIONS
     __text_start = .;
     KEEP(*(.text.start))
     *(.text .text.*)
+    . = ALIGN(0x1000);
+
+    __trampoline = .;
+    *(trampsec)
+    . = ALIGN(0x1000);
+    ASSERT(. - __trampoline == 0x1000, "error: trampoline larger than one page");
     __text_end = .;
   }
 
