@@ -2,6 +2,7 @@
 #![no_main]
 
 mod dtb;
+mod hart;
 mod init;
 mod logo;
 mod mem;

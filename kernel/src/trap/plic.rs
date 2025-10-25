@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use core::ptr::{read_volatile, write_volatile};
-use driver_uart::UART_IRQ;
+
+pub const UART_IRQ: usize = 10; // UART IRQ number, adjust as needed
 
 #[inline(always)]
 fn plic_base() -> usize {

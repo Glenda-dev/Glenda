@@ -17,8 +17,6 @@ pub struct Config {
     lsr_thre_bit: u8,
 }
 
-pub const UART_IRQ: usize = 10; // UART IRQ number, adjust as needed
-
 impl Config {
     const THR_REGISTER_INDEX: usize = 0;
     const LSR_REGISTER_INDEX: usize = 5;

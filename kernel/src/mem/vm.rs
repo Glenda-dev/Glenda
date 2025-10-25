@@ -50,7 +50,7 @@ pub fn vm_unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: boo
     }
 }
 
-pub fn vm_map_kernel_pages(va: VirtAddr, size: usize, pa: PhysAddr, perm: usize) {
+pub fn vm_map_kernel_pages(va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
     KERNEL_PAGE_TABLE.with_mut(|pt| {
         vm_mappages(pt, va, pa, size, perm);
     });

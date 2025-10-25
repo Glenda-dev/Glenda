@@ -11,19 +11,19 @@ unsafe extern "C" {
 
 // 直接在当前核上运行用户态 Payload
 pub fn launch_payload(payload: &[u8]) -> ! {
-    let code_pa = pmem_alloc(false) as usize;
-    let stack_pa = pmem_alloc(false) as usize;
+    let code_pa = pmem_alloc(false) as PhysAddr;
+    let stack_pa = pmem_alloc(false) as PhysAddr;
     let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
-    let copy_len = core::cmp::min(src_len, PAGE_SIZE);
+    let copy_len = core::cmp::min(src_len, PGSIZE);
     unsafe { core::ptr::copy_nonoverlapping(src_ptr, code_pa as *mut u8, copy_len) };
 
     // Code: U|R|X
-    vm_map_kernel_pages(code_pa, PAGE_SIZE, code_pa, PTE_U | PTE_R | PTE_X | PTE_A);
+    vm_map_kernel_pages(code_pa, code_pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
     // Stack: U|R|W
-    vm_map_kernel_pages(stack_pa, PAGE_SIZE, stack_pa, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
+    vm_map_kernel_pages(stack_pa, stack_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
 
     let entry = code_pa;
-    let proc_sp = stack_pa + PAGE_SIZE;
+    let proc_sp = stack_pa + PGSIZE;
     printk!("PROC: Launching proc at {:p}, sp={:p}", entry as *const u8, proc_sp as *const u8);
     unsafe { enter_proc(entry, proc_sp) }
 }
