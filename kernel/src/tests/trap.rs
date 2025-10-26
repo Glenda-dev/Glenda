@@ -16,7 +16,9 @@ fn timer_tick_test(hartid: usize) {
     TIMER_BARRIER.ensure_inited(dtb::hart_count());
     if hartid == 0 {
         TIMER_BARRIER.init(dtb::hart_count());
-        unsafe { sie::set_stimer(); }
+        unsafe {
+            sie::set_stimer();
+        }
         timer::start(hartid);
         printk!(
             "{}[TEST]{} Timer tick test start ({} harts)",
@@ -36,7 +38,10 @@ fn timer_tick_test(hartid: usize) {
     for _ in 0..TICKS_TO_WAIT {
         loop {
             let cur = timer::get_ticks();
-            if cur > last { last = cur; break; }
+            if cur > last {
+                last = cur;
+                break;
+            }
             core::hint::spin_loop();
         }
         let delta = last.saturating_sub(base);
@@ -45,7 +50,9 @@ fn timer_tick_test(hartid: usize) {
 
     if TIMER_BARRIER.finish_and_last() {
         printk!("{}[PASS]{} Timer tick test", ANSI_GREEN, ANSI_RESET);
-        unsafe { sie::clear_stimer(); }
+        unsafe {
+            sie::clear_stimer();
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::dtb;
+use spin::Mutex;
 
 pub fn interrupt_handler() {
     let cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
