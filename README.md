@@ -18,6 +18,7 @@
                    *     *        *
 ```
 A simple microkernel written in Rust for RISC-V architecture as a learning project.
+## Lab-2 Report is [here](docs/lab-2.md)
 ## Roadmap
 - [ ] Base Kernel
   - [x] Bootloader
