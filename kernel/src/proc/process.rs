@@ -1,4 +1,5 @@
 use super::context::ProcContext;
+use super::set_current_user_satp;
 use crate::mem::addr::align_down;
 use crate::mem::addr::{PhysAddr, VirtAddr};
 use crate::mem::pgtbl::PageTable;
@@ -9,6 +10,8 @@ use crate::mem::{PGSIZE, VA_MAX};
 use crate::printk;
 use crate::trap::TrapFrame;
 use crate::trap::vector;
+use riscv::register::satp;
+use riscv::register::sscratch;
 
 unsafe extern "C" {
     fn trap_user_return(ctx: &mut TrapFrame) -> !;
@@ -81,33 +84,28 @@ pub fn create(payload: &[u8]) -> Process {
 }
 
 pub fn launch(proc: &mut Process) {
-    printk!("PROC: Launching process with pid {}", proc.pid);
-}
-
-// 直接在当前核上运行用户态 Payload
-pub fn launch_payload(payload: &[u8]) -> ! {
-    let p = create(payload);
     // 初始化 trapframe 的返回地址和用户栈（通过物理地址访问）
-    let tf = unsafe { &mut *p.trapframe };
-    tf.sp = p.user_sp_va;
-    tf.kernel_epc = p.entry_va;
+    let tf = unsafe { &mut *proc.trapframe };
+    tf.sp = proc.user_sp_va;
+    tf.kernel_epc = proc.entry_va;
     // 记录当前用户页表 SATP
-    let satp = p.root_satp();
-    crate::proc::set_current_user_satp(satp);
+    let satp_bits = proc.root_satp();
+    set_current_user_satp(satp_bits);
     // 可选：在 tests 特性下打印页表用于调试
     // 调试用的 vm_print 已移除，避免测试日志噪音
     // 为 trampoline 设置正确的 TrapFrame 用户虚拟地址：
     // - sscratch 指向 TrapFrame 的用户虚拟地址
     // - 在 TrapFrame 中的 a0 字段也写入该虚拟地址，供 user_return 首次恢复使用
-    let tf_user_va = p.trapframe_va as *mut TrapFrame;
-    unsafe { riscv::register::sscratch::write(tf_user_va as usize) };
+    let tf_user_va = proc.trapframe_va as *mut TrapFrame;
+    unsafe { sscratch::write(tf_user_va as usize) };
     tf.a0 = tf_user_va as usize;
 
     // 直接使用内核可见的 TrapFrame 指针进入 trap_user_return（不返回）
     printk!(
-        "PROC: Launching proc at {:p}, sp={:p}",
+        "PROC: Launching proc at {:p}, sp={:p} with pid={}",
         tf.kernel_epc as *const u8,
-        tf.sp as *const u8
+        tf.sp as *const u8,
+        proc.pid
     );
     unsafe { trap_user_return(tf) }
 }
@@ -117,6 +115,6 @@ impl Process {
         // 根页表物理页号
         let ppn = (self.root_pt_pa >> 12) & ((1usize << (usize::BITS as usize - 12)) - 1);
         // Compose SATP value for Sv39: MODE in bits [63:60], ASID=0, PPN in [43:0]
-        ((riscv::register::satp::Mode::Sv39 as usize) << 60) | ppn
+        ((satp::Mode::Sv39 as usize) << 60) | ppn
     }
 }
