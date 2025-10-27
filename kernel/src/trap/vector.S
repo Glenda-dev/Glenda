@@ -187,6 +187,7 @@ user_vector:
         ld sp, 8(a0)
         # tp = tf->user_to_kern_hartid
         ld tp, 32(a0)
+        sd tp, 64(a0)
         # t0 = tf->user_to_kern_trapvector
         ld t0, 16(a0)
 

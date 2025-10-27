@@ -4,8 +4,7 @@ use riscv::interrupt::supervisor::Interrupt;
 use riscv::register::sip;
 
 pub fn interrupt_handler_ssip() {
-    let hartid = hart::getid();
-    if hartid == 0 {
+    if hart::getid() == 0 {
         timer::update();
     }
     unsafe {
@@ -14,8 +13,7 @@ pub fn interrupt_handler_ssip() {
 }
 
 pub fn interrupt_handler_stip() {
-    let hartid = hart::getid();
-    if hartid == 0 {
+    if hart::getid() == 0 {
         timer::update();
     }
     timer::program_next_tick();

@@ -91,6 +91,7 @@ pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
+    unsafe { sstatus::clear_sie(); }
     // 将 stvec 切换到用户态向量入口
     let user_vec_addr = vector::user_vector as usize;
     unsafe {
