@@ -3,6 +3,7 @@ mod context;
 mod handler;
 mod plic;
 pub mod timer;
+pub use handler::vector;
 
 use crate::dtb;
 use crate::printk;

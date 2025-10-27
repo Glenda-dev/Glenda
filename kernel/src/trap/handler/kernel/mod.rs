@@ -12,8 +12,6 @@ use riscv::register::{
     scause::{self, Trap},
     sepc, sstatus, stval,
 };
-#[cfg(feature = "unicode")]
-use spin::Mutex;
 
 /// S-mode 陷阱处理函数
 /// 在 kernel_vector 汇编代码中被调用

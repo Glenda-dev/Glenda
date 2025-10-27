@@ -135,6 +135,10 @@ user_vector:
         # sscratch寄存器存放了p->trapframe
         csrrw a0, sscratch, a0
 
+        # 把 TrapFrame 中由内核预先写入的指针给 a3
+        # See: trap_user_handler
+        ld a3, 280(a0)
+
         # 保存通用寄存器到trapframe
         sd ra, 40(a0)
         sd sp, 48(a0)
@@ -174,7 +178,7 @@ user_vector:
 #------------------sd 过程 (end)-------------------------
 
         # 恢复之前保存的内核执行环境
-        # 1. 内核栈指针 
+        # 1. 内核栈指针
         # 2. hartid信息
         # 3. 内核页表
         # 之后跳转到 trap_user_handler
@@ -194,6 +198,8 @@ user_vector:
         sfence.vma zero, zero
 
         # 进入trap处理逻辑
+        # 切换到内核页表后，用之前保存的 a3 作为 TrapFrame 指针
+        mv a0, a3
         jr t0
 
 
@@ -207,9 +213,9 @@ user_return:
         sfence.vma zero, zero
 
 #---------------------ld 过程 (begin)----------------------
-        
+
         ld t0, 112(a0)
-        csrw sscratch, t0 
+        csrw sscratch, t0
 
         ld ra, 40(a0)
         ld sp, 48(a0)

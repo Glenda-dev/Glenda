@@ -120,7 +120,7 @@ fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-fn build_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+fn build_service(mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("make");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     cmd.current_dir(format!("{}/../service/hello", manifest_dir));
@@ -131,7 +131,8 @@ fn build_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-fn link_service(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+// Mode and Features are expected to be unused now
+fn link_service(_mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let service_bin =
         std::path::Path::new("target").join("service").join("hello").join("hello.bin");
     let service_bin_str = "service/hello/hello.bin";

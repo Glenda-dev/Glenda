@@ -1,4 +1,5 @@
 use crate::dtb;
+#[cfg(feature = "unicode")]
 use spin::Mutex;
 
 pub fn interrupt_handler() {

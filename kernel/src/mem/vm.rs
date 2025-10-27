@@ -2,15 +2,15 @@ use core::panic;
 
 use super::addr::{PhysAddr, VirtAddr, align_down, align_up};
 use super::pgtbl::{PageTable, PageTableCell};
-use super::pmem::{kernel_region_info, user_region_info};
-use super::pte::{PTE_A, PTE_D, PTE_R, PTE_V, PTE_W, PTE_X, Pte};
+use super::pmem::{kernel_region_info, pmem_alloc, user_region_info};
+use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
 use super::pte::{pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE};
 use crate::dtb;
 use crate::printk;
 use riscv::asm::sfence_vma_all;
-use riscv::register::satp::{self, Satp};
-use spin::Once;
+use riscv::register::satp;
+use spin::{Mutex, Once};
 
 #[cfg(feature = "tests")]
 use super::pte::{pte_get_flags, pte_is_table};
@@ -30,6 +30,28 @@ unsafe extern "C" {
 }
 
 static KERNEL_PAGE_TABLE: PageTableCell = PageTableCell::new();
+
+static KSTACK0_INIT: Once<()> = Once::new();
+static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
+
+pub fn vm_map_kstack0() {
+    KSTACK0_INIT.call_once(|| {
+        let pa = pmem_alloc(true) as PhysAddr;
+        printk!("VM: KSTACK(0) assigned PA={:p} (identity-mapped)", pa as *const u8);
+        *KSTACK0_PA.lock() = Some(pa);
+    });
+}
+
+#[inline(always)]
+pub fn kstack_base(procid: usize) -> VirtAddr {
+    assert!(procid == 0, "only KSTACK(0) is supported in LAB4");
+    *KSTACK0_PA.lock().as_ref().expect("KSTACK(0) not initialized")
+}
+
+#[inline(always)]
+pub fn kstack_top(procid: usize) -> VirtAddr {
+    kstack_base(procid) + super::PGSIZE
+}
 
 pub fn vm_getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
     match table.lookup(va) {
@@ -334,6 +356,7 @@ pub fn init_kernel_vm(hartid: usize) {
         }
         printk!("VM: Root page table built by hart {}", hartid);
     });
+    vm_map_kstack0();
 }
 
 pub fn vm_switch_to_kernel(hartid: usize) {

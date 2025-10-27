@@ -1,5 +1,5 @@
 use crate::printk;
-use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::process::launch_payload;
 
 // 由 build.rs 生成，这个文件可能为空
@@ -18,7 +18,7 @@ pub fn run(hartid: usize) {
     }
     printk!("{}[TEST]{} Starting syscall tests on hart {}", ANSI_YELLOW, ANSI_RESET, hartid);
     launch_test_proc();
-    printk!("{}[PASS]{} Syscall tests", ANSI_GREEN, ANSI_RESET);
+    //printk!("{}[PASS]{} Syscall tests", ANSI_GREEN, ANSI_RESET);
 }
 
 fn launch_test_proc() -> ! {
