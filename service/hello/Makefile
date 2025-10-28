@@ -1,6 +1,7 @@
 
 CC = $(CROSS_COMPILE)gcc
 OBJCOPY = $(CROSS_COMPILE)objcopy
+OBJDUMP = $(CROSS_COMPILE)objdump
 
 CFLAGS = -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -march=rv64gc -mabi=lp64d -Os
 LDFLAGS = -Wl,-n -Wl,--build-id=none -Wl,-Ttext=0
@@ -10,6 +11,7 @@ SRCS = start.S hello.c
 TARGET_DIR = $(CURDIR)/../../target/service/hello
 TARGET_ELF = $(TARGET_DIR)/hello.elf
 TARGET_BIN = $(TARGET_DIR)/hello.bin
+TARGET_DUMP = $(TARGET_DIR)/hello.dump
 
 .PHONY: all clean
 
@@ -20,6 +22,9 @@ $(TARGET_BIN): $(TARGET_ELF)
 
 $(TARGET_ELF): $(SRCS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(INCLUDES) -o $@ $^
+$(TARGET_DUMP): $(TARGET_ELF)
+	$(OBJDUMP) -D $< > $@
 
 clean:
-	rm -f $(TARGET_ELF) $(TARGET_BIN)
+	rm -f $(TARGET_ELF) $(TARGET_BIN) $(TARGET_DUMP)
+dump: $(TARGET_DUMP)
