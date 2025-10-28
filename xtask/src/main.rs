@@ -125,9 +125,6 @@ fn build_service(mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     cmd.current_dir(format!("{}/../service/hello", manifest_dir));
     cmd.arg("CROSS_COMPILE=riscv64-unknown-elf-");
-    if mode == "debug" {
-        cmd.arg("CFLAGS+=\"-g\"");
-    }
     run(&mut cmd)
 }
 
