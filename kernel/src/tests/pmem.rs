@@ -5,6 +5,7 @@ use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::dtb;
+use crate::hart::MAX_HARTS;
 use crate::mem::PGSIZE;
 use crate::mem::addr::PhysAddr;
 use crate::mem::pmem::{
@@ -13,7 +14,6 @@ use crate::mem::pmem::{
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
 
-const MAX_HARTS: usize = 8; // 并发参与上限
 const MAX_TRACKED_PAGES: usize = 32; // 每个 hart 记录的最大页数
 
 // 并发阶段 barrier + 完成计数

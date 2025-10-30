@@ -1,3 +1,4 @@
+use crate::hart;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -48,4 +49,9 @@ pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
             }
         }
     }
+}
+
+pub fn hart_init(hartid: usize, dtb: *const u8) {
+    hart::enable_hart(hartid);
+    bootstrap_secondary_harts(hartid, dtb);
 }
