@@ -9,7 +9,6 @@ use crate::printk;
 use crate::trap::TrapFrame;
 use crate::trap::vector;
 use riscv::register::{satp, sscratch};
-
 unsafe extern "C" {
     fn trap_user_return(ctx: &mut TrapFrame) -> !;
 }
@@ -28,6 +27,10 @@ pub struct Process {
 }
 
 pub fn create(payload: &[u8]) -> Process {
+    // 分配一页作为根页表（物理内存）
+    let root_pt_pa = pmem_alloc(true) as PhysAddr;
+    let page_table = unsafe { &mut *(root_pt_pa as *mut PageTable) };
+    unsafe { core::ptr::write_bytes(page_table as *mut PageTable as *mut u8, 0, PGSIZE) };
     /*
     用户地址空间布局：
     trapoline   (1 page) 映射在最高地址
@@ -38,30 +41,27 @@ pub fn create(payload: &[u8]) -> Process {
     code + data (1 page)
     empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
     */
-    // 分配一页作为根页表（物理内存）
-    let root_pt_pa = pmem_alloc(true) as PhysAddr;
-    let page_table = unsafe { &mut *(root_pt_pa as *mut PageTable) };
-    unsafe { core::ptr::write_bytes(page_table as *mut PageTable as *mut u8, 0, PGSIZE) };
-    // Map trampoline
-    let tramp_addr = align_down(vector::trampoline as usize);
-    vm_mappages(page_table, tramp_addr, tramp_addr, PGSIZE, PTE_R | PTE_X | PTE_A);
-    // Map trapframe
-    let trapframe_pa = pmem_alloc(false) as PhysAddr;
-    let trapframe_va = tramp_addr + PGSIZE;
+    let tramp_pa = align_down(vector::trampoline as usize) as PhysAddr; // trampoline 物理地址
+    let tramp_va = VA_MAX - PGSIZE; // trampoline 虚拟地址（最高页）
+    let trapframe_pa = pmem_alloc(false) as PhysAddr; // trapframe 物理地址
+    let trapframe_va = tramp_va - PGSIZE; // trapframe 虚拟地址
+    let stack_pa = pmem_alloc(false) as PhysAddr; // 用户栈物理地址
+    let stack_va = trapframe_va - PGSIZE; // 用户栈虚拟地址
+    let empty_va = 0usize; // 最低的空闲页虚拟地址
+    let code_va = empty_va + PGSIZE; // 用户代码虚拟地址
+    let code_pa = pmem_alloc(false) as PhysAddr; // 用户代码物理地址
+    let (src_ptr, src_len) = (payload.as_ptr(), payload.len()); // 用户代码源指针和长度
+    let copy_len = core::cmp::min(src_len, PGSIZE); // 复制长度不超过一页
+    let kstack = pmem_alloc(true) as PhysAddr; // 内核栈物理地址
+    unsafe { core::ptr::copy_nonoverlapping(src_ptr, code_pa as *mut u8, copy_len) }; // 复制用户代码
+
+    // Map trampoline:
+    vm_mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+    // Map trapframe: place it right below trampoline
     vm_mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
-    // Map user stack
-    let stack_pa = pmem_alloc(false) as PhysAddr;
-    let stack_va = trapframe_va + PGSIZE;
+    // Map user stack: place user stack below trapframe
     vm_mappages(page_table, stack_va, stack_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
-    // Map empty page
-    let empty_va = VA_MAX - PGSIZE;
-    // Guard here
-    // Load user code
-    let code_va = empty_va - PGSIZE;
-    let code_pa = pmem_alloc(false) as PhysAddr;
-    let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
-    let copy_len = core::cmp::min(src_len, PGSIZE);
-    unsafe { core::ptr::copy_nonoverlapping(src_ptr, code_pa as *mut u8, copy_len) };
+    // Lowest page is kept unmapped as a guard (page 0).
     // Ensure I-cache observes freshly written user code
     riscv::asm::fence_i();
     // Map user code
@@ -69,12 +69,13 @@ pub fn create(payload: &[u8]) -> Process {
     Process {
         pid: 0,
         root_pt_pa,
-        heap_top: code_va,
-        stack_size: 0,
+        // heap_top 应指向可分配 heap 的起始地址（紧跟 code page 之后）
+        heap_top: code_va + PGSIZE,
+        stack_size: PGSIZE,
         trapframe: trapframe_pa as *mut TrapFrame,
         trapframe_va: trapframe_va,
         context: ProcContext::new(),
-        kernel_stack: 0,
+        kernel_stack: kstack,
         entry_va: code_va,
         user_sp_va: stack_va + PGSIZE,
     }
