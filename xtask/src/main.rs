@@ -61,6 +61,10 @@ enum Cmd {
         /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
         #[arg(long, default_value = "nographic")]
         display: String,
+
+        /// Run tests instead of normal kernel
+        #[arg(long, default_value_t = false)]
+        test: bool,
     },
     /// Disassemble the kernel ELF
     Objdump,
@@ -78,8 +82,14 @@ fn main() -> anyhow::Result<()> {
             build(mode, &xtask.features)?;
             qemu_run(mode, cpus, &mem, &display)?;
         }
-        Cmd::Gdb { cpus, mem, display } => {
-            build(mode, &xtask.features)?;
+        Cmd::Gdb { cpus, mem, display, test } => {
+            let mut feats = xtask.features.clone();
+            if test == true {
+                if !feats.iter().any(|f| f == "tests") {
+                    feats.push(String::from("tests"));
+                }
+            }
+            build(mode, &feats)?;
             qemu_gdb(mode, cpus, &mem, &display)?;
         }
         Cmd::Test { cpus, mem, display } => {
