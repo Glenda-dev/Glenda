@@ -1,6 +1,6 @@
 mod clint;
 mod context;
-mod handler;
+pub mod handler;
 mod plic;
 pub mod timer;
 pub use context::{TrapContext, TrapFrame};

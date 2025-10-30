@@ -2,6 +2,7 @@ pub mod syscall;
 
 use super::super::{TrapContext, TrapFrame};
 use super::vector;
+use crate::mem::vm::{kstack_top, vm_map_kstack0};
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
     stvec::{self, Stvec},
@@ -117,8 +118,8 @@ pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
     // S 态 hartid
     ctx.kernel_hartid = crate::hart::getid();
     // KSTACK(0) 顶部
-    crate::mem::vm::vm_map_kstack0();
-    ctx.kernel_sp = crate::mem::vm::kstack_top(0);
+    vm_map_kstack0();
+    ctx.kernel_sp = kstack_top(0);
 
     // sscratch 指向 TrapFrame 的虚拟地址
     let user_tf_va = ctx.a0;
