@@ -46,8 +46,8 @@ impl Process {
     pub fn root_satp(&self) -> usize {
         // 根页表物理页号
         let ppn = (self.root_pt_pa >> 12) & ((1usize << (usize::BITS as usize - 12)) - 1);
-        // Compose SATP value for Sv39: MODE in bits [63:60], ASID=0, PPN in [43:0]
-        ((satp::Mode::Sv39 as usize) << 60) | ppn
+        // Compose SATP value for Sv39: MODE in bits [63:60], ASID=pid, PPN in [43:0]
+        ((satp::Mode::Sv39 as usize) << 60) | (self.pid << 44) | ppn
     }
 }
 
@@ -64,7 +64,7 @@ empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
 pub fn create(payload: &[u8]) -> Process {
     let mut proc = Process::new();
     // Setup pid
-    proc.pid = 0;
+    proc.pid = 1;
     // 分配一页作为根页表（物理内存）
     proc.root_pt_pa = pmem_alloc(true) as PhysAddr;
     let page_table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
@@ -133,4 +133,9 @@ pub fn launch(proc: &mut Process) {
     unsafe {
         switch_context(&mut hart.context, &mut proc.context);
     }
+}
+
+pub fn current_proc() -> &'static mut Process {
+    let hart = hart::get();
+    unsafe { &mut *hart.proc }
 }
