@@ -123,6 +123,7 @@ fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
 fn build_service(mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("make");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    std::fs::create_dir_all(format!("{}/../target/service/hello", manifest_dir)).unwrap();
     cmd.current_dir(format!("{}/../service/hello", manifest_dir));
     cmd.arg("CROSS_COMPILE=riscv64-unknown-elf-");
     run(&mut cmd)
