@@ -6,13 +6,12 @@ pub const PGMASK: usize = PGSIZE - 1;
 pub const VA_MAX: usize = 1 << 38;
 pub const KERN_PAGES: usize = 8192;
 
-pub type PhysAddr = usize;
-pub type VirtAddr = usize;
-pub type PPN = usize;
-pub type VPN = usize;
+pub use addr::{PhysAddr, VirtAddr};
+pub use pagetable::PageTable;
+pub use pte::{Pte, PteFlags};
 
 pub mod addr;
-pub mod pgtbl;
+pub mod pagetable;
 pub mod pmem;
 pub mod pte;
 pub mod vm;

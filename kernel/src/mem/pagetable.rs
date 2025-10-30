@@ -1,7 +1,7 @@
-use super::addr::{PhysAddr, VirtAddr, align_down, align_up, vpn};
+use super::addr::{align_down, align_up, vpn};
 use super::pmem::{get_region, pmem_alloc, pmem_free};
 use super::pte::{PTE_V, Pte, pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
-use super::{PGNUM, PGSIZE, VA_MAX};
+use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
 use core::cell::UnsafeCell;
 use spin::Mutex;
 

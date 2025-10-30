@@ -1,7 +1,7 @@
 use super::barrier::MultiCoreTestBarrier;
 use crate::dtb;
 use crate::mem::addr::PhysAddr;
-use crate::mem::pgtbl::PageTable;
+use crate::mem::pagetable::PageTable;
 use crate::mem::pmem::{pmem_alloc, pmem_free};
 use crate::mem::pte::{PTE_R, PTE_W, PTE_X, pte_get_flags, pte_is_valid, pte_to_pa};
 use crate::mem::vm::{vm_getpte, vm_mappages, vm_print, vm_unmappages};

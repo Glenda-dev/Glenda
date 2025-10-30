@@ -5,10 +5,9 @@ use core::ptr::{self, NonNull, addr_of_mut};
 
 use spin::Mutex;
 
-use super::PGSIZE;
-use super::addr::{PhysAddr, align_down, align_up};
+use super::addr::{align_down, align_up};
+use super::{KERN_PAGES, PGSIZE, PhysAddr};
 use crate::dtb;
-use crate::mem::KERN_PAGES;
 use crate::printk;
 
 unsafe extern "C" {

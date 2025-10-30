@@ -1,5 +1,4 @@
-use crate::proc::context::ProcContext;
-use crate::proc::process::Process;
+use crate::proc::{ProcContext, Process};
 use core::arch::asm;
 use core::ptr;
 

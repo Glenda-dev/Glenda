@@ -1,33 +1,30 @@
-use super::context::ProcContext;
+use super::ProcContext;
 use super::set_current_user_satp;
 use crate::mem::addr::align_down;
-use crate::mem::addr::{PhysAddr, VirtAddr};
-use crate::mem::pgtbl::PageTable;
 use crate::mem::pmem::pmem_alloc;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
 use crate::mem::vm::vm_mappages;
-use crate::mem::{PGSIZE, VA_MAX};
+use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::trap::TrapFrame;
 use crate::trap::vector;
-use riscv::register::satp;
-use riscv::register::sscratch;
+use riscv::register::{satp, sscratch};
 
 unsafe extern "C" {
     fn trap_user_return(ctx: &mut TrapFrame) -> !;
 }
 
 pub struct Process {
-    pid: usize,                // 进程ID
-    root_pt_pa: PhysAddr,      // 根页表物理地址
-    heap_top: VirtAddr,        // 进程堆顶地址
-    stack_size: usize,         // 进程栈大小
-    trapframe: *mut TrapFrame, // TrapFrame 指针（物理页）
-    trapframe_va: VirtAddr,    // TrapFrame 的用户可见虚拟地址
-    context: ProcContext,      // 用户态上下文
-    kernel_stack: PhysAddr,    // 内核栈地址
-    entry_va: VirtAddr,        // 用户入口地址
-    user_sp_va: VirtAddr,      // 用户栈顶 VA
+    pub pid: usize,                // 进程ID
+    pub root_pt_pa: PhysAddr,      // 根页表物理地址
+    pub heap_top: VirtAddr,        // 进程堆顶地址
+    pub stack_size: usize,         // 进程栈大小
+    pub trapframe: *mut TrapFrame, // TrapFrame 指针（物理页）
+    pub trapframe_va: VirtAddr,    // TrapFrame 的用户可见虚拟地址
+    pub context: ProcContext,      // 用户态上下文
+    pub kernel_stack: PhysAddr,    // 内核栈地址
+    pub entry_va: VirtAddr,        // 用户入口地址
+    pub user_sp_va: VirtAddr,      // 用户栈顶 VA
 }
 
 pub fn create(payload: &[u8]) -> Process {

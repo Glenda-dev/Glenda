@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::addr::PhysAddr;
+use super::PhysAddr;
 
 pub const PTE_V: usize = 1 << 0; // Valid
 pub const PTE_R: usize = 1 << 1; // Read

@@ -1,5 +1,7 @@
 pub mod context;
 pub mod process;
+pub use context::ProcContext;
+pub use process::Process;
 
 use spin::Mutex;
 

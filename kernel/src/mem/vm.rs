@@ -1,11 +1,12 @@
 use core::panic;
 
-use super::addr::{PhysAddr, VirtAddr, align_down, align_up};
-use super::pgtbl::{PageTable, PageTableCell};
+use super::addr::{align_down, align_up};
+use super::pagetable::PageTableCell;
 use super::pmem::{kernel_region_info, pmem_alloc, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
 use super::pte::{pte_is_leaf, pte_is_valid, pte_to_pa};
 use super::{PGNUM, PGSIZE};
+use super::{PageTable, PhysAddr, VirtAddr};
 use crate::dtb;
 use crate::printk;
 use riscv::asm::sfence_vma_all;
