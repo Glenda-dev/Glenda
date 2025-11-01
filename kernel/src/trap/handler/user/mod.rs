@@ -3,6 +3,8 @@ pub mod syscall;
 use super::super::{TrapContext, TrapFrame};
 use super::vector;
 use crate::mem::vm::{kstack_top, vm_map_kstack0};
+use crate::mem::{PGSIZE, VA_MAX};
+use crate::proc::process::current_proc;
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
     stvec::{self, Stvec},
@@ -91,12 +93,17 @@ pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
+pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
+    // TODO: Refactor this
+    // 直接通过当前 hart 的进程状态获取 TrapFrame 的指针
+    let ctx: &mut TrapFrame = unsafe { &mut *current_proc().trapframe };
     unsafe {
         sstatus::clear_sie();
     }
     // 将 stvec 切换到用户态向量入口
-    let user_vec_addr = vector::user_vector as usize;
+    let tramp_base_va = VA_MAX - PGSIZE;
+    let user_vec_off = (vector::user_vector as usize) - (vector::trampoline as usize);
+    let user_vec_addr = tramp_base_va + user_vec_off;
     unsafe {
         stvec::write(Stvec::new(user_vec_addr, stvec::TrapMode::Direct));
     }
@@ -122,11 +129,17 @@ pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
     ctx.kernel_sp = kstack_top(0);
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = ctx.a0;
+    let user_tf_va = unsafe { (*current_proc()).trapframe_va } as usize;
     unsafe {
         sscratch::write(user_tf_va);
     }
 
     let user_satp = crate::proc::current_user_satp().unwrap_or_else(|| satp::read().bits()) as u64;
-    unsafe { vector::user_return(user_tf_va as u64, user_satp) }
+
+    // 通过 TRAMPOLINE 的高地址映射调用 user_return
+    let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);
+    let user_ret_addr = tramp_base_va + user_ret_off;
+    let user_return_fn: extern "C" fn(u64, u64) -> ! =
+        unsafe { core::mem::transmute(user_ret_addr) };
+    unsafe { user_return_fn(user_tf_va as u64, user_satp) }
 }

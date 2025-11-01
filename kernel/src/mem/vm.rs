@@ -9,6 +9,7 @@ use super::{PGNUM, PGSIZE};
 use super::{PageTable, PhysAddr, VirtAddr};
 use crate::dtb;
 use crate::printk;
+use crate::trap::vector;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::{Mutex, Once};
@@ -271,6 +272,16 @@ pub fn init_kernel_vm(hartid: usize) {
             bss_end_addr - bss_start_addr,
             PTE_R | PTE_W | PTE_A | PTE_D,
         );
+
+        // TRAMPOLINE 映射
+        let tramp_pa = align_down(vector::trampoline as usize);
+        let tramp_va = super::VA_MAX - super::PGSIZE;
+        printk!(
+            "VM: Map TRAMPOLINE VA={:p} -> PA={:p}",
+            tramp_va as *const u8,
+            tramp_pa as *const u8
+        );
+        vm_mappages(kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
 
         // MMIO 映射
         let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();

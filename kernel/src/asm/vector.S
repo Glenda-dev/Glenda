@@ -215,8 +215,7 @@ user_return:
 
 #---------------------ld 过程 (begin)----------------------
 
-        ld t0, 112(a0)
-        csrw sscratch, t0
+        csrw sscratch, a0
 
         ld ra, 40(a0)
         ld sp, 48(a0)
@@ -249,7 +248,7 @@ user_return:
         ld t5, 272(a0)
         ld t6, 280(a0)
 
-        csrrw a0, sscratch, a0
+        ld a0, 112(a0)
 
 #---------------------ld 过程 (end)----------------------
 
