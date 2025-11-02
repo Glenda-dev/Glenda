@@ -4,7 +4,7 @@ use super::super::{TrapContext, TrapFrame};
 use super::vector;
 use crate::mem::vm::{kstack_top, vm_map_kstack0};
 use crate::mem::{PGSIZE, VA_MAX};
-use crate::proc::process::current_proc;
+use crate::proc::current_proc;
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
     stvec::{self, Stvec},

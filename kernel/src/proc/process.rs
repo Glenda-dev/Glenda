@@ -49,6 +49,26 @@ impl Process {
         // Compose SATP value for Sv39: MODE in bits [63:60], ASID=pid, PPN in [43:0]
         ((satp::Mode::Sv39 as usize) << 60) | (self.pid << 44) | ppn
     }
+    #[cfg(feature = "tests")]
+    pub fn print(&self) {
+        printk!(
+            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}",
+            self.pid,
+            self.root_pt_pa,
+            self.heap_top,
+            self.stack_pages,
+            self.trapframe as usize,
+            self.trapframe_va,
+            self.kernel_stack,
+            self.entry_va,
+            self.user_sp_va,
+        );
+        let page_table = unsafe { &*(self.root_pt_pa as *const PageTable) };
+        page_table.print();
+        let tf = unsafe { &*(self.trapframe) };
+        tf.print();
+        self.context.print();
+    }
 }
 
 /*
@@ -64,7 +84,7 @@ empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
 pub fn create(payload: &[u8]) -> Process {
     let mut proc = Process::new();
     // Setup pid
-    proc.pid = 1;
+    proc.pid = 0;
     // 分配一页作为根页表（物理内存）
     proc.root_pt_pa = pmem_alloc(true) as PhysAddr;
     let page_table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
@@ -113,6 +133,9 @@ pub fn launch(proc: &mut Process) {
     let tf = unsafe { &mut *proc.trapframe };
     tf.sp = proc.user_sp_va;
     tf.kernel_epc = proc.entry_va;
+    tf.kernel_satp = satp::read().bits();
+    tf.kernel_hartid = hart::getid();
+    tf.kernel_sp = proc.kernel_stack;
     // 记录当前用户页表 SATP
     let satp_bits = proc.root_satp();
     set_current_user_satp(satp_bits);
@@ -133,9 +156,4 @@ pub fn launch(proc: &mut Process) {
     unsafe {
         switch_context(&mut hart.context, &mut proc.context);
     }
-}
-
-pub fn current_proc() -> &'static mut Process {
-    let hart = hart::get();
-    unsafe { &mut *hart.proc }
 }

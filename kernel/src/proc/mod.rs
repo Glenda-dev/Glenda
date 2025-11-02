@@ -3,6 +3,7 @@ pub mod process;
 pub use context::ProcContext;
 pub use process::Process;
 
+use crate::hart;
 use spin::Mutex;
 
 static CURRENT_USER_SATP: Mutex<Option<usize>> = Mutex::new(None);
@@ -13,4 +14,9 @@ pub fn set_current_user_satp(satp: usize) {
 
 pub fn current_user_satp() -> Option<usize> {
     *CURRENT_USER_SATP.lock()
+}
+
+pub fn current_proc() -> &'static mut Process {
+    let hart = hart::get();
+    unsafe { &mut *hart.proc }
 }
