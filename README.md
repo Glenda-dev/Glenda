@@ -18,6 +18,7 @@
                    *     *        *
 ```
 A simple microkernel written in Rust for RISC-V architecture as a learning project.
+Lab-4 Report is available [here](docs/lab-4.md).
 ## Roadmap
 - [ ] Base Kernel
   - [x] Bootloader
