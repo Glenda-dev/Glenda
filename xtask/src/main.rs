@@ -224,7 +224,7 @@ fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<(
     if which("gdb").is_ok() {
         eprintln!("  gdb -ex 'set architecture riscv:rv64' -ex 'target remote :1234' -ex 'symbol-file {}'", elf.display());
     } else {
-        eprintln!("[ ERROR ] install gdb or riscv64-unknown-elf-gdb first");
+        eprintln!("[ ERROR ] install gdb or riscv64elf-gdb first");
     }
     run(&mut cmd)
 }
