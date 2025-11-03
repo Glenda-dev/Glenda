@@ -4,7 +4,7 @@ int main(void)
 {
     syscall(SYS_helloworld);
     syscall(SYS_helloworld);
-    for (;;) {}
+    //for (;;) {}
     return 0;
 }
 

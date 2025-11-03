@@ -4,7 +4,7 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
 OBJDUMP = $(CROSS_COMPILE)objdump
 
 CFLAGS = -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -march=rv64gc -mabi=lp64d -Os
-LDFLAGS = -Wl,-n -Wl,--build-id=none -Wl,-Ttext=0
+LDFLAGS = -Wl,-n -Wl,--build-id=none -Wl,-Tlink.ld
 INCLUDES = -I../../include/kernel
 
 SRCS = start.S hello.c
@@ -20,8 +20,8 @@ all: $(TARGET_BIN)
 $(TARGET_BIN): $(TARGET_ELF)
 	$(OBJCOPY) -O binary $< $@
 
-$(TARGET_ELF): $(SRCS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(INCLUDES) -o $@ $^
+$(TARGET_ELF): $(SRCS) link.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) $(INCLUDES) -o $@ $(SRCS)
 $(TARGET_DUMP): $(TARGET_ELF)
 	$(OBJDUMP) -D $< > $@
 
