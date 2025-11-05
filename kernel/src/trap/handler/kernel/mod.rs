@@ -51,6 +51,7 @@ fn exception_handler(
         }
         return;
     }
+
     printk!(
         "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
         ANSI_RED,

@@ -19,6 +19,7 @@ pub struct Process {
     pub pid: usize,                // 进程ID
     pub root_pt_pa: PhysAddr,      // 根页表物理地址
     pub heap_top: VirtAddr,        // 进程堆顶地址
+    pub heap_base: VirtAddr,       // 进程堆底（最小堆顶），用于 brk 下限约束
     pub stack_pages: usize,        // 进程栈大小
     pub trapframe: *mut TrapFrame, // TrapFrame 指针（物理页）
     pub trapframe_va: VirtAddr,    // TrapFrame 的用户可见虚拟地址
@@ -34,6 +35,7 @@ impl Process {
             pid: 0,
             root_pt_pa: 0,
             heap_top: 0,
+            heap_base: 0,
             stack_pages: 0,
             trapframe: core::ptr::null_mut(),
             trapframe_va: 0,
@@ -52,10 +54,11 @@ impl Process {
     #[cfg(feature = "tests")]
     pub fn print(&self) {
         printk!(
-            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}",
+            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}",
             self.pid,
             self.root_pt_pa,
             self.heap_top,
+            self.heap_base,
             self.stack_pages,
             self.trapframe as usize,
             self.trapframe_va,
@@ -73,11 +76,13 @@ impl Process {
 
 /*
 用户地址空间布局：
-trapoline   (1 page) 映射在最高地址
+trampoline  (1 page) 映射在最高地址
 trapframe   (1 page)
-ustack      (1 page)
-.......
-                    <--heap_top
+ustack      (N pages)
+-------------------  MMAP_END
+mmap region [MMAP_BEGIN, MMAP_END)
+-------------------  MMAP_BEGIN
+heap        (手动管理)
 code + data (1 page)
 empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
 */
@@ -107,14 +112,29 @@ pub fn create(payload: &[u8]) -> Process {
     vm_mappages(page_table, stack_va, stack_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
     // Setup Protected Page
     let empty_va = 0usize; // 最低的空闲页虚拟地址
-    // Setup User Code
-    let code_va = empty_va + PGSIZE; // 用户代码虚拟地址
-    let code_pa = pmem_alloc(false) as PhysAddr; // 用户代码物理地址
-    let (src_ptr, src_len) = (payload.as_ptr(), payload.len()); // 用户代码源指针和长度
-    let copy_len = core::cmp::min(src_len, PGSIZE); // 复制长度不超过一页
-    unsafe { core::ptr::copy_nonoverlapping(src_ptr, code_pa as *mut u8, copy_len) }; // 复制用户代码
+    let code_va = empty_va + PGSIZE;
+    let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
+    let mut mapped_len = 0usize;
+    if src_len == 0 {
+        let code_pa = pmem_alloc(false) as PhysAddr;
+        unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
+        vm_mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
+        mapped_len = PGSIZE;
+    } else {
+        let total = src_len;
+        while mapped_len < total {
+            let pa = pmem_alloc(false) as PhysAddr;
+            let this_len = core::cmp::min(PGSIZE, total - mapped_len);
+            unsafe {
+                core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE);
+                core::ptr::copy_nonoverlapping(src_ptr.add(mapped_len), pa as *mut u8, this_len);
+            }
+            let va = code_va + mapped_len;
+            vm_mappages(page_table, va, pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
+            mapped_len += this_len;
+        }
+    }
     proc.entry_va = code_va;
-    vm_mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
     // Setup Kernel Stack
     let kstack_pa = pmem_alloc(true) as PhysAddr;
     unsafe {
@@ -122,7 +142,8 @@ pub fn create(payload: &[u8]) -> Process {
     }
     proc.kernel_stack = kstack_pa + PGSIZE;
     // Setup Heap
-    proc.heap_top = code_va + PGSIZE;
+    proc.heap_top = align_down(code_va + ((mapped_len + PGSIZE - 1) & !(PGSIZE - 1)));
+    proc.heap_base = proc.heap_top;
     // Ensure I-cache observes freshly written user code
     riscv::asm::fence_i();
     proc

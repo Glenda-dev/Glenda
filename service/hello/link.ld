@@ -2,7 +2,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-  . = 0;
+  . = 0x1000;
 
   .text : ALIGN(4)
   {
@@ -27,4 +27,3 @@ SECTIONS
     *(COMMON)
   }
 }
-

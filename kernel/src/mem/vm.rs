@@ -4,8 +4,7 @@ use super::addr::{align_down, align_up};
 use super::pagetable::PageTableCell;
 use super::pmem::{kernel_region_info, pmem_alloc, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
-use super::pte::{pte_is_leaf, pte_is_valid, pte_to_pa};
-use super::{PGNUM, PGSIZE};
+use super::{PGSIZE};
 use super::{PageTable, PhysAddr, VirtAddr};
 use crate::dtb;
 use crate::printk;
@@ -13,11 +12,6 @@ use crate::trap::vector;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::{Mutex, Once};
-
-#[cfg(feature = "tests")]
-use super::pte::{pte_get_flags, pte_is_table};
-#[cfg(feature = "tests")]
-use crate::printk::{uart_hex, uart_puts};
 
 // see linker.ld
 unsafe extern "C" {
