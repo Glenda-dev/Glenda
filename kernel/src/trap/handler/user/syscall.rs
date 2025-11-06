@@ -1,4 +1,3 @@
-use crate::printk;
 use crate::syscall;
 use crate::trap::TrapContext;
 

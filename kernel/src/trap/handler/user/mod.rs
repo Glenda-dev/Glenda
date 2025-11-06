@@ -129,7 +129,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     ctx.kernel_sp = kstack_top(0);
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = unsafe { (*current_proc()).trapframe_va } as usize;
+    let user_tf_va = (*current_proc()).trapframe_va as usize;
     unsafe {
         sscratch::write(user_tf_va);
     }
@@ -141,5 +141,5 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     let user_ret_addr = tramp_base_va + user_ret_off;
     let user_return_fn: extern "C" fn(u64, u64) -> ! =
         unsafe { core::mem::transmute(user_ret_addr) };
-    unsafe { user_return_fn(user_tf_va as u64, user_satp) }
+    user_return_fn(user_tf_va as u64, user_satp)
 }

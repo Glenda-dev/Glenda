@@ -4,8 +4,7 @@ use super::addr::{align_down, align_up};
 use super::pagetable::PageTable;
 use super::pmem::pmem_alloc;
 use super::pte::{pte_get_flags, pte_is_leaf, pte_is_valid, pte_to_pa, PTE_A, PTE_D, PTE_R, PTE_U, PTE_W};
-use super::{PGSIZE, VirtAddr, MMAP_BEGIN, MMAP_END};
-use crate::proc::Process;
+use super::{PGSIZE, VirtAddr, MMAP_BEGIN};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyError {
@@ -22,10 +21,11 @@ pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Resul
     let mut copied = 0usize;
     while copied < dst.len() {
         let va = src_va;
-        let pte_ptr = match pt.lookup(va) { Some(p) => p, None => return Err(CopyError::NotMapped) };
+        let pte_ptr = match pt.lookup(align_down(va)) { Some(p) => p, None => return Err(CopyError::NotMapped) };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped); }
+        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped) };
         let flags = pte_get_flags(pte);
+        if (flags & 0xE) == 0 { return Err(CopyError::NotMapped); }
         if (flags & PTE_U) == 0 || (flags & PTE_R) == 0 { return Err(CopyError::NoPerm); }
         let pa = pte_to_pa(pte);
         let off = page_offset(va);
@@ -34,7 +34,7 @@ pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Resul
             core::ptr::copy_nonoverlapping((pa + off) as *const u8, dst.as_mut_ptr().add(copied), n);
         }
         copied += n;
-        src_va = va + n;
+        src_va += n;
     }
     Ok(())
 }
@@ -43,10 +43,11 @@ pub fn uvm_copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(
     let mut copied = 0usize;
     while copied < src.len() {
         let va = dst_va;
-        let pte_ptr = match pt.lookup(va) { Some(p) => p, None => return Err(CopyError::NotMapped) };
+        let pte_ptr = match pt.lookup(align_down(va)) { Some(p) => p, None => return Err(CopyError::NotMapped) };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped); }
+        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped) };
         let flags = pte_get_flags(pte);
+        if (flags & 0xE) == 0 { return Err(CopyError::NotMapped); }
         if (flags & PTE_U) == 0 || (flags & PTE_W) == 0 { return Err(CopyError::NoPerm); }
         let pa = pte_to_pa(pte);
         let off = page_offset(va);
@@ -55,7 +56,7 @@ pub fn uvm_copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(
             core::ptr::copy_nonoverlapping(src.as_ptr().add(copied), (pa + off) as *mut u8, n);
         }
         copied += n;
-        dst_va = va + n;
+        dst_va += n;
     }
     Ok(())
 }
@@ -66,8 +67,9 @@ pub fn uvm_copyin_str(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> R
         let page_base = align_down(src_va);
         let pte_ptr = match pt.lookup(page_base) { Some(p) => p, None => return Err(CopyError::NotMapped) };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped); }
+        if !pte_is_valid(pte) || !pte_is_leaf(pte) { return Err(CopyError::NotMapped) };
         let flags = pte_get_flags(pte);
+        if (flags & 0xE) == 0 { return Err(CopyError::NotMapped); }
         if (flags & PTE_U) == 0 || (flags & PTE_R) == 0 { return Err(CopyError::NoPerm); }
         let pa = pte_to_pa(pte);
         let mut off = page_offset(src_va);
@@ -116,25 +118,29 @@ pub fn uvm_heap_ungrow(pt: &mut PageTable, old_top: VirtAddr, new_top: VirtAddr)
     Ok(())
 }
 
-pub fn uvm_ustack_grow(proc: &mut Process, fault_va: VirtAddr) -> Result<(), UvmError> {
-    if !(fault_va >= MMAP_END && fault_va < proc.trapframe_va) {
-        return Err(UvmError::OutOfRange);
-    }
-    let table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
-    let current_base = proc.trapframe_va.saturating_sub(proc.stack_pages * PGSIZE);
-    let needed_base = align_down(fault_va);
-    if needed_base >= current_base { return Ok(()); }
+pub fn uvm_ustack_grow(pt: &mut PageTable, _stack_pages: &mut usize, _trapframe_va: VirtAddr, fault_va: VirtAddr) -> Result<(), UvmError> {
+    const STACK_BASE: usize = 0x20000;
+    const STACK_SIZE: usize = 24576;
+    const STACK_TOP: usize = STACK_BASE + STACK_SIZE;
 
-    let grow_start = core::cmp::max(needed_base, MMAP_END);
-    let mut a = grow_start;
-    while a < current_base {
-        let pa = pmem_alloc(false) as usize;
-        if pa == 0 { return Err(UvmError::NoMem); }
-        if !table.map(a, pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D) {
-            return Err(UvmError::MapFailed);
+    if fault_va >= STACK_BASE && fault_va < STACK_TOP {
+        let needed_base = align_down(fault_va);
+        let mut a = STACK_TOP;
+        while a > needed_base {
+            a -= PGSIZE;
+            if let Some(pte_ptr) = pt.lookup(a) {
+                if pte_is_valid(unsafe { *pte_ptr }) {
+                    continue;
+                }
+            }
+            let pa = pmem_alloc(false) as usize;
+            if pa == 0 { return Err(UvmError::NoMem); }
+            if !pt.map(a, pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D) {
+                return Err(UvmError::MapFailed);
+            }
         }
-        proc.stack_pages += 1;
-        a += PGSIZE;
+        return Ok(());
     }
-    Ok(())
+
+    Err(UvmError::OutOfRange)
 }

@@ -52,6 +52,13 @@ fn exception_handler(
         return;
     }
 
+    // 13: Load Page Fault, 15: Store/AMO Page Fault
+    if e == 13 || e == 15 {
+        let p = crate::proc::current_proc();
+        if p.ustack_grow(tval).is_ok() {
+            return;
+        }
+    }
     printk!(
         "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
         ANSI_RED,

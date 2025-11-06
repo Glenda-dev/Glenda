@@ -21,18 +21,19 @@ static void test_brk(void) {
     heap_top = syscall(SYS_brk, heap_top);
     heap_top = syscall(SYS_brk, heap_top - PGSIZE * 5);
     (void)heap_top;
+    syscall(SYS_copyinstr, (long)"[PASS] brk test passed");
 }
 
 static void test_stack(void) {
     static volatile char sink;
-    char tmp[PGSIZE * 4];
-    tmp[PGSIZE * 3] = 'h';
-    tmp[PGSIZE * 3 + 1] = 'e';
-    tmp[PGSIZE * 3 + 2] = 'l';
-    tmp[PGSIZE * 3 + 3] = 'l';
-    tmp[PGSIZE * 3 + 4] = 'o';
-    tmp[PGSIZE * 3 + 5] = '\0';
-    syscall(SYS_copyinstr, (long)(tmp + PGSIZE * 3));
+    char tmp[PGSIZE * 2];
+    tmp[PGSIZE * 1] = 'h';
+    tmp[PGSIZE * 1 + 1] = 'e';
+    tmp[PGSIZE * 1 + 2] = 'l';
+    tmp[PGSIZE * 1 + 3] = 'l';
+    tmp[PGSIZE * 1 + 4] = 'o';
+    tmp[PGSIZE * 1 + 5] = '\0';
+    syscall(SYS_copyinstr, (long)(tmp + PGSIZE * 1));
     tmp[0] = 'w';
     tmp[1] = 'o';
     tmp[2] = 'r';
@@ -47,6 +48,8 @@ int main(void)
 {
     test_helloworld();
     test_copy();
+    test_stack();
+    test_brk();
     for (;;) {}
     return 0;
 }

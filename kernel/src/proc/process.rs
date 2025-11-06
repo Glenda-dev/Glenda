@@ -8,8 +8,10 @@ use crate::mem::vm::vm_mappages;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::trap::TrapFrame;
+use crate::mem::uvm::uvm_ustack_grow;
 use crate::trap::vector;
 use riscv::register::{satp, sscratch};
+
 unsafe extern "C" {
     fn trap_user_return(ctx: &mut TrapFrame) -> !;
     fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
@@ -30,6 +32,14 @@ pub struct Process {
 }
 
 impl Process {
+    pub fn ustack_grow(&mut self, fault_va: VirtAddr) -> Result<(), ()> {
+        let pt = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
+        match uvm_ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             pid: 0,
@@ -99,17 +109,12 @@ pub fn create(payload: &[u8]) -> Process {
     let tramp_va = VA_MAX - PGSIZE; // trampoline 虚拟地址（最高页）
     vm_mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     // Setup TrapFrame
-    let trapframe_pa = pmem_alloc(false) as PhysAddr; // trapframe 物理地址
+    // TrapFrame 放在内核物理页区域，避免占用用户物理页池
+    let trapframe_pa = pmem_alloc(true) as PhysAddr; // trapframe 物理地址
     let trapframe_va = tramp_va - PGSIZE; // trapframe 虚拟地址
     proc.trapframe_va = trapframe_va;
     proc.trapframe = trapframe_pa as *mut TrapFrame;
     vm_mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
-    // Setup User Stack
-    let stack_pa = pmem_alloc(false) as PhysAddr; // 用户栈物理地址
-    let stack_va = trapframe_va - PGSIZE; // 用户栈虚拟地址
-    proc.stack_pages = 1;
-    proc.user_sp_va = stack_va + PGSIZE; // 用户栈顶虚拟地址
-    vm_mappages(page_table, stack_va, stack_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
     // Setup Protected Page
     let empty_va = 0usize; // 最低的空闲页虚拟地址
     let code_va = empty_va + PGSIZE;
@@ -118,7 +123,14 @@ pub fn create(payload: &[u8]) -> Process {
     if src_len == 0 {
         let code_pa = pmem_alloc(false) as PhysAddr;
         unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
-        vm_mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
+        // Map first user page as code+data: allow writes for .data/.bss
+        vm_mappages(
+            page_table,
+            code_va,
+            code_pa,
+            PGSIZE,
+            PTE_U | PTE_R | PTE_W | PTE_X | PTE_A,
+        );
         mapped_len = PGSIZE;
     } else {
         let total = src_len;
@@ -130,7 +142,15 @@ pub fn create(payload: &[u8]) -> Process {
                 core::ptr::copy_nonoverlapping(src_ptr.add(mapped_len), pa as *mut u8, this_len);
             }
             let va = code_va + mapped_len;
-            vm_mappages(page_table, va, pa, PGSIZE, PTE_U | PTE_R | PTE_X | PTE_A);
+            // Map user code+data page writable to support globals (.data/.bss)
+            vm_mappages(
+                page_table,
+                va,
+                pa,
+                PGSIZE,
+                // 设置 A/D，避免因硬件访问/脏位产生异常
+                PTE_U | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D,
+            );
             mapped_len += this_len;
         }
     }
@@ -144,6 +164,8 @@ pub fn create(payload: &[u8]) -> Process {
     // Setup Heap
     proc.heap_top = align_down(code_va + ((mapped_len + PGSIZE - 1) & !(PGSIZE - 1)));
     proc.heap_base = proc.heap_top;
+    // Setup initial user stack top (matches service/hello/link.ld)
+    proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code
     riscv::asm::fence_i();
     proc

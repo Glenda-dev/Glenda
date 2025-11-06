@@ -6,7 +6,6 @@ SECTIONS
 
   .text : ALIGN(4)
   {
-    /* 把 _start 放在最前面 */
     KEEP(*(.text.entry))
     *(.text*)
   }
@@ -25,5 +24,13 @@ SECTIONS
   {
     *(.bss*)
     *(COMMON)
+  }
+
+  /* User stack */
+  . = 0x20000;
+  .stack (NOLOAD) :
+  {
+    . = . + 24576; /* 24KB stack */
+    _stack_top = .;
   }
 }
