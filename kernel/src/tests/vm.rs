@@ -86,20 +86,33 @@ fn vm_func_test() {
     uart_hex(mem[0]);
     uart_puts(" (W)\n");
     vm_mappages(table, 0, mem[0], PGSIZE, PTE_W);
+
+    uart_puts("Unmapped VA ");
+    uart_hex(0);
+    uart_puts("\n");
+    vm_unmappages(table, 0, PGSIZE, true);
+
     uart_puts("Unmapped VA ");
     uart_hex(PGSIZE * 10);
     uart_puts("\n");
     vm_unmappages(table, PGSIZE * 10, PGSIZE, true);
+
+    uart_puts("Unmapped VA ");
+    uart_hex(PGSIZE * 512);
+    uart_puts("\n");
+    vm_unmappages(table, PGSIZE * 512, PGSIZE, true);
+
     uart_puts("Unmapped VA ");
     uart_hex(PGSIZE * 512 * 512);
     uart_puts("\n");
-    vm_unmappages(table, PGSIZE * 512, PGSIZE, true);
+    vm_unmappages(table, PGSIZE * 512 * 512, PGSIZE, true);
+
+    uart_puts("Unmapped VA ");
+    uart_hex(VA_MAX - PGSIZE);
+    uart_puts("\n");
+    vm_unmappages(table, VA_MAX - PGSIZE, PGSIZE, true);
     vm_print(table);
 
-    // Clean up allocated memory
-    for &page in mem.iter() {
-        pmem_free(page, false);
-    }
     pmem_free(test_pgtbl as usize, true);
     uart_puts("vm_func_test passed!\n");
 }
