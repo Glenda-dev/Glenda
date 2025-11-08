@@ -231,7 +231,7 @@ fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<(
 
 fn objdump(mode: &str) -> anyhow::Result<()> {
     let elf = elf_path(mode);
-    let tool = which("riscv64-unknown-elf-objdump")
+    let tool = which("riscv64-elf-objdump")
         .or_else(|_| which("llvm-objdump"))
         .map_err(|_| anyhow::anyhow!("[ ERROR ] install objdump first"))?;
     let mut cmd = Command::new(tool);
@@ -245,7 +245,7 @@ fn objdump(mode: &str) -> anyhow::Result<()> {
 
 fn size(mode: &str) -> anyhow::Result<()> {
     let elf = elf_path(mode);
-    let tool = which("riscv64-unknown-elf-size")
+    let tool = which("riscv64-elf-size")
         .or_else(|_| which("size"))
         .map_err(|_| anyhow::anyhow!("[ ERROR ] install size first"))?;
     let mut cmd = Command::new(tool);
