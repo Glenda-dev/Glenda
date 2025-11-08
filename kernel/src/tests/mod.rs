@@ -1,4 +1,5 @@
 mod barrier;
+mod mmaprepo;
 mod pmem;
 mod printk;
 mod run;

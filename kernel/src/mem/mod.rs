@@ -12,8 +12,9 @@ pub use addr::{PhysAddr, VirtAddr};
 pub use pagetable::PageTable;
 
 pub mod addr;
+pub mod mmap;
 pub mod pagetable;
 pub mod pmem;
 pub mod pte;
-pub mod vm;
 pub mod uvm;
+pub mod vm;

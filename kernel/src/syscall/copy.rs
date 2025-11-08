@@ -1,7 +1,7 @@
 use core::slice;
 
-use crate::mem::uvm::{uvm_copyin, uvm_copyin_str, uvm_copyout};
 use crate::mem::PageTable;
+use crate::mem::uvm::{uvm_copyin, uvm_copyin_str, uvm_copyout};
 use crate::printk;
 use crate::proc::current_proc;
 use crate::trap::TrapContext;
@@ -9,7 +9,9 @@ use crate::trap::TrapContext;
 pub fn sys_copyout(ctx: &mut TrapContext) -> usize {
     let u_dst = ctx.a0;
     let buf: [u32; 5] = [1, 2, 3, 4, 5];
-    let bytes = unsafe { slice::from_raw_parts(buf.as_ptr() as *const u8, core::mem::size_of::<u32>() * buf.len()) };
+    let bytes = unsafe {
+        slice::from_raw_parts(buf.as_ptr() as *const u8, core::mem::size_of::<u32>() * buf.len())
+    };
     let p = current_proc();
     let pt = unsafe { &*(p.root_pt_pa as *const PageTable) };
     match uvm_copyout(pt, u_dst, bytes) {
@@ -26,7 +28,9 @@ pub fn sys_copyin(ctx: &mut TrapContext) -> usize {
     let n = ctx.a1;
     let mut tmp: [u32; 32] = [0; 32];
     let count = core::cmp::min(n, tmp.len());
-    let dst_bytes = unsafe { slice::from_raw_parts_mut(tmp.as_mut_ptr() as *mut u8, count * core::mem::size_of::<u32>()) };
+    let dst_bytes = unsafe {
+        slice::from_raw_parts_mut(tmp.as_mut_ptr() as *mut u8, count * core::mem::size_of::<u32>())
+    };
     let p = current_proc();
     let pt = unsafe { &*(p.root_pt_pa as *const PageTable) };
     match uvm_copyin(pt, dst_bytes, u_src) {

@@ -1,7 +1,7 @@
-use crate::mem::addr::{align_up};
-use crate::mem::uvm::{uvm_heap_grow, uvm_heap_ungrow};
+use crate::mem::MMAP_BEGIN;
 use crate::mem::PageTable;
-use crate::mem::{MMAP_BEGIN};
+use crate::mem::addr::align_up;
+use crate::mem::uvm::{uvm_heap_grow, uvm_heap_ungrow};
 use crate::printk;
 use crate::proc::current_proc;
 use crate::trap::TrapContext;
@@ -35,10 +35,7 @@ pub fn sys_brk(ctx: &mut TrapContext) -> usize {
         Ok(()) => {
             let proc = current_proc();
             proc.heap_top = new_heap_top;
-            printk!(
-                "brk: old=0x{:x} -> new=0x{:x}",
-                old_top, proc.heap_top
-            );
+            printk!("brk: old=0x{:x} -> new=0x{:x}", old_top, proc.heap_top);
             proc.heap_top
         }
         Err(e) => {

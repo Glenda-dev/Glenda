@@ -4,11 +4,11 @@ use crate::hart;
 use crate::mem::addr::align_down;
 use crate::mem::pmem::pmem_alloc;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
+use crate::mem::uvm::uvm_ustack_grow;
 use crate::mem::vm::vm_mappages;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::trap::TrapFrame;
-use crate::mem::uvm::uvm_ustack_grow;
 use crate::trap::vector;
 use riscv::register::{satp, sscratch};
 
@@ -18,17 +18,18 @@ unsafe extern "C" {
 }
 
 pub struct Process {
-    pub pid: usize,                // 进程ID
-    pub root_pt_pa: PhysAddr,      // 根页表物理地址
-    pub heap_top: VirtAddr,        // 进程堆顶地址
-    pub heap_base: VirtAddr,       // 进程堆底（最小堆顶），用于 brk 下限约束
-    pub stack_pages: usize,        // 进程栈大小
-    pub trapframe: *mut TrapFrame, // TrapFrame 指针（物理页）
-    pub trapframe_va: VirtAddr,    // TrapFrame 的用户可见虚拟地址
-    pub context: ProcContext,      // 用户态上下文
-    pub kernel_stack: PhysAddr,    // 内核栈地址
-    pub entry_va: VirtAddr,        // 用户入口地址
-    pub user_sp_va: VirtAddr,      // 用户栈顶 VA
+    pub pid: usize,                                   // 进程ID
+    pub root_pt_pa: PhysAddr,                         // 根页表物理地址
+    pub heap_top: VirtAddr,                           // 进程堆顶地址
+    pub heap_base: VirtAddr,                          // 进程堆底（最小堆顶），用于 brk 下限约束
+    pub stack_pages: usize,                           // 进程栈大小
+    pub trapframe: *mut TrapFrame,                    // TrapFrame 指针（物理页）
+    pub trapframe_va: VirtAddr,                       // TrapFrame 的用户可见虚拟地址
+    pub context: ProcContext,                         // 用户态上下文
+    pub kernel_stack: PhysAddr,                       // 内核栈地址
+    pub entry_va: VirtAddr,                           // 用户入口地址
+    pub user_sp_va: VirtAddr,                         // 用户栈顶 VA
+    pub mmap_head: *mut crate::mem::mmap::MmapRegion, // mmap 链表头
 }
 
 impl Process {
@@ -53,6 +54,7 @@ impl Process {
             kernel_stack: 0,
             entry_va: 0,
             user_sp_va: 0,
+            mmap_head: core::ptr::null_mut(),
         }
     }
     pub fn root_satp(&self) -> usize {
@@ -124,13 +126,7 @@ pub fn create(payload: &[u8]) -> Process {
         let code_pa = pmem_alloc(false) as PhysAddr;
         unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
         // Map first user page as code+data: allow writes for .data/.bss
-        vm_mappages(
-            page_table,
-            code_va,
-            code_pa,
-            PGSIZE,
-            PTE_U | PTE_R | PTE_W | PTE_X | PTE_A,
-        );
+        vm_mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A);
         mapped_len = PGSIZE;
     } else {
         let total = src_len;
