@@ -3,7 +3,7 @@ use core::panic;
 use super::PGSIZE;
 use super::addr::{align_down, align_up};
 use super::pagetable::PageTableCell;
-use super::pmem::{kernel_region_info, pmem_alloc, user_region_info};
+use super::pmem::{self, kernel_region_info, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
 use super::{PageTable, PhysAddr, VirtAddr};
 use crate::dtb;
@@ -30,9 +30,9 @@ static KERNEL_PAGE_TABLE: PageTableCell = PageTableCell::new();
 static KSTACK0_INIT: Once<()> = Once::new();
 static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
 
-pub fn vm_map_kstack0() {
+pub fn map_kstack0() {
     KSTACK0_INIT.call_once(|| {
-        let pa = pmem_alloc(true) as PhysAddr;
+        let pa = pmem::alloc(true) as PhysAddr;
         printk!("VM: KSTACK(0) assigned PA={:p} (identity-mapped)", pa as *const u8);
         *KSTACK0_PA.lock() = Some(pa);
     });
@@ -49,40 +49,35 @@ pub fn kstack_top(procid: usize) -> VirtAddr {
     kstack_base(procid) + super::PGSIZE
 }
 
-pub fn vm_getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
+pub fn getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
     match table.lookup(va) {
         Some(p) => p,
         None => panic!("vm_getpte: failed for VA {:#x}", va),
     }
 }
 
-pub fn vm_mappages(table: &mut PageTable, va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
+pub fn mappages(table: &mut PageTable, va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
     if !table.map(va, pa, size, perm) {
         panic!("vm_mappages: failed map VA {:#x} -> PA {:#x}", va, pa);
     }
 }
 
-pub fn vm_unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: bool) {
+pub fn unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: bool) {
     if !table.unmap(va, size, free) {
         panic!("vm_unmappages: failed unmap VA {:#x}", va);
     }
 }
 
-pub fn vm_map_kernel_pages(va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
+pub fn map_kernel_pages(va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
     KERNEL_PAGE_TABLE.with_mut(|pt| {
-        vm_mappages(pt, va, pa, size, perm);
+        mappages(pt, va, pa, size, perm);
     });
     sfence_vma_all();
 }
 
-#[cfg(feature = "tests")]
-pub fn vm_print(table: &PageTable) {
+#[cfg(debug_assertions)]
+pub fn print(table: &PageTable) {
     table.print();
-}
-
-#[inline(always)]
-fn make_satp(ppn: usize) -> usize {
-    satp::Mode::Sv39.into_usize() | ppn
 }
 
 pub fn init_kernel_vm(hartid: usize) {
@@ -97,7 +92,7 @@ pub fn init_kernel_vm(hartid: usize) {
             text_start_addr as *const u8,
             text_end_addr as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             text_start_addr,
             text_start_addr,
@@ -112,7 +107,7 @@ pub fn init_kernel_vm(hartid: usize) {
             rodata_start_addr as *const u8,
             rodata_end_addr as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             rodata_start_addr,
             rodata_start_addr,
@@ -127,7 +122,7 @@ pub fn init_kernel_vm(hartid: usize) {
             data_start_addr as *const u8,
             data_end_addr as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             data_start_addr,
             data_start_addr,
@@ -142,7 +137,7 @@ pub fn init_kernel_vm(hartid: usize) {
             bss_start_addr as *const u8,
             bss_end_addr as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             bss_start_addr,
             bss_start_addr,
@@ -158,13 +153,13 @@ pub fn init_kernel_vm(hartid: usize) {
             tramp_va as *const u8,
             tramp_pa as *const u8
         );
-        vm_mappages(kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+        mappages(kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
 
         // MMIO 映射
         let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();
         let uart_size = PGSIZE;
         printk!("VM: Map UART @ {:p}", uart_base as *const u8);
-        vm_mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
+        mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
 
         // PLIC 映射
         let plic_base = match dtb::plic_base() {
@@ -182,7 +177,7 @@ pub fn init_kernel_vm(hartid: usize) {
             plic_low_start as *const u8,
             plic_low_end as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             align_down(plic_low_start),
             align_down(plic_low_start),
@@ -199,7 +194,7 @@ pub fn init_kernel_vm(hartid: usize) {
             plic_ctx_start as *const u8,
             plic_ctx_end as *const u8
         );
-        vm_mappages(
+        mappages(
             kpt,
             align_down(plic_ctx_start),
             align_down(plic_ctx_start),
@@ -217,13 +212,7 @@ pub fn init_kernel_vm(hartid: usize) {
                 map_start as *const u8,
                 map_end as *const u8
             );
-            vm_mappages(
-                kpt,
-                map_start,
-                map_start,
-                map_end - map_start,
-                PTE_R | PTE_W | PTE_A | PTE_D,
-            );
+            mappages(kpt, map_start, map_start, map_end - map_start, PTE_R | PTE_W | PTE_A | PTE_D);
         }
         // FIXME: 不应该这么做，目前仅为过测试
         let user = user_region_info();
@@ -235,7 +224,7 @@ pub fn init_kernel_vm(hartid: usize) {
                 user_start as *const u8,
                 user_end as *const u8
             );
-            vm_mappages(
+            mappages(
                 kpt,
                 user_start,
                 user_start,
@@ -245,10 +234,10 @@ pub fn init_kernel_vm(hartid: usize) {
         }
         printk!("VM: Root page table built by hart {}", hartid);
     });
-    vm_map_kstack0();
+    map_kstack0();
 }
 
-pub fn vm_switch_to_kernel(hartid: usize) {
+pub fn switch_to_kernel(hartid: usize) {
     let root_ppn = (KERNEL_PAGE_TABLE.cell.get() as usize) >> 12;
     // set SATP to the new page table in Sv39 mode (ASID=0)
     unsafe {
@@ -259,7 +248,7 @@ pub fn vm_switch_to_kernel(hartid: usize) {
     printk!("VM: Hart {} switched to kernel page table", hartid);
 }
 
-pub fn vm_switch_off(hartid: usize) {
+pub fn switch_off(hartid: usize) {
     unsafe {
         satp::set(satp::Mode::Bare, 0, 0);
         sfence_vma_all();

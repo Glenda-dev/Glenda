@@ -1,8 +1,10 @@
 use super::addr::{align_down, align_up, vpn};
-use super::pmem::{get_region, pmem_alloc, pmem_free};
-use super::pte::{PTE_V, Pte, pa_to_pte, pte_is_leaf, pte_is_valid, pte_to_pa};
+use super::pmem::{self, get_region};
+use super::pte::{self, PTE_U, PTE_V, PTE_X, Pte, pa_to_pte, pte_to_pa};
+use super::uvm::UvmError;
 use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
 use core::cell::UnsafeCell;
+use core::ptr;
 use spin::Mutex;
 
 // align 4096, 防止 sfence.vma 直接 TRAP
@@ -26,8 +28,8 @@ impl PageTable {
         for level in (1..3).rev() {
             let idx = vpn(va)[level];
             let pte_ref = unsafe { &mut (*table).entries[idx] };
-            if pte_is_valid(*pte_ref) {
-                if pte_is_leaf(*pte_ref) {
+            if pte::is_valid(*pte_ref) {
+                if pte::is_leaf(*pte_ref) {
                     // 不支持大页
                     return None;
                 }
@@ -37,7 +39,7 @@ impl PageTable {
                 if !alloc {
                     return None;
                 }
-                let new_table = pmem_alloc(true) as *mut PageTable;
+                let new_table = pmem::alloc(true) as *mut PageTable;
                 if new_table.is_null() {
                     return None;
                 }
@@ -60,8 +62,8 @@ impl PageTable {
         for level in (1..3).rev() {
             let idx = vpn(va)[level];
             let pte = unsafe { (*table).entries[idx] };
-            if pte_is_valid(pte) {
-                if pte_is_leaf(pte) {
+            if pte::is_valid(pte) {
+                if pte::is_leaf(pte) {
                     return None;
                 }
                 table = pte_to_pa(pte) as *const PageTable;
@@ -87,9 +89,9 @@ impl PageTable {
                 None => return false,
             };
             let cur = unsafe { *pte };
-            if pte_is_valid(cur) {
+            if pte::is_valid(cur) {
                 // 已存在映射：允许对同一物理页更新权限；若物理页不同则视为冲突
-                if !pte_is_leaf(cur) || pte_to_pa(cur) != pa_cur {
+                if !pte::is_leaf(cur) || pte_to_pa(cur) != pa_cur {
                     return false; // 冲突或结构错误
                 }
                 unsafe {
@@ -123,13 +125,13 @@ impl PageTable {
                 None => return false,
             };
             let old = unsafe { *pte };
-            if !pte_is_valid(old) || !pte_is_leaf(old) {
+            if !pte::is_valid(old) || !pte::is_leaf(old) {
                 return false;
             }
             let pa = pte_to_pa(old);
             if free {
                 match get_region(pa) {
-                    Some(for_kernel) => pmem_free(pa, for_kernel),
+                    Some(for_kernel) => pmem::free(pa, for_kernel),
                     None => panic!("vm_unmappages: PA {:#x} out of bounds", pa),
                 };
             }
@@ -141,7 +143,7 @@ impl PageTable {
         }
         true
     }
-    #[cfg(feature = "tests")]
+    #[cfg(debug_assertions)]
     pub fn print(&self) {
         use crate::printk::{uart_hex, uart_puts};
         #[inline(always)]
@@ -165,10 +167,10 @@ impl PageTable {
 
         for i in 0..PGNUM {
             let pte2 = unsafe { (*(pgtbl_2 as *const PageTable)).entries[i] };
-            if !pte_is_valid(pte2) {
+            if !pte::is_valid(pte2) {
                 continue;
             }
-            if !super::pte::pte_is_table(pte2) {
+            if !pte::is_table(pte2) {
                 uart_puts("ASSERT: L2 entry is not table, i=");
                 uart_hex(i);
                 uart_puts("\n");
@@ -198,10 +200,10 @@ impl PageTable {
             let pgtbl_1 = pgtbl_1_pa as *const PageTable;
             for j in 0..PGNUM {
                 let pte1 = unsafe { (*pgtbl_1).entries[j] };
-                if !pte_is_valid(pte1) {
+                if !pte::is_valid(pte1) {
                     continue;
                 }
-                if !super::pte::pte_is_table(pte1) {
+                if !pte::is_table(pte1) {
                     uart_puts("ASSERT: L1 entry is not table, j=");
                     uart_hex(j);
                     uart_puts("\n");
@@ -231,10 +233,10 @@ impl PageTable {
                 let pgtbl_0 = pgtbl_0_pa as *const PageTable;
                 for k in 0..PGNUM {
                     let pte0 = unsafe { (*pgtbl_0).entries[k] };
-                    if !pte_is_valid(pte0) {
+                    if !pte::is_valid(pte0) {
                         continue;
                     }
-                    if !pte_is_leaf(pte0) {
+                    if !pte::is_leaf(pte0) {
                         uart_puts("ASSERT: L0 entry not leaf, k=");
                         uart_hex(k);
                         uart_puts("\n");
@@ -244,7 +246,7 @@ impl PageTable {
                     let pa = pte_to_pa(pte0);
                     let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
                     let va = sv39_canon(va_raw);
-                    let flags = super::pte::pte_get_flags(pte0);
+                    let flags = pte::get_flags(pte0);
 
                     uart_puts(".. .. .. page ");
                     uart_hex(k);
@@ -258,6 +260,132 @@ impl PageTable {
                 }
             }
         }
+    }
+    // Destroy a 3-level Sv39 page table rooted at `root_pa`.
+    pub fn destroy(self) {
+        fn destroy_level(table_pa: usize) {
+            let table = table_pa as *mut PageTable;
+            for i in 0..super::PGNUM {
+                let pte = unsafe { (*table).entries[i] };
+                if !pte::is_valid(pte) {
+                    continue;
+                }
+                if pte::is_leaf(pte) {
+                    let pa = pte_to_pa(pte);
+                    if let Some(for_kernel) = pmem::get_region(pa) {
+                        pmem::free(pa, for_kernel);
+                    } else {
+                        // Mapping to non-pool PA (e.g., trampoline); leave it.
+                    }
+                    unsafe {
+                        (*table).entries[i] = 0;
+                    }
+                } else if pte::is_table(pte) {
+                    let child_pa = pte_to_pa(pte);
+                    destroy_level(child_pa);
+                    // free the child page table page (kernel pool)
+                    pmem::free(child_pa, true);
+                    unsafe {
+                        (*table).entries[i] = 0;
+                    }
+                }
+            }
+        }
+        let root_pa = &self as *const PageTable as usize;
+        destroy_level(root_pa);
+        // finally free root table page
+        pmem::free(root_pa, true);
+    }
+
+    /// Deep-copy a Sv39 page table. Returns new root page table PA.
+    /// - For user pages: allocate new user page and copy data.
+    /// - For trapframe-like pages: allocate new kernel page and copy data.
+    /// - For trampoline-like pages: reuse the same PA, do not copy.
+    pub fn copy(self) -> Result<PhysAddr, UvmError> {
+        let src_root_pa = &self as *const PageTable as usize;
+        // allocate destination root
+        let dst_root = pmem::alloc(true) as usize;
+        if dst_root == 0 {
+            return Err(UvmError::NoMem);
+        }
+        unsafe {
+            core::ptr::write_bytes(dst_root as *mut u8, 0, PGSIZE);
+        }
+        let dst_pt = unsafe { &mut *(dst_root as *mut PageTable) };
+
+        unsafe {
+            let l2 = src_root_pa as *const PageTable;
+            for i in 0..super::PGNUM {
+                let pte2 = (*l2).entries[i];
+                if !pte::is_valid(pte2) {
+                    continue;
+                }
+                if !pte::is_table(pte2) {
+                    continue;
+                }
+                let l1_pa = pte_to_pa(pte2);
+                let l1 = l1_pa as *const PageTable;
+                for j in 0..super::PGNUM {
+                    let pte1 = (*l1).entries[j];
+                    if !pte::is_valid(pte1) {
+                        continue;
+                    }
+                    if !pte::is_table(pte1) {
+                        continue;
+                    }
+                    let l0_pa = pte_to_pa(pte1);
+                    let l0 = l0_pa as *const PageTable;
+                    for k in 0..super::PGNUM {
+                        let pte0 = (*l0).entries[k];
+                        if !pte::is_valid(pte0) {
+                            continue;
+                        }
+                        if !pte::is_leaf(pte0) {
+                            continue;
+                        }
+                        let pa = pte_to_pa(pte0);
+                        let flags = pte::get_flags(pte0);
+                        // compute canonical VA from indices
+                        let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
+                        let sign = (va_raw >> 38) & 1;
+                        let va = if sign == 1 {
+                            va_raw | (!0usize << 39)
+                        } else {
+                            va_raw & ((1usize << 39) - 1)
+                        };
+
+                        if (flags & PTE_U) != 0 {
+                            // user page
+                            let new_pa = pmem::alloc(false) as usize;
+                            if new_pa == 0 {
+                                return Err(UvmError::NoMem);
+                            }
+                            ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                            if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                return Err(UvmError::MapFailed);
+                            }
+                        } else if (flags & PTE_X) != 0 {
+                            // trampoline-like
+                            if !dst_pt.map(va, pa, PGSIZE, flags) {
+                                return Err(UvmError::MapFailed);
+                            }
+                        } else {
+                            // trapframe-like
+                            let new_pa = pmem::alloc(true) as usize;
+                            if new_pa == 0 {
+                                return Err(UvmError::NoMem);
+                            }
+                            ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                            if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                return Err(UvmError::MapFailed);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(dst_root)
     }
 }
 

@@ -8,9 +8,7 @@ use crate::dtb;
 use crate::hart::MAX_HARTS;
 use crate::mem::PGSIZE;
 use crate::mem::addr::PhysAddr;
-use crate::mem::pmem::{
-    kernel_region_info, pmem_alloc, pmem_free, pmem_try_alloc, user_region_info,
-};
+use crate::mem::pmem::{self, kernel_region_info, user_region_info};
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
 
@@ -93,14 +91,14 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
     let active = ACTIVE_HARTS.load(Ordering::Acquire);
     if active == 0 {
         if hartid == 0 {
-            printk!("pmem_kernel_concurrent: kernel region empty (allocable=0)");
+            printk!("pmem::kernel_concurrent: kernel region empty (allocable=0)");
             // 立即标记完成
             TEST_DONE.store(true, Ordering::Release);
         }
         return;
     }
     if hartid >= active {
-        printk!("pmem_kernel_concurrent: hart {} idle ({} active)", hartid, active);
+        printk!("pmem::kernel_concurrent: hart {} idle ({} active)", hartid, active);
         // 等待测试整体完成
         while !TEST_DONE.load(Ordering::Acquire) {
             spin_loop();
@@ -120,7 +118,7 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
     let pages_per_hart = cmp::max(1, cmp::min(MAX_TRACKED_PAGES, base.max(1)));
 
     for slot in 0..pages_per_hart {
-        let page = pmem_alloc(true) as PhysAddr;
+        let page = pmem::alloc(true) as PhysAddr;
         unsafe {
             core::ptr::write_bytes(page as *mut u8, hartid as u8 + 1, PGSIZE);
         }
@@ -130,7 +128,7 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
     // 立即释放（无需中间栅栏——页面相互独立）
     for slot in 0..pages_per_hart {
         let addr = PAGE_SLOTS.load(hartid, slot);
-        pmem_free(addr, true);
+        pmem::free(addr, true);
         PAGE_SLOTS.store(hartid, slot, 0);
     }
 
@@ -141,10 +139,10 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
         let expected = INITIAL_ALLOCABLE.load(Ordering::Acquire);
         assert_eq!(
             final_info.allocable, expected,
-            "pmem_kernel_concurrent: final allocable {} expected {}",
+            "pmem::kernel_concurrent: final allocable {} expected {}",
             final_info.allocable, expected
         );
-        printk!("pmem_kernel_concurrent: {} pages restored", expected);
+        printk!("pmem::kernel_concurrent: {} pages restored", expected);
         TEST_DONE.store(true, Ordering::SeqCst); // 仅表示 kernel 并发部分结束
     } else {
         while !TEST_DONE.load(Ordering::Acquire) {
@@ -162,7 +160,7 @@ fn user_region_validation() {
     let pages_to_use = cmp::min(TEST_CNT, allocable_before);
 
     for idx in 0..pages_to_use {
-        let page = pmem_alloc(false) as PhysAddr;
+        let page = pmem::alloc(false) as PhysAddr;
         pages[idx] = page;
         unsafe {
             core::ptr::write_bytes(page as *mut u8, 0xAA, PGSIZE);
@@ -173,43 +171,43 @@ fn user_region_validation() {
     let expected_after_alloc = allocable_before.saturating_sub(pages_to_use);
     assert_eq!(
         during.allocable, expected_after_alloc,
-        "pmem_user_region: allocable after alloc {} expected {}",
+        "pmem::user_region: allocable after alloc {} expected {}",
         during.allocable, expected_after_alloc
     );
 
     for idx in 0..pages_to_use {
-        pmem_free(pages[idx], false);
+        pmem::free(pages[idx], false);
     }
 
     let after = user_region_info();
     assert_eq!(
         after.allocable, allocable_before,
-        "pmem_user_region: allocable after free {} expected {}",
+        "pmem::user_region: allocable after free {} expected {}",
         after.allocable, allocable_before
     );
 
     let mut zero_verified = true;
     for idx in 0..pages_to_use {
-        let page = pmem_alloc(false) as PhysAddr;
+        let page = pmem::alloc(false) as PhysAddr;
         pages[idx] = page;
         zero_verified &= is_zeroed(page);
     }
 
     for idx in 0..pages_to_use {
-        pmem_free(pages[idx], false);
+        pmem::free(pages[idx], false);
     }
     assert_eq!(
         user_region_info().allocable,
         allocable_before,
-        "pmem_user_region: allocable after zero-check free {} expected {}",
+        "pmem::user_region: allocable after zero-check free {} expected {}",
         user_region_info().allocable,
         allocable_before
     );
 
-    assert!(zero_verified, "pmem_user_region: zero check failed");
+    assert!(zero_verified, "pmem::user_region: zero check failed");
 
-    assert!(exhaust_user_region(), "pmem_user_region: exhaustion test failed");
-    printk!("pmem_user_region: allocation/free/zero validated");
+    assert!(exhaust_user_region(), "pmem::user_region: exhaustion test failed");
+    printk!("pmem::user_region: allocation/free/zero validated");
 }
 
 fn is_zeroed(page: usize) -> bool {
@@ -231,7 +229,7 @@ fn exhaust_user_region() -> bool {
     let mut count = 0usize;
 
     loop {
-        match pmem_try_alloc(false) {
+        match pmem::try_alloc(false) {
             Some(page) => {
                 unsafe {
                     core::ptr::write(page as *mut usize, head);
@@ -246,7 +244,7 @@ fn exhaust_user_region() -> bool {
     let mut node = head;
     while node != 0 {
         let next = unsafe { core::ptr::read(node as *const usize) };
-        pmem_free(node, false);
+        pmem::free(node, false);
         node = next;
     }
 

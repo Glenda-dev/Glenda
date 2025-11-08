@@ -42,19 +42,17 @@ static mut LIST_HEAD: MmapRegionNode = MmapRegionNode::new(); // sentinel, not a
 static mut NODE_LIST: [MmapRegionNode; N_MMAP] = [MmapRegionNode::new(); N_MMAP];
 
 fn node_index(ptr: *mut MmapRegionNode) -> Option<usize> {
-    unsafe {
-        let base = core::ptr::addr_of_mut!(NODE_LIST) as usize;
-        let end = base + core::mem::size_of::<MmapRegionNode>() * N_MMAP;
-        let p = ptr as usize;
-        if p < base || p >= end {
-            return None;
-        }
-        let idx = (p - base) / core::mem::size_of::<MmapRegionNode>();
-        Some(idx)
+    let base = core::ptr::addr_of_mut!(NODE_LIST) as usize;
+    let end = base + core::mem::size_of::<MmapRegionNode>() * N_MMAP;
+    let p = ptr as usize;
+    if p < base || p >= end {
+        return None;
     }
+    let idx = (p - base) / core::mem::size_of::<MmapRegionNode>();
+    Some(idx)
 }
 
-pub fn mmap_init() {
+pub fn init() {
     INIT_ONCE.call_once(|| unsafe {
         // Build free list: LIST_HEAD.next -> NODE_LIST[0] -> ... -> NODE_LIST[N-1] -> null
         let base = core::ptr::addr_of_mut!(NODE_LIST) as *mut MmapRegionNode;
@@ -71,8 +69,8 @@ pub fn mmap_init() {
 }
 
 // Allocate a node from the warehouse and return a pointer to its embedded MmapRegion.
-pub fn mmap_region_alloc() -> *mut MmapRegion {
-    mmap_init();
+pub fn region_alloc() -> *mut MmapRegion {
+    init();
     let _g = LIST_LOCK.lock();
     unsafe {
         let head = core::ptr::addr_of_mut!(LIST_HEAD) as *mut MmapRegionNode;
@@ -94,8 +92,8 @@ pub fn mmap_region_alloc() -> *mut MmapRegion {
 }
 
 // Return a node back to the warehouse. The input must be a pointer previously
-// returned by mmap_region_alloc() or derived from NODE_LIST.
-pub fn mmap_region_free(region: *mut MmapRegion) {
+// returned by region_alloc() or derived from NODE_LIST.
+pub fn region_free(region: *mut MmapRegion) {
     if region.is_null() {
         return;
     }
@@ -116,8 +114,9 @@ pub fn mmap_region_free(region: *mut MmapRegion) {
 }
 
 // Debug helper: dump current free-list order by node index
-pub fn mmap_show_nodelist() {
-    mmap_init();
+#[cfg(debug_assertions)]
+pub fn print_nodelist() {
+    init();
     let _g = LIST_LOCK.lock();
     unsafe {
         uart_puts("MMAP: free-list indices: ");
@@ -141,7 +140,8 @@ pub fn mmap_show_nodelist() {
 }
 
 // Debug: show a per-process mmap list (allocated regions)
-pub fn mmap_show_mmaplist(mut head: *mut MmapRegion) {
+#[cfg(debug_assertions)]
+pub fn print_mmaplist(mut head: *mut MmapRegion) {
     unsafe {
         uart_puts("MMAP: mmap list -> ");
         let mut first = true;

@@ -11,48 +11,49 @@ pub const PTE_G: usize = 1 << 5; // Global
 pub const PTE_A: usize = 1 << 6; // Accessed
 pub const PTE_D: usize = 1 << 7; // Dirty
 
+// TODO: change to struct
 pub type Pte = usize;
 pub type PteFlags = usize;
 
 #[inline(always)]
-pub const fn pte_set_ppn(pte: Pte, ppn: usize) -> Pte {
+pub const fn set_ppn(pte: Pte, ppn: usize) -> Pte {
     (pte & 0x3FF) | (ppn << 10)
 }
 
 #[inline(always)]
-pub const fn pte_get_ppn(pte: Pte) -> usize {
+pub const fn get_ppn(pte: Pte) -> usize {
     (pte >> 10) & 0xFFFFFFFFFFF
 }
 
 #[inline(always)]
-pub const fn pte_set_flags(pte: Pte, flags: PteFlags) -> Pte {
+pub const fn set_flags(pte: Pte, flags: PteFlags) -> Pte {
     (pte & !0x3FF) | (flags & 0x3FF)
 }
 
 #[inline(always)]
-pub const fn pte_get_flags(pte: Pte) -> PteFlags {
+pub const fn get_flags(pte: Pte) -> PteFlags {
     pte & 0x3FF
 }
 
 #[inline(always)]
-pub const fn pte_is_valid(pte: Pte) -> bool {
+pub const fn is_valid(pte: Pte) -> bool {
     (pte & PTE_V) != 0
 }
 
 #[inline(always)]
-pub const fn pte_is_leaf(pte: Pte) -> bool {
+pub const fn is_leaf(pte: Pte) -> bool {
     (pte & (PTE_R | PTE_W | PTE_X)) != 0
 }
 
 // 中间页表条目：有效但不是 leaf
 #[inline(always)]
-pub const fn pte_is_table(pte: Pte) -> bool {
-    pte_is_valid(pte) && !pte_is_leaf(pte)
+pub const fn is_table(pte: Pte) -> bool {
+    is_valid(pte) && !is_leaf(pte)
 }
 
 #[inline(always)]
 pub const fn pte_to_pa(pte: Pte) -> PhysAddr {
-    pte_get_ppn(pte) << 12
+    get_ppn(pte) << 12
 }
 
 #[inline(always)]

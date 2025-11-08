@@ -1,7 +1,7 @@
 use crate::mem::MMAP_BEGIN;
 use crate::mem::PageTable;
 use crate::mem::addr::align_up;
-use crate::mem::uvm::{uvm_heap_grow, uvm_heap_ungrow};
+use crate::mem::uvm;
 use crate::printk;
 use crate::proc::current_proc;
 use crate::trap::TrapContext;
@@ -25,9 +25,9 @@ pub fn sys_brk(ctx: &mut TrapContext) -> usize {
     let table = unsafe { &mut *(p.root_pt_pa as *mut PageTable) };
     let new_heap_top = align_up(new_top);
     let res = if new_heap_top > old_top {
-        uvm_heap_grow(table, old_top, new_heap_top)
+        uvm::heap_grow(table, old_top, new_heap_top)
     } else if new_heap_top < old_top {
-        uvm_heap_ungrow(table, old_top, new_heap_top)
+        uvm::heap_ungrow(table, old_top, new_heap_top)
     } else {
         Ok(())
     };

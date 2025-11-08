@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+// TODO: change to struct
 pub type PhysAddr = usize;
 pub type VirtAddr = usize;
 pub type PPN = usize;
@@ -22,6 +23,11 @@ pub const fn align_down(value: usize) -> usize {
 #[inline(always)]
 pub const fn ppn(addr: PhysAddr) -> [PPN; 3] {
     [(addr >> 12) & 0x1FF, (addr >> 21) & 0x1FF, (addr >> 30) & 0x1FF]
+}
+
+#[inline(always)]
+pub const fn page_offset(addr: VirtAddr) -> usize {
+    addr & PGMASK
 }
 
 #[inline(always)]

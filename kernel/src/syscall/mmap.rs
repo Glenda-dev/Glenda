@@ -1,7 +1,6 @@
-use crate::mem::mmap::mmap_show_mmaplist;
-use crate::mem::uvm::{uvm_mmap, uvm_munmap};
+use crate::mem::mmap;
+use crate::mem::uvm;
 use crate::mem::{MMAP_BEGIN, MMAP_END, PageTable};
-use crate::printk;
 use crate::proc::current_proc;
 use crate::trap::TrapContext;
 
@@ -11,13 +10,12 @@ pub fn sys_mmap(ctx: &mut TrapContext) -> usize {
     let flags = 0;
     let p = current_proc();
     let pt = unsafe { &mut *(p.root_pt_pa as *mut PageTable) };
-    match uvm_mmap(pt, &mut p.mmap_head, begin, len, flags, MMAP_BEGIN, MMAP_END) {
+    match uvm::mmap(pt, &mut p.mmap_head, begin, len, flags, MMAP_BEGIN, MMAP_END) {
         Ok(va) => {
-            mmap_show_mmaplist(p.mmap_head);
             #[cfg(feature = "tests")]
             {
-                crate::mem::vm::vm_print(pt);
-                printk!("\n");
+                mmap::print_mmaplist(p.mmap_head);
+                crate::mem::vm::print(pt);
             }
             va
         }
@@ -30,12 +28,12 @@ pub fn sys_munmap(ctx: &mut TrapContext) -> usize {
     let len = ctx.a1;
     let p = current_proc();
     let pt = unsafe { &mut *(p.root_pt_pa as *mut PageTable) };
-    match uvm_munmap(pt, &mut p.mmap_head, begin, len) {
+    match uvm::munmap(pt, &mut p.mmap_head, begin, len) {
         Ok(()) => {
-            mmap_show_mmaplist(p.mmap_head);
             #[cfg(feature = "tests")]
             {
-                crate::mem::vm::vm_print(pt);
+                mmap::print_mmaplist(p.mmap_head);
+                crate::mem::vm::print(pt);
             }
             0
         }

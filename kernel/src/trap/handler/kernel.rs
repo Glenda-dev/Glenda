@@ -1,16 +1,17 @@
-mod external;
-mod timer;
-mod uart;
-
 use super::super::TrapContext;
+use super::super::plic;
+use super::super::timer;
 use super::user;
 use super::{EXCEPTION_INFO, INTERRUPT_INFO};
+use crate::hart;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
+use crate::proc;
 use core::panic;
+use riscv::interrupt::Interrupt;
 use riscv::register::{
     scause::{self, Trap},
-    sepc, sstatus, stval,
+    sepc, sip, sstatus, stval,
 };
 
 /// S-mode 陷阱处理函数
@@ -44,7 +45,7 @@ fn exception_handler(
 ) {
     // 8: Environment call from U-mode (syscall)
     if e == 8 {
-        user::syscall::interrupt_handler(ctx);
+        user::syscall_handler(ctx);
         // advance sepc to next instruction
         unsafe {
             sepc::write(epc.wrapping_add(4));
@@ -54,7 +55,7 @@ fn exception_handler(
 
     // 13: Load Page Fault, 15: Store/AMO Page Fault
     if e == 13 || e == 15 {
-        let p = crate::proc::current_proc();
+        let p = proc::current_proc();
         if p.ustack_grow(tval).is_ok() {
             return;
         }
@@ -81,11 +82,11 @@ fn interrupt_handler(
     _ctx: &mut TrapContext,
 ) {
     match e {
-        9 => external::interrupt_handler(),
+        9 => external_handler(),
         // S-mode timer interrupt
-        5 => timer::interrupt_handler_stip(),
+        5 => timer_handler_stip(),
         // S-mode software interrupt
-        1 => timer::interrupt_handler_ssip(),
+        1 => timer_handler_ssip(),
         // 剩下的被认为是需要打印的内容
         _ => {
             printk!(
@@ -100,4 +101,37 @@ fn interrupt_handler(
             );
         }
     }
+}
+
+// 外设中断处理 (基于PLIC，lab-3只需要识别和处理UART中断)
+pub fn external_handler() {
+    let hartid = hart::getid();
+    let id = plic::claim(hartid);
+    match id {
+        0 => return,
+        plic::UART_IRQ => {
+            driver_uart::irq::handler();
+        }
+        _ => {
+            panic!("Unexpected interrupt id {} on hart {}", id, hartid);
+        }
+    }
+
+    plic::complete(hartid, id);
+}
+
+pub fn timer_handler_ssip() {
+    if hart::getid() == 0 {
+        timer::update();
+    }
+    unsafe {
+        sip::clear_pending(Interrupt::SupervisorSoft);
+    }
+}
+
+pub fn timer_handler_stip() {
+    if hart::getid() == 0 {
+        timer::update();
+    }
+    timer::program_next_tick();
 }

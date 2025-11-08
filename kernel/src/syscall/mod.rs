@@ -17,10 +17,7 @@ pub const SYS_MUNMAP: usize = 7;
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {
-        n if n == SYS_HELLOWORLD => {
-            helloworld::handle();
-            0
-        }
+        n if n == SYS_HELLOWORLD => helloworld::sys_helloworld(),
         n if n == SYS_COPYOUT => copy::sys_copyout(ctx),
         n if n == SYS_COPYIN => copy::sys_copyin(ctx),
         n if n == SYS_COPYINSTR => copy::sys_copyinstr(ctx),

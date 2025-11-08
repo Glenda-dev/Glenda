@@ -1,10 +1,10 @@
-pub mod syscall;
-
 use super::super::{TrapContext, TrapFrame};
 use super::vector;
-use crate::mem::vm::{kstack_top, vm_map_kstack0};
+use crate::mem::vm;
 use crate::mem::{PGSIZE, VA_MAX};
 use crate::proc::current_proc;
+use crate::syscall;
+use core::mem;
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
     stvec::{self, Stvec},
@@ -125,8 +125,8 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // S 态 hartid
     ctx.kernel_hartid = crate::hart::getid();
     // KSTACK(0) 顶部
-    vm_map_kstack0();
-    ctx.kernel_sp = kstack_top(0);
+    vm::map_kstack0();
+    ctx.kernel_sp = vm::kstack_top(0);
 
     // sscratch 指向 TrapFrame 的虚拟地址
     let user_tf_va = (*current_proc()).trapframe_va as usize;
@@ -139,7 +139,11 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
     let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);
     let user_ret_addr = tramp_base_va + user_ret_off;
-    let user_return_fn: extern "C" fn(u64, u64) -> ! =
-        unsafe { core::mem::transmute(user_ret_addr) };
+    let user_return_fn: extern "C" fn(u64, u64) -> ! = unsafe { mem::transmute(user_ret_addr) };
     user_return_fn(user_tf_va as u64, user_satp)
+}
+
+pub fn syscall_handler(ctx: &mut TrapContext) {
+    let ret = syscall::dispatch(ctx);
+    ctx.a0 = ret;
 }

@@ -55,8 +55,8 @@ pub fn initialize_regions(hartid: usize) {
         USER_REGION.init(kernel_split, alloc_end);
     }
 
-    let k = KERNEL_REGION.region_info();
-    let u = USER_REGION.region_info();
+    let k = KERNEL_REGION.info();
+    let u = USER_REGION.info();
     debug_assert_eq!(k.begin & (PGSIZE - 1), 0);
     debug_assert_eq!(k.end & (PGSIZE - 1), 0);
     debug_assert_eq!(u.begin & (PGSIZE - 1), 0);
@@ -135,7 +135,7 @@ impl AllocRegion {
         *self.inner.lock() = RegionInner { head, allocable: count };
     }
 
-    fn region_info(&self) -> RegionInfo {
+    fn info(&self) -> RegionInfo {
         let b = *self.bounds.get().expect("region not initialized");
         let allocable = self.inner.lock().allocable;
         RegionInfo { begin: b.begin, end: b.end, allocable }
@@ -183,7 +183,7 @@ pub struct RegionInfo {
     pub allocable: usize,
 }
 
-pub fn pmem_alloc(for_kernel: bool) -> *mut u8 {
+pub fn alloc(for_kernel: bool) -> *mut u8 {
     match allocate_page(for_kernel) {
         Some(ptr) => ptr,
         None => {
@@ -196,12 +196,12 @@ pub fn pmem_alloc(for_kernel: bool) -> *mut u8 {
     }
 }
 
-#[cfg(feature = "tests")]
-pub fn pmem_try_alloc(for_kernel: bool) -> Option<*mut u8> {
+#[cfg(debug_assertions)]
+pub fn try_alloc(for_kernel: bool) -> Option<*mut u8> {
     allocate_page(for_kernel)
 }
 
-pub fn pmem_free(addr: PhysAddr, _for_kernel: bool) {
+pub fn free(addr: PhysAddr, _for_kernel: bool) {
     if KERNEL_REGION.contains(addr) {
         KERNEL_REGION.free(addr);
     } else if USER_REGION.contains(addr) {
@@ -212,11 +212,11 @@ pub fn pmem_free(addr: PhysAddr, _for_kernel: bool) {
 }
 
 pub fn kernel_region_info() -> RegionInfo {
-    KERNEL_REGION.region_info()
+    KERNEL_REGION.info()
 }
 
 pub fn user_region_info() -> RegionInfo {
-    USER_REGION.region_info()
+    USER_REGION.info()
 }
 
 fn allocate_page(for_kernel: bool) -> Option<*mut u8> {
@@ -229,7 +229,7 @@ fn region(for_kernel: bool) -> &'static AllocRegion {
 
 #[inline]
 pub fn kernel_pool_range() -> (PhysAddr, PhysAddr) {
-    let info = KERNEL_REGION.region_info();
+    let info = KERNEL_REGION.info();
     (info.begin, info.end)
 }
 

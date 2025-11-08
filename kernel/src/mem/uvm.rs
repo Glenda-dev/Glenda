@@ -1,15 +1,13 @@
 use core::cmp::min;
 
-use super::addr::{align_down, align_up};
-use super::mmap::{MmapRegion, mmap_region_alloc, mmap_region_free};
+use super::addr::{align_down, align_up, page_offset};
+use super::mmap::{self, MmapRegion};
 use super::pagetable::PageTable;
-use super::pmem::pmem_alloc;
-use super::pmem::{get_region, pmem_free};
-use super::pte::{
-    PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X, pte_get_flags, pte_is_leaf, pte_is_table,
-    pte_is_valid, pte_to_pa,
-};
-use super::{MMAP_BEGIN, PGSIZE, PhysAddr, VirtAddr};
+use super::pmem;
+use super::pte::{self, PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, pte_to_pa};
+use super::{MMAP_BEGIN, PGSIZE, VirtAddr};
+use core::cmp;
+use core::ptr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyError {
@@ -19,12 +17,7 @@ pub enum CopyError {
     TooLong,
 }
 
-#[inline(always)]
-fn page_offset(addr: usize) -> usize {
-    addr & (PGSIZE - 1)
-}
-
-pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Result<(), CopyError> {
+pub fn copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Result<(), CopyError> {
     let mut copied = 0usize;
     while copied < dst.len() {
         let va = src_va;
@@ -33,10 +26,10 @@ pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Resul
             None => return Err(CopyError::NotMapped),
         };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) {
+        if !pte::is_valid(pte) || !pte::is_leaf(pte) {
             return Err(CopyError::NotMapped);
         };
-        let flags = pte_get_flags(pte);
+        let flags = pte::get_flags(pte);
         if (flags & 0xE) == 0 {
             return Err(CopyError::NotMapped);
         }
@@ -47,11 +40,7 @@ pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Resul
         let off = page_offset(va);
         let n = min(PGSIZE - off, dst.len() - copied);
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                (pa + off) as *const u8,
-                dst.as_mut_ptr().add(copied),
-                n,
-            );
+            ptr::copy_nonoverlapping((pa + off) as *const u8, dst.as_mut_ptr().add(copied), n);
         }
         copied += n;
         src_va += n;
@@ -59,7 +48,7 @@ pub fn uvm_copyin(pt: &PageTable, dst: &mut [u8], mut src_va: VirtAddr) -> Resul
     Ok(())
 }
 
-pub fn uvm_copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(), CopyError> {
+pub fn copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(), CopyError> {
     let mut copied = 0usize;
     while copied < src.len() {
         let va = dst_va;
@@ -68,10 +57,10 @@ pub fn uvm_copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(
             None => return Err(CopyError::NotMapped),
         };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) {
+        if !pte::is_valid(pte) || !pte::is_leaf(pte) {
             return Err(CopyError::NotMapped);
         };
-        let flags = pte_get_flags(pte);
+        let flags = pte::get_flags(pte);
         if (flags & 0xE) == 0 {
             return Err(CopyError::NotMapped);
         }
@@ -90,7 +79,7 @@ pub fn uvm_copyout(pt: &PageTable, mut dst_va: VirtAddr, src: &[u8]) -> Result<(
     Ok(())
 }
 
-pub fn uvm_copyin_str(
+pub fn copyin_str(
     pt: &PageTable,
     dst: &mut [u8],
     mut src_va: VirtAddr,
@@ -103,10 +92,10 @@ pub fn uvm_copyin_str(
             None => return Err(CopyError::NotMapped),
         };
         let pte = unsafe { *pte_ptr };
-        if !pte_is_valid(pte) || !pte_is_leaf(pte) {
+        if !pte::is_valid(pte) || !pte::is_leaf(pte) {
             return Err(CopyError::NotMapped);
         };
-        let flags = pte_get_flags(pte);
+        let flags = pte::get_flags(pte);
         if (flags & 0xE) == 0 {
             return Err(CopyError::NotMapped);
         }
@@ -137,18 +126,14 @@ pub enum UvmError {
 }
 
 // 堆增长：在 (align_up(old_top), align_up(new_top)) 区间内逐页分配并映射
-pub fn uvm_heap_grow(
-    pt: &mut PageTable,
-    old_top: VirtAddr,
-    new_top: VirtAddr,
-) -> Result<(), UvmError> {
+pub fn heap_grow(pt: &mut PageTable, old_top: VirtAddr, new_top: VirtAddr) -> Result<(), UvmError> {
     if new_top > MMAP_BEGIN {
         return Err(UvmError::OutOfRange);
     }
     let mut a = align_up(old_top);
     let last = align_up(new_top);
     while a < last {
-        let pa = pmem_alloc(false) as usize;
+        let pa = pmem::alloc(false) as usize;
         if pa == 0 {
             return Err(UvmError::NoMem);
         }
@@ -161,7 +146,7 @@ pub fn uvm_heap_grow(
 }
 
 // 堆收缩：在 [align_up(new_top), align_up(old_top)) 区间内逐页解除映射并释放
-pub fn uvm_heap_ungrow(
+pub fn heap_ungrow(
     pt: &mut PageTable,
     old_top: VirtAddr,
     new_top: VirtAddr,
@@ -180,7 +165,7 @@ pub fn uvm_heap_ungrow(
     Ok(())
 }
 
-pub fn uvm_ustack_grow(
+pub fn ustack_grow(
     pt: &mut PageTable,
     _stack_pages: &mut usize,
     _trapframe_va: VirtAddr,
@@ -196,11 +181,11 @@ pub fn uvm_ustack_grow(
         while a > needed_base {
             a -= PGSIZE;
             if let Some(pte_ptr) = pt.lookup(a) {
-                if pte_is_valid(unsafe { *pte_ptr }) {
+                if pte::is_valid(unsafe { *pte_ptr }) {
                     continue;
                 }
             }
-            let pa = pmem_alloc(false) as usize;
+            let pa = pmem::alloc(false) as usize;
             if pa == 0 {
                 return Err(UvmError::NoMem);
             }
@@ -223,7 +208,7 @@ fn map_pages(pt: &mut PageTable, va: VirtAddr, npages: usize) -> Result<(), UvmE
     let mut a = align_down(va);
     let last = a + npages * PGSIZE;
     while a < last {
-        let pa = pmem_alloc(false) as usize;
+        let pa = pmem::alloc(false) as usize;
         if pa == 0 {
             return Err(UvmError::NoMem);
         }
@@ -235,7 +220,7 @@ fn map_pages(pt: &mut PageTable, va: VirtAddr, npages: usize) -> Result<(), UvmE
     Ok(())
 }
 
-pub fn uvm_mmap(
+pub fn mmap(
     pt: &mut PageTable,
     head: &mut *mut MmapRegion,
     mut begin: VirtAddr,
@@ -283,7 +268,7 @@ pub fn uvm_mmap(
         }
         let end = begin + npages * PGSIZE;
 
-        let mut prev: *mut MmapRegion = core::ptr::null_mut();
+        let mut prev: *mut MmapRegion = ptr::null_mut();
         let mut cur = *head;
         while !cur.is_null() && (*cur).begin < begin {
             prev = cur;
@@ -333,7 +318,7 @@ pub fn uvm_mmap(
                 let next_end = (*next).begin + (*next).npages as usize * PGSIZE;
                 (*prev).npages = ((next_end - (*prev).begin) / PGSIZE) as u32;
                 (*prev).next = (*next).next;
-                mmap_region_free(next);
+                mmap::region_free(next);
             }
             return Ok((*prev).begin);
         }
@@ -353,7 +338,7 @@ pub fn uvm_mmap(
         }
 
         map_pages(pt, begin, npages)?;
-        let node = mmap_region_alloc();
+        let node = mmap::region_alloc();
         if node.is_null() {
             return Err(UvmError::NoMem);
         }
@@ -369,7 +354,7 @@ pub fn uvm_mmap(
     }
 }
 
-pub fn uvm_munmap(
+pub fn munmap(
     pt: &mut PageTable,
     head: &mut *mut MmapRegion,
     begin: VirtAddr,
@@ -385,7 +370,7 @@ pub fn uvm_munmap(
     }
 
     unsafe {
-        let mut prev: *mut MmapRegion = core::ptr::null_mut();
+        let mut prev: *mut MmapRegion = ptr::null_mut();
         let mut cur = *head;
         while !cur.is_null() && (*cur).begin + (*cur).npages as usize * PGSIZE <= start {
             prev = cur;
@@ -403,8 +388,8 @@ pub fn uvm_munmap(
                 break;
             }
 
-            let s = core::cmp::max(unmap_start, cur_begin);
-            let e = core::cmp::min(end, cur_end);
+            let s = cmp::max(unmap_start, cur_begin);
+            let e = cmp::min(end, cur_end);
             if e > s {
                 // Unmap [s, e)
                 let sz = e - s;
@@ -420,7 +405,7 @@ pub fn uvm_munmap(
                     } else {
                         (*prev).next = next;
                     }
-                    mmap_region_free(cur);
+                    mmap::region_free(cur);
                     cur = next;
                 } else if s == cur_begin {
                     // trim front
@@ -435,7 +420,7 @@ pub fn uvm_munmap(
                     cur = (*cur).next;
                 } else {
                     // left [cur_begin, s), right [e, cur_end)
-                    let right = mmap_region_alloc();
+                    let right = mmap::region_alloc();
                     if right.is_null() {
                         return Err(UvmError::NoMem);
                     }
@@ -455,130 +440,4 @@ pub fn uvm_munmap(
         }
     }
     Ok(())
-}
-
-// Destroy a 3-level Sv39 page table rooted at `root_pa`.
-pub fn uvm_destroy_pgtbl(root_pa: PhysAddr) {
-    fn destroy_level(table_pa: usize) {
-        let table = table_pa as *mut PageTable;
-        for i in 0..super::PGNUM {
-            let pte = unsafe { (*table).entries[i] };
-            if !pte_is_valid(pte) {
-                continue;
-            }
-            if pte_is_leaf(pte) {
-                let pa = pte_to_pa(pte);
-                if let Some(for_kernel) = get_region(pa) {
-                    pmem_free(pa, for_kernel);
-                } else {
-                    // Mapping to non-pool PA (e.g., trampoline); leave it.
-                }
-                unsafe {
-                    (*table).entries[i] = 0;
-                }
-            } else if pte_is_table(pte) {
-                let child_pa = pte_to_pa(pte);
-                destroy_level(child_pa);
-                // free the child page table page (kernel pool)
-                pmem_free(child_pa, true);
-                unsafe {
-                    (*table).entries[i] = 0;
-                }
-            }
-        }
-    }
-
-    destroy_level(root_pa);
-    // finally free root table page
-    pmem_free(root_pa, true);
-}
-
-/// Deep-copy a Sv39 page table. Returns new root page table PA.
-/// - For user pages: allocate new user page and copy data.
-/// - For trapframe-like pages: allocate new kernel page and copy data.
-/// - For trampoline-like pages: reuse the same PA, do not copy.
-pub fn uvm_copy_pgtbl(src_root_pa: PhysAddr) -> Result<PhysAddr, UvmError> {
-    // allocate destination root
-    let dst_root = pmem_alloc(true) as usize;
-    if dst_root == 0 {
-        return Err(UvmError::NoMem);
-    }
-    unsafe {
-        core::ptr::write_bytes(dst_root as *mut u8, 0, PGSIZE);
-    }
-    let dst_pt = unsafe { &mut *(dst_root as *mut PageTable) };
-
-    unsafe {
-        let l2 = src_root_pa as *const PageTable;
-        for i in 0..super::PGNUM {
-            let pte2 = (*l2).entries[i];
-            if !pte_is_valid(pte2) {
-                continue;
-            }
-            if !pte_is_table(pte2) {
-                continue;
-            }
-            let l1_pa = pte_to_pa(pte2);
-            let l1 = l1_pa as *const PageTable;
-            for j in 0..super::PGNUM {
-                let pte1 = (*l1).entries[j];
-                if !pte_is_valid(pte1) {
-                    continue;
-                }
-                if !pte_is_table(pte1) {
-                    continue;
-                }
-                let l0_pa = pte_to_pa(pte1);
-                let l0 = l0_pa as *const PageTable;
-                for k in 0..super::PGNUM {
-                    let pte0 = (*l0).entries[k];
-                    if !pte_is_valid(pte0) {
-                        continue;
-                    }
-                    if !pte_is_leaf(pte0) {
-                        continue;
-                    }
-                    let pa = pte_to_pa(pte0);
-                    let flags = pte_get_flags(pte0);
-                    // compute canonical VA from indices
-                    let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
-                    let sign = (va_raw >> 38) & 1;
-                    let va = if sign == 1 {
-                        va_raw | (!0usize << 39)
-                    } else {
-                        va_raw & ((1usize << 39) - 1)
-                    };
-
-                    if (flags & PTE_U) != 0 {
-                        // user page
-                        let new_pa = pmem_alloc(false) as usize;
-                        if new_pa == 0 {
-                            return Err(UvmError::NoMem);
-                        }
-                        core::ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                        if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                            return Err(UvmError::MapFailed);
-                        }
-                    } else if (flags & PTE_X) != 0 {
-                        // trampoline-like
-                        if !dst_pt.map(va, pa, PGSIZE, flags) {
-                            return Err(UvmError::MapFailed);
-                        }
-                    } else {
-                        // trapframe-like
-                        let new_pa = pmem_alloc(true) as usize;
-                        if new_pa == 0 {
-                            return Err(UvmError::NoMem);
-                        }
-                        core::ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                        if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                            return Err(UvmError::MapFailed);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(dst_root)
 }

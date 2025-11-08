@@ -3,7 +3,7 @@ use spin::Once;
 
 static PMEM_INIT: Once<()> = Once::new();
 static PMEM_LOCK: spin::Mutex<()> = spin::Mutex::new(());
-pub fn pmem_init(hartid: usize) {
+pub fn init(hartid: usize, _dtb: *const u8) {
     let _lock = PMEM_LOCK.lock();
     PMEM_INIT.call_once(|| initialize_regions(hartid));
 }

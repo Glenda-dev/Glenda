@@ -12,3 +12,6 @@ crate-type = ["rlib"]
 [dependencies]
 fdt = "0.1.5"
 spin = "0.9"
+
+[features]
+unicode = []

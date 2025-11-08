@@ -1,7 +1,7 @@
 use core::slice;
 
 use crate::mem::PageTable;
-use crate::mem::uvm::{uvm_copyin, uvm_copyin_str, uvm_copyout};
+use crate::mem::uvm;
 use crate::printk;
 use crate::proc::current_proc;
 use crate::trap::TrapContext;
@@ -14,7 +14,7 @@ pub fn sys_copyout(ctx: &mut TrapContext) -> usize {
     };
     let p = current_proc();
     let pt = unsafe { &*(p.root_pt_pa as *const PageTable) };
-    match uvm_copyout(pt, u_dst, bytes) {
+    match uvm::copyout(pt, u_dst, bytes) {
         Ok(()) => 0,
         Err(e) => {
             printk!("sys_copyout failed: {:?}", e);
@@ -33,7 +33,7 @@ pub fn sys_copyin(ctx: &mut TrapContext) -> usize {
     };
     let p = current_proc();
     let pt = unsafe { &*(p.root_pt_pa as *const PageTable) };
-    match uvm_copyin(pt, dst_bytes, u_src) {
+    match uvm::copyin(pt, dst_bytes, u_src) {
         Ok(()) => {
             for i in 0..count {
                 printk!("copyin[{}] = {}", i, tmp[i]);
@@ -52,7 +52,7 @@ pub fn sys_copyinstr(ctx: &mut TrapContext) -> usize {
     let mut buf: [u8; 256] = [0; 256];
     let p = current_proc();
     let pt = unsafe { &*(p.root_pt_pa as *const PageTable) };
-    match uvm_copyin_str(pt, &mut buf, u_src) {
+    match uvm::copyin_str(pt, &mut buf, u_src) {
         Ok(len) => {
             let s = &buf[..len.saturating_sub(1)];
             match core::str::from_utf8(s) {

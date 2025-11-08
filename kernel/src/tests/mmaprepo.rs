@@ -1,10 +1,7 @@
 use super::barrier::MultiCoreTestBarrier;
 use crate::dtb;
-use crate::mem::mmap::{
-    MmapRegion, N_MMAP, mmap_init, mmap_region_alloc, mmap_region_free, mmap_show_mmaplist,
-    mmap_show_nodelist,
-};
-use crate::printk::{uart_hex, uart_puts};
+use crate::mem::mmap::{self, MmapRegion, N_MMAP};
+use crate::printk::uart_puts;
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -58,8 +55,8 @@ pub fn run(hartid: usize) {
 
     if hartid == 0 {
         uart_puts("[TEST] mmap warehouse begin\n");
-        mmap_init();
-        mmap_show_nodelist();
+        mmap::init();
+        mmap::print_nodelist();
         uart_puts("\n");
     }
 
@@ -76,12 +73,12 @@ pub fn run(hartid: usize) {
     // Allocation phase
     if hartid == 0 {
         for i in 0..(N_MMAP / 2) {
-            let p = mmap_region_alloc();
+            let p = mmap::region_alloc();
             MMAP_LIST.store(i, p);
         }
     } else if hartid == 1 {
         for i in (N_MMAP / 2)..N_MMAP {
-            let p = mmap_region_alloc();
+            let p = mmap::region_alloc();
             MMAP_LIST.store(i, p);
         }
     }
@@ -92,12 +89,12 @@ pub fn run(hartid: usize) {
     if hartid == 0 {
         for i in (0..(N_MMAP / 2)).rev() {
             let p = MMAP_LIST.load(i);
-            mmap_region_free(p);
+            mmap::region_free(p);
         }
     } else if hartid == 1 {
         for i in ((N_MMAP / 2)..N_MMAP).rev() {
             let p = MMAP_LIST.load(i);
-            mmap_region_free(p);
+            mmap::region_free(p);
         }
     }
 
@@ -105,7 +102,7 @@ pub fn run(hartid: usize) {
 
     if hartid == 0 {
         // Show final free-list state
-        mmap_show_nodelist();
+        mmap::print_nodelist();
         uart_puts("[PASS] mmap warehouse\n");
         ALL_DONE.store(true, Ordering::Release);
     }

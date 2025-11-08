@@ -2,10 +2,10 @@ use super::ProcContext;
 use super::set_current_user_satp;
 use crate::hart;
 use crate::mem::addr::align_down;
-use crate::mem::pmem::pmem_alloc;
+use crate::mem::pmem;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
-use crate::mem::uvm::uvm_ustack_grow;
-use crate::mem::vm::vm_mappages;
+use crate::mem::uvm;
+use crate::mem::vm;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::trap::TrapFrame;
@@ -35,7 +35,7 @@ pub struct Process {
 impl Process {
     pub fn ustack_grow(&mut self, fault_va: VirtAddr) -> Result<(), ()> {
         let pt = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
-        match uvm_ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
+        match uvm::ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
             Ok(_) => Ok(()),
             Err(_) => Err(()),
         }
@@ -103,35 +103,35 @@ pub fn create(payload: &[u8]) -> Process {
     // Setup pid
     proc.pid = 0;
     // 分配一页作为根页表（物理内存）
-    proc.root_pt_pa = pmem_alloc(true) as PhysAddr;
+    proc.root_pt_pa = pmem::alloc(true) as PhysAddr;
     let page_table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
     unsafe { core::ptr::write_bytes(page_table as *mut PageTable as *mut u8, 0, PGSIZE) };
     // Setup Trampoline
     let tramp_pa = align_down(vector::trampoline as usize) as PhysAddr; // trampoline 物理地址
     let tramp_va = VA_MAX - PGSIZE; // trampoline 虚拟地址（最高页）
-    vm_mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+    vm::mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     // Setup TrapFrame
     // TrapFrame 放在内核物理页区域，避免占用用户物理页池
-    let trapframe_pa = pmem_alloc(true) as PhysAddr; // trapframe 物理地址
+    let trapframe_pa = pmem::alloc(true) as PhysAddr; // trapframe 物理地址
     let trapframe_va = tramp_va - PGSIZE; // trapframe 虚拟地址
     proc.trapframe_va = trapframe_va;
     proc.trapframe = trapframe_pa as *mut TrapFrame;
-    vm_mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+    vm::mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     // Setup Protected Page
     let empty_va = 0usize; // 最低的空闲页虚拟地址
     let code_va = empty_va + PGSIZE;
     let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
     let mut mapped_len = 0usize;
     if src_len == 0 {
-        let code_pa = pmem_alloc(false) as PhysAddr;
+        let code_pa = pmem::alloc(false) as PhysAddr;
         unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
         // Map first user page as code+data: allow writes for .data/.bss
-        vm_mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A);
+        vm::mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A);
         mapped_len = PGSIZE;
     } else {
         let total = src_len;
         while mapped_len < total {
-            let pa = pmem_alloc(false) as PhysAddr;
+            let pa = pmem::alloc(false) as PhysAddr;
             let this_len = core::cmp::min(PGSIZE, total - mapped_len);
             unsafe {
                 core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE);
@@ -139,7 +139,7 @@ pub fn create(payload: &[u8]) -> Process {
             }
             let va = code_va + mapped_len;
             // Map user code+data page writable to support globals (.data/.bss)
-            vm_mappages(
+            vm::mappages(
                 page_table,
                 va,
                 pa,
@@ -152,7 +152,7 @@ pub fn create(payload: &[u8]) -> Process {
     }
     proc.entry_va = code_va;
     // Setup Kernel Stack
-    let kstack_pa = pmem_alloc(true) as PhysAddr;
+    let kstack_pa = pmem::alloc(true) as PhysAddr;
     unsafe {
         core::ptr::write_bytes(kstack_pa as *mut u8, 0, PGSIZE);
     }

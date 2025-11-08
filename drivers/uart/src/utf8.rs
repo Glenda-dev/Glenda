@@ -1,102 +1,11 @@
-use crate::dtb;
-#[cfg(feature = "unicode")]
-use spin::Mutex;
-
-pub fn interrupt_handler() {
-    let cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
-    let base = cfg.base();
-    let lsr = (base + cfg.lsr_offset()) as *const u8;
-    let rbr = (base + cfg.thr_offset()) as *const u8;
-    const LSR_DR: u8 = 0x01;
-
-    loop {
-        let status = unsafe { core::ptr::read_volatile(lsr) };
-        if (status & LSR_DR) == 0 {
-            break;
-        }
-        let b = unsafe { core::ptr::read_volatile(rbr) };
-
-        #[cfg(feature = "unicode")]
-        {
-            match b {
-                b'\r' | b'\n' => {
-                    let mut con = CONSOLE_ECHO.lock();
-                    con.decoder.clear();
-                    con.clear_line();
-                    driver_uart::print!("\n");
-                }
-                0x08 | 0x7f => {
-                    let mut con = CONSOLE_ECHO.lock();
-                    if con.decoder.has_pending() {
-                        con.decoder.clear();
-                    } else if let Some(w) = con.pop_width() {
-                        for _ in 0..w {
-                            driver_uart::print!("\x08 \x08");
-                        }
-                    } else {
-                        // Nothing
-                    }
-                }
-                b if b < 0x80 => {
-                    let mut con = CONSOLE_ECHO.lock();
-                    if con.decoder.has_pending() {
-                        driver_uart::print!("\u{FFFD}");
-                        con.push_width(1);
-                        con.decoder.clear();
-                    }
-                    let ch = b as char;
-                    driver_uart::print!("{}", ch);
-                    con.push_width(1);
-                }
-                _ => {
-                    let mut con = CONSOLE_ECHO.lock();
-                    match con.decoder.push(b) {
-                        Utf8PushResult::Pending => {
-                            // wait more
-                        }
-                        Utf8PushResult::Completed(c) => {
-                            let w = char_display_width(c);
-                            driver_uart::print!("{}", c);
-                            con.push_width(w);
-                        }
-                        Utf8PushResult::Invalid => {
-                            driver_uart::print!("\u{FFFD}");
-                            con.push_width(1);
-                        }
-                    }
-                }
-            }
-        }
-
-        #[cfg(not(feature = "unicode"))]
-        {
-            match b {
-                b'\r' | b'\n' => {
-                    driver_uart::print!("\n");
-                }
-                0x08 | 0x7f => {
-                    driver_uart::print!("\x08 \x08");
-                }
-                _ => {
-                    let ch = b as char;
-                    driver_uart::print!("{}", ch);
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "unicode")]
 const LINEBUF_CAP: usize = 256;
 
-#[cfg(feature = "unicode")]
 struct ConsoleEcho {
     decoder: Utf8Decoder,
     widths: [u8; LINEBUF_CAP],
     len: usize,
 }
 
-#[cfg(feature = "unicode")]
 impl ConsoleEcho {
     const fn new() -> Self {
         Self { decoder: Utf8Decoder::new(), widths: [0; LINEBUF_CAP], len: 0 }
@@ -130,14 +39,12 @@ impl ConsoleEcho {
     }
 }
 
-#[cfg(feature = "unicode")]
 struct Utf8Decoder {
     buf: [u8; 4],
     len: u8, // buffered length (0..=4)
     need: u8,
 }
 
-#[cfg(feature = "unicode")]
 impl Utf8Decoder {
     const fn new() -> Self {
         Self { buf: [0; 4], len: 0, need: 0 }
@@ -187,14 +94,12 @@ impl Utf8Decoder {
     }
 }
 
-#[cfg(feature = "unicode")]
 enum Utf8PushResult {
     Pending,
     Completed(char),
     Invalid,
 }
 
-#[cfg(feature = "unicode")]
 fn utf8_expected_len(b: u8) -> u8 {
     match b {
         0xC2..=0xDF => 2,
@@ -204,11 +109,9 @@ fn utf8_expected_len(b: u8) -> u8 {
     }
 }
 
-#[cfg(feature = "unicode")]
 static CONSOLE_ECHO: Mutex<ConsoleEcho> = Mutex::new(ConsoleEcho::new());
 
 // TODO: 组合音标似乎是零宽，目前退格没法正常显示
-#[cfg(feature = "unicode")]
 fn char_display_width(c: char) -> u8 {
     if c.is_ascii() {
         return 1;
