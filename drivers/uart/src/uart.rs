@@ -4,7 +4,7 @@
 
 pub mod irq;
 #[cfg(feature = "unicode")]
-mod utf8;
+pub mod utf8;
 
 use core::cmp;
 use core::fmt::{self, Write};

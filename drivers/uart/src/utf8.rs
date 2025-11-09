@@ -1,19 +1,21 @@
+use spin::Mutex;
+
 const LINEBUF_CAP: usize = 256;
 
-struct ConsoleEcho {
-    decoder: Utf8Decoder,
-    widths: [u8; LINEBUF_CAP],
-    len: usize,
+pub struct ConsoleEcho {
+    pub decoder: Utf8Decoder,
+    pub widths: [u8; LINEBUF_CAP],
+    pub len: usize,
 }
 
 impl ConsoleEcho {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { decoder: Utf8Decoder::new(), widths: [0; LINEBUF_CAP], len: 0 }
     }
-    fn clear_line(&mut self) {
+    pub fn clear_line(&mut self) {
         self.len = 0;
     }
-    fn push_width(&mut self, w: u8) {
+    pub fn push_width(&mut self, w: u8) {
         if w == 0 {
             return;
         }
@@ -29,7 +31,7 @@ impl ConsoleEcho {
             self.widths[LINEBUF_CAP - 1] = w;
         }
     }
-    fn pop_width(&mut self) -> Option<u8> {
+    pub fn pop_width(&mut self) -> Option<u8> {
         if self.len == 0 {
             None
         } else {
@@ -39,24 +41,24 @@ impl ConsoleEcho {
     }
 }
 
-struct Utf8Decoder {
-    buf: [u8; 4],
-    len: u8, // buffered length (0..=4)
-    need: u8,
+pub struct Utf8Decoder {
+    pub buf: [u8; 4],
+    pub len: u8, // buffered length (0..=4)
+    pub need: u8,
 }
 
 impl Utf8Decoder {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { buf: [0; 4], len: 0, need: 0 }
     }
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.len = 0;
         self.need = 0;
     }
-    fn has_pending(&self) -> bool {
+    pub fn has_pending(&self) -> bool {
         self.len > 0
     }
-    fn push(&mut self, b: u8) -> Utf8PushResult {
+    pub fn push(&mut self, b: u8) -> Utf8PushResult {
         if self.len == 0 {
             let need = utf8_expected_len(b);
             if need == 0 {
@@ -94,13 +96,13 @@ impl Utf8Decoder {
     }
 }
 
-enum Utf8PushResult {
+pub enum Utf8PushResult {
     Pending,
     Completed(char),
     Invalid,
 }
 
-fn utf8_expected_len(b: u8) -> u8 {
+pub fn utf8_expected_len(b: u8) -> u8 {
     match b {
         0xC2..=0xDF => 2,
         0xE0..=0xEF => 3,
@@ -109,10 +111,10 @@ fn utf8_expected_len(b: u8) -> u8 {
     }
 }
 
-static CONSOLE_ECHO: Mutex<ConsoleEcho> = Mutex::new(ConsoleEcho::new());
+pub static CONSOLE_ECHO: Mutex<ConsoleEcho> = Mutex::new(ConsoleEcho::new());
 
 // TODO: 组合音标似乎是零宽，目前退格没法正常显示
-fn char_display_width(c: char) -> u8 {
+pub fn char_display_width(c: char) -> u8 {
     if c.is_ascii() {
         return 1;
     }

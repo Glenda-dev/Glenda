@@ -1,5 +1,8 @@
 use super::UART;
 
+#[cfg(feature = "unicode")]
+use crate::utf8::{CONSOLE_ECHO, Utf8PushResult, char_display_width};
+
 pub fn handler() {
     let uart = UART.get().expect("UART not initialized in interrupt handler");
     let lsr = uart.lsr;
