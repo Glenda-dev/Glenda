@@ -1,4 +1,5 @@
 use super::super::TrapContext;
+use super::super::interrupt;
 use super::super::plic;
 use super::super::timer;
 use super::user;
@@ -20,6 +21,7 @@ use riscv::register::{
 /// - `ctx`: 指向栈上保存的寄存器上下文的指针
 #[unsafe(no_mangle)]
 pub extern "C" fn trap_kernel_handler(ctx: &mut TrapContext) {
+    interrupt::enter();
     let sc = scause::read();
     let epc = sepc::read();
     let tval = stval::read();
@@ -33,6 +35,7 @@ pub extern "C" fn trap_kernel_handler(ctx: &mut TrapContext) {
             interrupt_handler(i, epc, tval, sstatus_bits, ctx);
         }
     }
+    interrupt::exit();
 }
 
 /// 处理异常情况

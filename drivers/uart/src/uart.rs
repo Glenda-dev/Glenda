@@ -66,6 +66,7 @@ pub struct Uart {
     thr: *mut u8,
     lsr: *const u8,
     lsr_thre: u8,
+    cfg: Config,
 }
 
 unsafe impl Send for Uart {}
@@ -74,6 +75,7 @@ unsafe impl Sync for Uart {}
 impl Uart {
     pub const fn from_config(cfg: Config) -> Self {
         Self {
+            cfg,
             thr: (cfg.base + cfg.thr_offset) as *mut u8,
             lsr: (cfg.base + cfg.lsr_offset) as *const u8,
             lsr_thre: cfg.lsr_thre_bit,
@@ -85,6 +87,12 @@ impl Uart {
         unsafe {
             while (read_volatile(self.lsr) & self.lsr_thre) == 0 {}
             write_volatile(self.thr, b);
+        }
+    }
+
+    fn puts(&self, s: &str) {
+        for &b in s.as_bytes() {
+            self.putb(b);
         }
     }
 }

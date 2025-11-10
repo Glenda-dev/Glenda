@@ -145,7 +145,7 @@ impl PageTable {
     }
     #[cfg(debug_assertions)]
     pub fn print(&self) {
-        use crate::printk::{uart_hex, uart_puts};
+        use crate::printk;
         #[inline(always)]
         fn pa_in_any_region(pa: usize) -> bool {
             let k = super::pmem::kernel_region_info();
@@ -161,9 +161,7 @@ impl PageTable {
         }
 
         let pgtbl_2 = self as *const PageTable as usize;
-        uart_puts("L2 PT @ ");
-        uart_hex(pgtbl_2);
-        uart_puts("\n");
+        printk!("L2 PT @ 0x{:x}", pgtbl_2);
 
         for i in 0..PGNUM {
             let pte2 = unsafe { (*(pgtbl_2 as *const PageTable)).entries[i] };
@@ -171,31 +169,21 @@ impl PageTable {
                 continue;
             }
             if !pte::is_table(pte2) {
-                uart_puts("ASSERT: L2 entry is not table, i=");
-                uart_hex(i);
-                uart_puts("\n");
+                printk!("ASSERT: L2 entry is not table, i={}", i);
                 return;
             }
 
             let pgtbl_1_pa = pte_to_pa(pte2);
             if (pgtbl_1_pa & (PGSIZE - 1)) != 0 {
-                uart_puts("ASSERT: L1 pa not page-aligned: ");
-                uart_hex(pgtbl_1_pa);
-                uart_puts("\n");
+                printk!("ASSERT: L1 pa not page-aligned: 0x{:x}", pgtbl_1_pa);
                 return;
             }
             if !pa_in_any_region(pgtbl_1_pa) {
-                uart_puts("ASSERT: L1 pa out of region: ");
-                uart_hex(pgtbl_1_pa);
-                uart_puts("\n");
+                printk!("ASSERT: L1 pa out of region: 0x{:x}", pgtbl_1_pa);
                 return;
             }
 
-            uart_puts(".. L1[");
-            uart_hex(i);
-            uart_puts("] pa=");
-            uart_hex(pgtbl_1_pa);
-            uart_puts("\n");
+            printk!(".. L1[{}] pa=0x{:x}", i, pgtbl_1_pa);
 
             let pgtbl_1 = pgtbl_1_pa as *const PageTable;
             for j in 0..PGNUM {
@@ -204,31 +192,21 @@ impl PageTable {
                     continue;
                 }
                 if !pte::is_table(pte1) {
-                    uart_puts("ASSERT: L1 entry is not table, j=");
-                    uart_hex(j);
-                    uart_puts("\n");
+                    printk!("ASSERT: L1 entry is not table, j={}", j);
                     return;
                 }
 
                 let pgtbl_0_pa = pte_to_pa(pte1);
                 if (pgtbl_0_pa & (PGSIZE - 1)) != 0 {
-                    uart_puts("ASSERT: L0 pa not page-aligned: ");
-                    uart_hex(pgtbl_0_pa);
-                    uart_puts("\n");
+                    printk!("ASSERT: L0 pa not page-aligned: 0x{:x}", pgtbl_0_pa);
                     return;
                 }
                 if !pa_in_any_region(pgtbl_0_pa) {
-                    uart_puts("ASSERT: L0 pa out of region: ");
-                    uart_hex(pgtbl_0_pa);
-                    uart_puts("\n");
+                    printk!("ASSERT: L0 pa out of region: 0x{:x}", pgtbl_0_pa);
                     return;
                 }
 
-                uart_puts(".. .. L0[");
-                uart_hex(j);
-                uart_puts("] pa=");
-                uart_hex(pgtbl_0_pa);
-                uart_puts("\n");
+                printk!(".. .. L0[{}] pa=0x{:x}", j, pgtbl_0_pa);
 
                 let pgtbl_0 = pgtbl_0_pa as *const PageTable;
                 for k in 0..PGNUM {
@@ -237,9 +215,7 @@ impl PageTable {
                         continue;
                     }
                     if !pte::is_leaf(pte0) {
-                        uart_puts("ASSERT: L0 entry not leaf, k=");
-                        uart_hex(k);
-                        uart_puts("\n");
+                        printk!("ASSERT: L0 entry not leaf, k={}", k);
                         return;
                     }
 
@@ -248,15 +224,13 @@ impl PageTable {
                     let va = sv39_canon(va_raw);
                     let flags = pte::get_flags(pte0);
 
-                    uart_puts(".. .. .. page ");
-                    uart_hex(k);
-                    uart_puts(" VA=");
-                    uart_hex(va);
-                    uart_puts(" -> PA=");
-                    uart_hex(pa);
-                    uart_puts(" flags=");
-                    uart_hex(flags);
-                    uart_puts("\n");
+                    printk!(
+                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags=0x{:x}",
+                        k,
+                        va,
+                        pa,
+                        flags
+                    );
                 }
             }
         }

@@ -86,8 +86,11 @@ impl Process {
         // Compose SATP value for Sv39: MODE in bits [63:60], ASID=pid, PPN in [43:0]
         ((satp::Mode::Sv39 as usize) << 60) | (self.pid << 44) | ppn
     }
-    #[cfg(feature = "tests")]
+
+    #[cfg(debug_assertions)]
     pub fn print(&self) {
+        use crate::printk;
+
         printk!(
             "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}",
             self.pid,

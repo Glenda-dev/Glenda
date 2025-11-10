@@ -1,7 +1,7 @@
 use super::barrier::MultiCoreTestBarrier;
 use crate::dtb;
 use crate::mem::mmap::{self, MmapRegion, N_MMAP};
-use crate::printk::uart_puts;
+use crate::printk;
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -54,10 +54,9 @@ pub fn run(hartid: usize) {
     }
 
     if hartid == 0 {
-        uart_puts("[TEST] mmap warehouse begin\n");
+        printk!("[TEST] mmap warehouse begin");
         mmap::init();
         mmap::print_nodelist();
-        uart_puts("\n");
     }
 
     if hartid >= active {
@@ -103,7 +102,7 @@ pub fn run(hartid: usize) {
     if hartid == 0 {
         // Show final free-list state
         mmap::print_nodelist();
-        uart_puts("[PASS] mmap warehouse\n");
+        printk!("[PASS] mmap warehouse");
         ALL_DONE.store(true, Ordering::Release);
     }
 }

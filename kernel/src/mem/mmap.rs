@@ -3,7 +3,7 @@ use core::ptr::null_mut;
 
 use spin::{Mutex, Once};
 
-use crate::printk::{uart_hex, uart_puts};
+use crate::printk;
 
 // Number of mmap region nodes in the global warehouse
 pub const N_MMAP: usize = 256;
@@ -62,9 +62,7 @@ pub fn init() {
             (*node_i).next = if i + 1 < N_MMAP { base.add(i + 1) } else { null_mut() };
         }
         core::ptr::addr_of_mut!(LIST_HEAD).as_mut().unwrap().next = base;
-        uart_puts("MMAP: warehouse initialized (nodes=");
-        uart_hex(N_MMAP);
-        uart_puts(")\n");
+        printk!("MMAP: initialized warehouse (nodes = {})", N_MMAP);
     });
 }
 
@@ -76,16 +74,14 @@ pub fn region_alloc() -> *mut MmapRegion {
         let head = core::ptr::addr_of_mut!(LIST_HEAD) as *mut MmapRegionNode;
         let first = (*head).next;
         if first.is_null() {
-            uart_puts("MMAP: alloc failed (empty)\n");
+            printk!("MMAP: region_alloc failed - out of nodes!");
             return null_mut();
         }
         (*head).next = (*first).next;
         (*first).next = null_mut();
         (*first).mmap = MmapRegion::zero();
         if let Some(idx) = node_index(first) {
-            uart_puts("MMAP: alloc node index = ");
-            uart_hex(idx);
-            uart_puts("\n");
+            printk!("MMAP: alloc node index = {}", idx);
         }
         &mut (*first).mmap as *mut MmapRegion
     }
@@ -103,9 +99,7 @@ pub fn region_free(region: *mut MmapRegion) {
         let node_ptr = (region as usize - offset_of!(MmapRegionNode, mmap)) as *mut MmapRegionNode;
         (*node_ptr).mmap = MmapRegion::zero();
         if let Some(idx) = node_index(node_ptr) {
-            uart_puts("MMAP: free node index = ");
-            uart_hex(idx);
-            uart_puts("\n");
+            printk!("MMAP: free node index = {}", idx);
         }
         let head = core::ptr::addr_of_mut!(LIST_HEAD) as *mut MmapRegionNode;
         (*node_ptr).next = (*head).next;
@@ -116,51 +110,41 @@ pub fn region_free(region: *mut MmapRegion) {
 // Debug helper: dump current free-list order by node index
 #[cfg(debug_assertions)]
 pub fn print_nodelist() {
+    use crate::printk;
     init();
     let _g = LIST_LOCK.lock();
     unsafe {
-        uart_puts("MMAP: free-list indices: ");
+        printk!("MMAP: free-list indices:");
         let mut p = LIST_HEAD.next;
-        let mut first = true;
         while !p.is_null() {
-            if !first {
-                uart_puts(", ");
-            } else {
-                first = false;
-            }
             if let Some(idx) = node_index(p) {
-                uart_hex(idx);
+                printk!("  {}", idx);
             } else {
-                uart_puts("?");
+                printk!("  ?");
             }
             p = (*p).next;
         }
-        uart_puts("\n");
     }
 }
 
 // Debug: show a per-process mmap list (allocated regions)
 #[cfg(debug_assertions)]
 pub fn print_mmaplist(mut head: *mut MmapRegion) {
+    use crate::printk;
     unsafe {
-        uart_puts("MMAP: mmap list -> ");
+        printk!("MMAP: mmap list ->");
         let mut first = true;
         while !head.is_null() {
             if !first {
-                uart_puts(" | ");
+                printk!("  |");
             } else {
                 first = false;
             }
-            uart_puts("[begin=");
-            uart_hex((*head).begin);
-            uart_puts(", pages=");
-            uart_hex((*head).npages as usize);
-            uart_puts("]");
+            printk!("  [begin=0x{:x}, pages={}]", (*head).begin, (*head).npages);
             head = (*head).next;
         }
         if first {
-            uart_puts("<empty>");
+            printk!("  <empty>");
         }
-        uart_puts("\n");
     }
 }

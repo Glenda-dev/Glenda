@@ -85,3 +85,12 @@ pub fn handler() {
         }
     }
 }
+
+pub fn enable() {
+    let cfg = UART.get().expect("UART not initialized in interrupt enable").cfg;
+    let base = cfg.base();
+    let lsr_off = cfg.lsr_offset();
+    let stride = if lsr_off >= 5 { lsr_off / 5 } else { 1 };
+    let ier = (base + stride * 1) as *mut u8;
+    unsafe { core::ptr::write_volatile(ier, 0x01) };
+}

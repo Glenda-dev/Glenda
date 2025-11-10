@@ -13,19 +13,12 @@ pub struct Hart {
     pub proc: *mut Process,
     pub context: ProcContext,
     pub nest_count: usize,
-    pub interrupt_state: bool,
     pub enabled: bool,
 }
 
 impl Hart {
     pub const fn new() -> Self {
-        Self {
-            proc: ptr::null_mut(),
-            context: ProcContext::new(),
-            nest_count: 0,
-            interrupt_state: false,
-            enabled: false,
-        }
+        Self { proc: ptr::null_mut(), context: ProcContext::new(), nest_count: 0, enabled: false }
     }
 }
 
