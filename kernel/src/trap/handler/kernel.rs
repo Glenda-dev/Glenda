@@ -113,7 +113,7 @@ pub fn external_handler() {
     match id {
         0 => return,
         plic::UART_IRQ => {
-            driver_uart::irq::handler();
+            drivers::uart::irq::handler();
         }
         _ => {
             panic!("Unexpected interrupt id {} on hart {}", id, hartid);

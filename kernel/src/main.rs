@@ -39,8 +39,8 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     let dtb_result = dtb::init(dtb);
 
     // 初始化串口驱动
-    let uart_cfg = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT);
-    driver_uart::init(uart_cfg);
+    let uart_cfg = dtb::uart_config().unwrap_or(drivers::uart::DEFAULT_QEMU_VIRT);
+    drivers::uart::init(uart_cfg);
 
     static START_BANNER_PRINTED: AtomicBool = AtomicBool::new(false);
 
@@ -53,9 +53,9 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
                 printk!("Device tree blob at {:p}", dtb);
                 printk!(
                     "UART in use: base=0x{:x}, thr=0x{:x}, lsr=0x{:x}",
-                    uart_cfg.base(),
-                    uart_cfg.thr_offset(),
-                    uart_cfg.lsr_offset()
+                    uart_cfg.base,
+                    uart_cfg.thr_offset,
+                    uart_cfg.lsr_offset
                 );
                 printk!("{} harts detected", dtb::hart_count());
             }

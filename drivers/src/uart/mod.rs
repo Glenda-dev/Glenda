@@ -1,9 +1,7 @@
 // A busy-wait 16550A-compatible UART Driver
 
-#![no_std]
-
 pub mod irq;
-#[cfg(feature = "unicode")]
+#[cfg(feature = "uart-unicode")]
 pub mod utf8;
 
 use core::cmp;
@@ -15,10 +13,10 @@ use fdt::node::FdtNode;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
-    base: usize,
-    thr_offset: usize,
-    lsr_offset: usize,
-    lsr_thre_bit: u8,
+    pub base: usize,
+    pub thr_offset: usize,
+    pub lsr_offset: usize,
+    pub lsr_thre_bit: u8,
 }
 
 impl Config {
@@ -47,19 +45,6 @@ impl Config {
             lsr_thre_bit: Self::DEFAULT_LSR_THRE,
         })
     }
-
-    pub const fn base(&self) -> usize {
-        self.base
-    }
-    pub const fn thr_offset(&self) -> usize {
-        self.thr_offset
-    }
-    pub const fn lsr_offset(&self) -> usize {
-        self.lsr_offset
-    }
-    pub const fn lsr_thre_bit(&self) -> u8 {
-        self.lsr_thre_bit
-    }
 }
 
 pub struct Uart {
@@ -83,14 +68,14 @@ impl Uart {
     }
 
     #[inline(always)]
-    fn putb(&self, b: u8) {
+    pub fn putb(&self, b: u8) {
         unsafe {
             while (read_volatile(self.lsr) & self.lsr_thre) == 0 {}
             write_volatile(self.thr, b);
         }
     }
 
-    fn puts(&self, s: &str) {
+    pub fn puts(&self, s: &str) {
         for &b in s.as_bytes() {
             self.putb(b);
         }

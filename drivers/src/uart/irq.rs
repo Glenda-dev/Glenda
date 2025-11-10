@@ -1,6 +1,6 @@
 use super::UART;
 
-#[cfg(feature = "unicode")]
+#[cfg(feature = "uart-unicode")]
 use crate::utf8::{CONSOLE_ECHO, Utf8PushResult, char_display_width};
 
 pub fn handler() {
@@ -16,14 +16,14 @@ pub fn handler() {
         }
         let b = unsafe { core::ptr::read_volatile(rbr) };
 
-        #[cfg(feature = "unicode")]
+        #[cfg(feature = "uart-unicode")]
         {
             match b {
                 b'\r' | b'\n' => {
                     let mut con = CONSOLE_ECHO.lock();
                     con.decoder.clear();
                     con.clear_line();
-                    super::print!("\n");
+                    uart.puts("\n");
                 }
                 0x08 | 0x7f => {
                     let mut con = CONSOLE_ECHO.lock();
@@ -31,7 +31,7 @@ pub fn handler() {
                         con.decoder.clear();
                     } else if let Some(w) = con.pop_width() {
                         for _ in 0..w {
-                            super::print!("\x08 \x08");
+                            uart.puts("\x08 \x08");
                         }
                     } else {
                         // Nothing
@@ -40,12 +40,12 @@ pub fn handler() {
                 b if b < 0x80 => {
                     let mut con = CONSOLE_ECHO.lock();
                     if con.decoder.has_pending() {
-                        super::print!("\u{FFFD}");
+                        uart.puts("\u{FFFD}");
                         con.push_width(1);
                         con.decoder.clear();
                     }
                     let ch = b as char;
-                    super::print!("{}", ch);
+                    uart.puts("{}", ch);
                     con.push_width(1);
                 }
                 _ => {
@@ -56,11 +56,11 @@ pub fn handler() {
                         }
                         Utf8PushResult::Completed(c) => {
                             let w = char_display_width(c);
-                            super::print!("{}", c);
+                            uart.puts("{}", c);
                             con.push_width(w);
                         }
                         Utf8PushResult::Invalid => {
-                            super::print!("\u{FFFD}");
+                            uart.puts("\u{FFFD}");
                             con.push_width(1);
                         }
                     }
@@ -68,18 +68,18 @@ pub fn handler() {
             }
         }
 
-        #[cfg(not(feature = "unicode"))]
+        #[cfg(not(feature = "uart-unicode"))]
         {
             match b {
                 b'\r' | b'\n' => {
-                    super::print!("\n");
+                    uart.puts("\n");
                 }
                 0x08 | 0x7f => {
-                    super::print!("\x08 \x08");
+                    uart.puts("\x08 \x08");
                 }
                 _ => {
                     let ch = b as char;
-                    super::print!("{}", ch);
+                    uart.putb(ch as u8);
                 }
             }
         }
@@ -88,8 +88,8 @@ pub fn handler() {
 
 pub fn enable() {
     let cfg = UART.get().expect("UART not initialized in interrupt enable").cfg;
-    let base = cfg.base();
-    let lsr_off = cfg.lsr_offset();
+    let base = cfg.base;
+    let lsr_off = cfg.lsr_offset;
     let stride = if lsr_off >= 5 { lsr_off / 5 } else { 1 };
     let ier = (base + stride * 1) as *mut u8;
     unsafe { core::ptr::write_volatile(ier, 0x01) };

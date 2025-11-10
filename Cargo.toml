@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "kernel",
-  "drivers/uart",
+  "drivers",
   "xtask",
 ]
 resolver = "2"

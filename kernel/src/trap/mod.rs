@@ -15,7 +15,7 @@ pub fn inittraps() {
     plic::init();
     timer::create();
     // 使能 UART 接收中断
-    driver_uart::irq::enable();
+    drivers::uart::irq::enable();
     printk!("TRAP: Initialized Global trap");
 }
 

@@ -5,7 +5,7 @@ use core::cmp;
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicU8, Ordering};
 
-use driver_uart::Config as UartConfig;
+use drivers::uart::Config as UartConfig;
 use fdt::Fdt;
 
 #[derive(Debug, Clone, Copy)]

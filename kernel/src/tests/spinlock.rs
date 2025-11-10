@@ -42,7 +42,7 @@ pub fn run(hartid: usize) {
     for iter in 0..INCREMENTS_PER_HART {
         let _guard = TEST_LOCK.lock();
         let value_before = GLOBAL_COUNTER.load(Ordering::Relaxed);
-        driver_uart::print!("[hart {}] iter {} -> counter {}\n", hartid, iter, value_before + 1);
+        printk!("[hart {}] iter {} -> counter {}\n", hartid, iter, value_before + 1);
         GLOBAL_COUNTER.store(value_before + 1, Ordering::Relaxed);
     }
 

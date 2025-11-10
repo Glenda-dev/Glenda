@@ -1,15 +1,15 @@
 use crate::hart;
-use driver_uart;
+use drivers::uart::_print;
 use spin::Mutex;
 
 static PRINTK_LOCK: Mutex<()> = Mutex::new(());
 pub fn _printk(args: core::fmt::Arguments) {
     if hart::get().nest_count > 0 {
-        driver_uart::_print(args);
+        _print(args);
         return;
     }
     let _guard = PRINTK_LOCK.lock();
-    driver_uart::_print(args);
+    _print(args);
 }
 #[macro_export]
 macro_rules! printk {

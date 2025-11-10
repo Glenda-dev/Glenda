@@ -1,12 +1,12 @@
 [package]
-name = "driver-uart"
+name = "drivers"
 version = "0.1.0"
 edition = "2024"
-description = "16550 UART driver for Glenda"
+description = "Kernel drivers for Glenda"
 
 [lib]
-name = "driver_uart"
-path = "src/uart.rs"
+name = "drivers"
+path = "src/driver.rs"
 crate-type = ["rlib"]
 
 [dependencies]
@@ -14,4 +14,4 @@ fdt = "0.1.5"
 spin = "0.9"
 
 [features]
-unicode = []
+uart-unicode = []

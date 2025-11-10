@@ -154,7 +154,7 @@ pub fn init_kernel_vm(hartid: usize) {
         mappages(kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
 
         // MMIO 映射
-        let uart_base = dtb::uart_config().unwrap_or(driver_uart::DEFAULT_QEMU_VIRT).base();
+        let uart_base = dtb::uart_config().unwrap_or(drivers::uart::DEFAULT_QEMU_VIRT).base;
         let uart_size = PGSIZE;
         printk!("VM: Map UART @ {:p}", uart_base as *const u8);
         mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
