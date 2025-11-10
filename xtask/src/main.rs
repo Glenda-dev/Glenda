@@ -130,7 +130,7 @@ fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-fn build_service(mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
+fn build_service(_mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("make");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     std::fs::create_dir_all(format!("{}/../target/service/hello", manifest_dir)).unwrap();
