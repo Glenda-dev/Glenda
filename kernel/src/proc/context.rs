@@ -40,7 +40,7 @@ impl ProcContext {
             s11: 0,
         }
     }
-    #[cfg(feature = "tests")]
+    #[cfg(debug_assertions)]
     pub fn print(&self) {
         use crate::printk;
         printk!(

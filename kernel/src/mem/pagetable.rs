@@ -362,23 +362,3 @@ impl PageTable {
         Ok(dst_root)
     }
 }
-
-unsafe impl Sync for PageTable {}
-
-pub struct PageTableCell {
-    pub(super) cell: UnsafeCell<PageTable>,
-    lock: Mutex<()>,
-}
-unsafe impl Sync for PageTableCell {}
-
-impl PageTableCell {
-    pub const fn new() -> Self {
-        Self { cell: UnsafeCell::new(PageTable::new()), lock: Mutex::new(()) }
-    }
-
-    #[inline]
-    pub fn with_mut<T>(&self, f: impl FnOnce(&mut PageTable) -> T) -> T {
-        let _g = self.lock.lock();
-        unsafe { f(&mut *self.cell.get()) }
-    }
-}

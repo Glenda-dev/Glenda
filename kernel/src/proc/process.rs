@@ -29,12 +29,11 @@ pub enum ProcState {
 
 #[derive(Clone, Copy)]
 pub struct Process {
-    pub name: [u8; 16],
-    pub state: ProcState,
-    pub parent: *mut Process,
-    pub exit_code: i32,
-    pub sleep_chan: usize,
-
+    pub name: [u8; 16],                               // 进程名称
+    pub state: ProcState,                             // 进程状态
+    pub parent: *mut Process,                         // 父进程指针
+    pub exit_code: i32,                               // 退出码
+    pub sleep_chan: usize,                            // 睡眠通道
     pub pid: usize,                                   // 进程ID
     pub root_pt_pa: PhysAddr,                         // 根页表物理地址
     pub heap_top: VirtAddr,                           // 进程堆顶地址
@@ -111,6 +110,9 @@ impl Process {
         self.context.print();
     }
 }
+
+unsafe impl Send for Process {}
+unsafe impl Sync for Process {}
 
 /*
 用户地址空间布局：

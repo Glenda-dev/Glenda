@@ -2,7 +2,6 @@ use core::panic;
 
 use super::PGSIZE;
 use super::addr::{align_down, align_up};
-use super::pagetable::PageTableCell;
 use super::pmem::{self, kernel_region_info, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
 use super::{PageTable, PhysAddr, VirtAddr};
@@ -25,7 +24,7 @@ unsafe extern "C" {
     static __bss_end: u8;
 }
 
-static KERNEL_PAGE_TABLE: PageTableCell = PageTableCell::new();
+static KERNEL_PAGE_TABLE: Mutex<PageTable> = Mutex::new(PageTable::new());
 
 static KSTACK0_INIT: Once<()> = Once::new();
 static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
@@ -69,9 +68,8 @@ pub fn unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: bool) 
 }
 
 pub fn map_kernel_pages(va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
-    KERNEL_PAGE_TABLE.with_mut(|pt| {
-        mappages(pt, va, pa, size, perm);
-    });
+    let mut kpt = KERNEL_PAGE_TABLE.lock();
+    mappages(&mut kpt, va, pa, size, perm);
     sfence_vma_all();
 }
 
@@ -83,7 +81,7 @@ pub fn print(table: &PageTable) {
 pub fn init_kernel_vm(hartid: usize) {
     static BUILD_ONCE: Once<()> = Once::new();
     BUILD_ONCE.call_once(|| {
-        let kpt: &mut PageTable = unsafe { &mut *KERNEL_PAGE_TABLE.cell.get() };
+        let kpt = &mut KERNEL_PAGE_TABLE.lock();
         // 权限映射, PTE_A/D 理论上硬件会帮忙做，但不确定 QEMU Virt 的具体行为，所以还是加上
         let text_start_addr = unsafe { &__text_start as *const u8 as usize };
         let text_end_addr = unsafe { &__text_end as *const u8 as usize };
@@ -238,7 +236,10 @@ pub fn init_kernel_vm(hartid: usize) {
 }
 
 pub fn switch_to_kernel(hartid: usize) {
-    let root_ppn = (KERNEL_PAGE_TABLE.cell.get() as usize) >> 12;
+    let root_ppn = {
+        let kpt = KERNEL_PAGE_TABLE.lock();
+        (&*kpt as *const PageTable as usize) >> 12
+    };
     // set SATP to the new page table in Sv39 mode (ASID=0)
     unsafe {
         satp::set(satp::Mode::Sv39, 0, root_ppn);

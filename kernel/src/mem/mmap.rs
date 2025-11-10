@@ -26,23 +26,35 @@ impl MmapRegion {
 #[derive(Clone, Copy)]
 struct MmapRegionNode {
     mmap: MmapRegion,
-    next: *mut MmapRegionNode,
+    next: usize, // pointer as usize for Send
 }
 
 impl MmapRegionNode {
     const fn new() -> Self {
-        Self { mmap: MmapRegion::zero(), next: core::ptr::null_mut() }
+        Self { mmap: MmapRegion::zero(), next: 0 }
     }
 }
 
-// Global node warehouse (singly-linked free list), protected by a lock.
-static INIT_ONCE: Once = Once::new();
-static LIST_LOCK: Mutex<()> = Mutex::new(());
-static mut LIST_HEAD: MmapRegionNode = MmapRegionNode::new(); // sentinel, not allocatable
-static mut NODE_LIST: [MmapRegionNode; N_MMAP] = [MmapRegionNode::new(); N_MMAP];
+#[derive(Clone, Copy)]
+struct MmapWarehouse {
+    head: MmapRegionNode, // sentinel, not allocatable
+    node_list: [MmapRegionNode; N_MMAP],
+}
 
-fn node_index(ptr: *mut MmapRegionNode) -> Option<usize> {
-    let base = core::ptr::addr_of_mut!(NODE_LIST) as usize;
+impl MmapWarehouse {
+    const fn new() -> Self {
+        Self { head: MmapRegionNode::new(), node_list: [MmapRegionNode::new(); N_MMAP] }
+    }
+}
+
+unsafe impl Send for MmapWarehouse {}
+
+// Global warehouse, protected by mutex
+static INIT_ONCE: Once = Once::new();
+static WAREHOUSE: Mutex<MmapWarehouse> = Mutex::new(MmapWarehouse::new());
+
+fn node_index(ptr: *mut MmapRegionNode, warehouse: &MmapWarehouse) -> Option<usize> {
+    let base = warehouse.node_list.as_ptr() as usize;
     let end = base + core::mem::size_of::<MmapRegionNode>() * N_MMAP;
     let p = ptr as usize;
     if p < base || p >= end {
@@ -53,15 +65,15 @@ fn node_index(ptr: *mut MmapRegionNode) -> Option<usize> {
 }
 
 pub fn init() {
-    INIT_ONCE.call_once(|| unsafe {
-        // Build free list: LIST_HEAD.next -> NODE_LIST[0] -> ... -> NODE_LIST[N-1] -> null
-        let base = core::ptr::addr_of_mut!(NODE_LIST) as *mut MmapRegionNode;
+    INIT_ONCE.call_once(|| {
+        let mut warehouse = WAREHOUSE.lock();
+        let base = warehouse.node_list.as_mut_ptr();
         for i in 0..N_MMAP {
-            let node_i = base.add(i);
-            (*node_i).mmap = MmapRegion::zero();
-            (*node_i).next = if i + 1 < N_MMAP { base.add(i + 1) } else { null_mut() };
+            let node_i = unsafe { &mut *base.add(i) };
+            node_i.mmap = MmapRegion::zero();
+            node_i.next = if i + 1 < N_MMAP { unsafe { base.add(i + 1) as usize } } else { 0 };
         }
-        core::ptr::addr_of_mut!(LIST_HEAD).as_mut().unwrap().next = base;
+        warehouse.head.next = base as usize;
         printk!("MMAP: initialized warehouse (nodes = {})", N_MMAP);
     });
 }
@@ -69,18 +81,18 @@ pub fn init() {
 // Allocate a node from the warehouse and return a pointer to its embedded MmapRegion.
 pub fn region_alloc() -> *mut MmapRegion {
     init();
-    let _g = LIST_LOCK.lock();
+    let mut warehouse = WAREHOUSE.lock();
     unsafe {
-        let head = core::ptr::addr_of_mut!(LIST_HEAD) as *mut MmapRegionNode;
-        let first = (*head).next;
-        if first.is_null() {
+        let head_next = warehouse.head.next as *mut MmapRegionNode;
+        if head_next.is_null() {
             printk!("MMAP: region_alloc failed - out of nodes!");
             return null_mut();
         }
-        (*head).next = (*first).next;
-        (*first).next = null_mut();
+        let first = head_next;
+        warehouse.head.next = (*first).next;
+        (*first).next = 0;
         (*first).mmap = MmapRegion::zero();
-        if let Some(idx) = node_index(first) {
+        if let Some(idx) = node_index(first, &*warehouse) {
             printk!("MMAP: alloc node index = {}", idx);
         }
         &mut (*first).mmap as *mut MmapRegion
@@ -93,17 +105,16 @@ pub fn region_free(region: *mut MmapRegion) {
     if region.is_null() {
         return;
     }
-    let _g = LIST_LOCK.lock();
+    let mut warehouse = WAREHOUSE.lock();
     unsafe {
         // Recover node pointer from the embedded field offset
         let node_ptr = (region as usize - offset_of!(MmapRegionNode, mmap)) as *mut MmapRegionNode;
         (*node_ptr).mmap = MmapRegion::zero();
-        if let Some(idx) = node_index(node_ptr) {
+        if let Some(idx) = node_index(node_ptr, &*warehouse) {
             printk!("MMAP: free node index = {}", idx);
         }
-        let head = core::ptr::addr_of_mut!(LIST_HEAD) as *mut MmapRegionNode;
-        (*node_ptr).next = (*head).next;
-        (*head).next = node_ptr;
+        (*node_ptr).next = warehouse.head.next;
+        warehouse.head.next = node_ptr as usize;
     }
 }
 
@@ -112,17 +123,17 @@ pub fn region_free(region: *mut MmapRegion) {
 pub fn print_nodelist() {
     use crate::printk;
     init();
-    let _g = LIST_LOCK.lock();
+    let warehouse = WAREHOUSE.lock();
     unsafe {
         printk!("MMAP: free-list indices:");
-        let mut p = LIST_HEAD.next;
+        let mut p = warehouse.head.next as *mut MmapRegionNode;
         while !p.is_null() {
-            if let Some(idx) = node_index(p) {
+            if let Some(idx) = node_index(p, &*warehouse) {
                 printk!("  {}", idx);
             } else {
                 printk!("  ?");
             }
-            p = (*p).next;
+            p = (*p).next as *mut MmapRegionNode;
         }
     }
 }

@@ -2,13 +2,14 @@ pub mod context;
 pub mod process;
 pub mod table;
 pub use context::ProcContext;
-pub use process::Process;
 pub use process::ProcState;
-pub use table::{alloc, free, init, NPROC};
+pub use process::Process;
+pub use table::{NPROC, alloc, free, init};
 
 use crate::hart;
 use spin::Mutex;
 
+// TODO: Refactor
 static CURRENT_USER_SATP: Mutex<Option<usize>> = Mutex::new(None);
 
 pub fn set_current_user_satp(satp: usize) {
