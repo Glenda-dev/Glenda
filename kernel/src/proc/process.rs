@@ -11,13 +11,30 @@ use crate::printk;
 use crate::trap::TrapFrame;
 use crate::trap::vector;
 use riscv::register::{satp, sscratch};
+// per-process lock is deferred; use global table lock for now
 
 unsafe extern "C" {
     fn trap_user_return(ctx: &mut TrapFrame) -> !;
     fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcState {
+    Unused,
+    Zombie,
+    Sleeping,
+    Runnable,
+    Running,
+}
+
+#[derive(Clone, Copy)]
 pub struct Process {
+    pub name: [u8; 16],
+    pub state: ProcState,
+    pub parent: *mut Process,
+    pub exit_code: i32,
+    pub sleep_chan: usize,
+
     pub pid: usize,                                   // 进程ID
     pub root_pt_pa: PhysAddr,                         // 根页表物理地址
     pub heap_top: VirtAddr,                           // 进程堆顶地址
@@ -41,8 +58,14 @@ impl Process {
         }
     }
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
+            name: [0; 16],
+            state: ProcState::Unused,
+            parent: core::ptr::null_mut(),
+            exit_code: 0,
+            sleep_chan: 0,
+
             pid: 0,
             root_pt_pa: 0,
             heap_top: 0,
@@ -164,6 +187,8 @@ pub fn create(payload: &[u8]) -> Process {
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code
     riscv::asm::fence_i();
+
+    proc.state = ProcState::Runnable;
     proc
 }
 

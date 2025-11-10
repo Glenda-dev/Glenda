@@ -1,7 +1,10 @@
 pub mod context;
 pub mod process;
+pub mod table;
 pub use context::ProcContext;
 pub use process::Process;
+pub use process::ProcState;
+pub use table::{alloc, free, init, NPROC};
 
 use crate::hart;
 use spin::Mutex;
