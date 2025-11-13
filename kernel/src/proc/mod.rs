@@ -1,10 +1,10 @@
 pub mod context;
 pub mod process;
+pub mod scheduler;
 pub mod table;
 pub use context::ProcContext;
 pub use process::ProcState;
 pub use process::Process;
-pub use table::{NPROC, alloc, free, init};
 
 use crate::hart;
 use spin::Mutex;

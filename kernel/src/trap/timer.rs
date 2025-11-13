@@ -56,3 +56,5 @@ pub fn start(hartid: usize) {
         program_next_tick();
     }
 }
+
+pub fn wait(ticks: usize) {}

@@ -3,9 +3,7 @@ use super::pmem::{self, get_region};
 use super::pte::{self, PTE_U, PTE_V, PTE_X, Pte, pa_to_pte, pte_to_pa};
 use super::uvm::UvmError;
 use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
-use core::cell::UnsafeCell;
 use core::ptr;
-use spin::Mutex;
 
 // align 4096, 防止 sfence.vma 直接 TRAP
 #[repr(C, align(4096))]
@@ -275,6 +273,7 @@ impl PageTable {
     /// - For user pages: allocate new user page and copy data.
     /// - For trapframe-like pages: allocate new kernel page and copy data.
     /// - For trampoline-like pages: reuse the same PA, do not copy.
+    /// TODO: handle copy-on-write pages.
     pub fn copy(self) -> Result<PhysAddr, UvmError> {
         let src_root_pa = &self as *const PageTable as usize;
         // allocate destination root

@@ -1,21 +1,26 @@
 use super::ProcContext;
 use super::set_current_user_satp;
+use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
 use crate::hart;
 use crate::mem::addr::align_down;
+use crate::mem::mmap::{self, MmapRegion};
 use crate::mem::pmem;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
 use crate::mem::uvm;
 use crate::mem::vm;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
+use crate::proc::scheduler::wakeup;
 use crate::trap::TrapFrame;
 use crate::trap::vector;
+use core::sync::atomic::Ordering;
+use riscv::asm::wfi;
 use riscv::register::{satp, sscratch};
 // per-process lock is deferred; use global table lock for now
 
 unsafe extern "C" {
-    fn trap_user_return(ctx: &mut TrapFrame) -> !;
-    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
+    pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
+    fn trap_user_return() -> !;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,23 +34,23 @@ pub enum ProcState {
 
 #[derive(Clone, Copy)]
 pub struct Process {
-    pub name: [u8; 16],                               // 进程名称
-    pub state: ProcState,                             // 进程状态
-    pub parent: *mut Process,                         // 父进程指针
-    pub exit_code: i32,                               // 退出码
-    pub sleep_chan: usize,                            // 睡眠通道
-    pub pid: usize,                                   // 进程ID
-    pub root_pt_pa: PhysAddr,                         // 根页表物理地址
-    pub heap_top: VirtAddr,                           // 进程堆顶地址
-    pub heap_base: VirtAddr,                          // 进程堆底（最小堆顶），用于 brk 下限约束
-    pub stack_pages: usize,                           // 进程栈大小
-    pub trapframe: *mut TrapFrame,                    // TrapFrame 指针（物理页）
-    pub trapframe_va: VirtAddr,                       // TrapFrame 的用户可见虚拟地址
-    pub context: ProcContext,                         // 用户态上下文
-    pub kernel_stack: PhysAddr,                       // 内核栈地址
-    pub entry_va: VirtAddr,                           // 用户入口地址
-    pub user_sp_va: VirtAddr,                         // 用户栈顶 VA
-    pub mmap_head: *mut crate::mem::mmap::MmapRegion, // mmap 链表头
+    pub name: [u8; 16],             // 进程名称
+    pub state: ProcState,           // 进程状态
+    pub parent: *mut Process,       // 父进程指针
+    pub exit_code: i32,             // 退出码
+    pub sleep_chan: usize,          // 睡眠通道
+    pub pid: usize,                 // 进程ID
+    pub root_pt_pa: PhysAddr,       // 根页表物理地址
+    pub heap_top: VirtAddr,         // 进程堆顶地址
+    pub heap_base: VirtAddr,        // 进程堆底（最小堆顶），用于 brk 下限约束
+    pub stack_pages: usize,         // 进程栈大小
+    pub trapframe: *mut TrapFrame,  // TrapFrame 指针（物理页）
+    pub trapframe_va: VirtAddr,     // TrapFrame 的用户可见虚拟地址
+    pub context: ProcContext,       // 用户态上下文
+    pub kernel_stack: PhysAddr,     // 内核栈地址
+    pub entry_va: VirtAddr,         // 用户入口地址
+    pub user_sp_va: VirtAddr,       // 用户栈顶 VA
+    pub mmap_head: *mut MmapRegion, // mmap 链表头
 }
 
 impl Process {
@@ -114,6 +119,49 @@ impl Process {
 unsafe impl Send for Process {}
 unsafe impl Sync for Process {}
 
+#[unsafe(no_mangle)]
+extern "C" fn proc_return() -> ! {
+    // TODO: Implement this
+    loop {
+        wfi();
+    }
+}
+
+pub fn init() {
+    GLOBAL_PID.store(1, Ordering::SeqCst);
+}
+
+pub fn alloc() -> Option<&'static mut Process> {
+    let mut table = PROC_TABLE.lock();
+    for i in 0..NPROC {
+        if table[i].state == ProcState::Unused {
+            // Take a raw pointer to the slot inside the static table and
+            // convert it to a 'static mutable reference (unsafe).
+            let p_ptr: *mut Process = &mut table[i] as *mut Process;
+            let p: &'static mut Process = unsafe { &mut *p_ptr };
+
+            p.pid = GLOBAL_PID.fetch_add(1, Ordering::SeqCst);
+            p.parent = core::ptr::null_mut();
+            p.exit_code = 0;
+            p.sleep_chan = 0;
+            p.context = ProcContext::new();
+            p.context.ra = proc_return as usize;
+            p.context.sp = 0;
+            p.state = ProcState::Runnable;
+            return Some(p);
+        }
+    }
+    None
+}
+
+pub fn free(p: &mut Process) {
+    let page_table = unsafe { &mut *(p.root_pt_pa as *mut PageTable) };
+    // Free mmap regions
+    mmap::region_free(p.mmap_head);
+    // Destory page table;
+    page_table.destroy();
+}
+
 /*
 用户地址空间布局：
 trampoline  (1 page) 映射在最高地址
@@ -126,10 +174,9 @@ heap        (手动管理)
 code + data (1 page)
 empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
 */
-pub fn create(payload: &[u8]) -> Process {
-    let mut proc = Process::new();
+pub fn create(payload: &[u8]) -> &'static mut Process {
+    let proc = alloc().expect("Failed to allocate process");
     // Setup pid
-    proc.pid = 0;
     // 分配一页作为根页表（物理内存）
     proc.root_pt_pa = pmem::alloc(true) as PhysAddr;
     let page_table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
@@ -192,12 +239,6 @@ pub fn create(payload: &[u8]) -> Process {
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code
     riscv::asm::fence_i();
-
-    proc.state = ProcState::Runnable;
-    proc
-}
-
-pub fn launch(proc: &mut Process) {
     // 初始化 trapframe 的返回地址和用户栈（通过物理地址访问）
     let tf = unsafe { &mut *proc.trapframe };
     tf.sp = proc.user_sp_va;
@@ -215,9 +256,14 @@ pub fn launch(proc: &mut Process) {
     unsafe { sscratch::write(tf_user_va as usize) };
     tf.a0 = tf_user_va as usize;
     // 设置内核态上下文
-    proc.context.ra = trap_user_return as usize;
     let kstack_va = proc.kernel_stack as *mut u8;
     proc.context.sp = kstack_va as usize;
+    // 设置进程状态为可运行
+    proc.state = ProcState::Runnable;
+    proc
+}
+
+pub fn launch(proc: &mut Process) {
     // 直接使用内核可见的 TrapFrame 指针进入 trap_user_return（不返回）
     printk!("PROC: Launching proc with pid={}", proc.pid);
     let hart = hart::get();
@@ -225,4 +271,60 @@ pub fn launch(proc: &mut Process) {
     unsafe {
         switch_context(&mut hart.context, &mut proc.context);
     }
+}
+
+// TODO: Copy-on-write fork
+pub fn fork(parent: &mut Process) -> &'static mut Process {
+    let child = alloc().expect("Failed to allocate process");
+    // Copy process state from parent to child
+    child.parent = parent as *mut Process;
+    child.entry_va = parent.entry_va;
+    child.user_sp_va = parent.user_sp_va;
+    // Copy page table
+    let parent_pt = unsafe { &*(parent.root_pt_pa as *const PageTable) };
+    let child_pt_pa = parent_pt.copy().expect("Failed to copy page table");
+    child.root_pt_pa = child_pt_pa;
+    // Copy heap info
+    child.heap_base = parent.heap_base;
+    child.heap_top = parent.heap_top;
+    // Copy stack size
+    child.stack_pages = parent.stack_pages;
+    // Copy TrapFrame
+    unsafe {
+        core::ptr::copy_nonoverlapping(parent.trapframe, child.trapframe, 1);
+    }
+    // Update child's TrapFrame to return 0 from fork
+    let child_tf = unsafe { &mut *child.trapframe };
+    child_tf.a0 = 0; // fork 返回值为0
+    let parent_tf = unsafe { &mut *parent.trapframe };
+    parent_tf.a0 = child.pid; // 父进程 fork 返回值为子进程 PID
+    // Set up child's kernel context to return to user space
+    child.context.sp = (child.kernel_stack) as usize;
+    child.state = ProcState::Runnable;
+    child
+}
+
+pub fn exit() {
+    let proc = unsafe {
+        let hart = hart::get();
+        &mut *hart.proc
+    };
+    // Free process resources
+    free(proc);
+    // Wake up parent if sleeping in wait()
+    if !proc.parent.is_null() {
+        let parent = unsafe { &mut *proc.parent };
+        wakeup(parent);
+    }
+    {
+        let mut table = PROC_TABLE.lock();
+        let init_ptr: *mut Process = table.as_mut_ptr();
+        for i in 0..NPROC {
+            let p = &mut table[i];
+            if p.parent == (proc as *mut Process) {
+                p.parent = init_ptr; // init process
+            }
+        }
+    }
+    proc.state = ProcState::Zombie;
 }
