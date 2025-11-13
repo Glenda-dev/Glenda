@@ -1,5 +1,5 @@
+use crate::irq::TrapContext;
 use crate::printk;
-use crate::trap::TrapContext;
 
 pub mod brk;
 pub mod copy;

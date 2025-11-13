@@ -4,13 +4,13 @@
 mod dtb;
 mod hart;
 mod init;
+mod irq;
 mod logo;
 mod mem;
 mod printk;
 mod proc;
 mod sbi;
 mod syscall;
-mod trap;
 
 #[cfg(feature = "tests")]
 mod tests;

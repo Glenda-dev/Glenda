@@ -1,10 +1,10 @@
+use crate::irq::TrapContext;
 use crate::mem::MMAP_BEGIN;
 use crate::mem::PageTable;
 use crate::mem::addr::align_up;
 use crate::mem::uvm;
 use crate::printk;
 use crate::proc::current_proc;
-use crate::trap::TrapContext;
 
 pub fn sys_brk(ctx: &mut TrapContext) -> usize {
     let new_top = ctx.a0;

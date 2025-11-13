@@ -1,8 +1,8 @@
+use crate::irq::TrapContext;
 use crate::mem::mmap;
 use crate::mem::uvm;
 use crate::mem::{MMAP_BEGIN, MMAP_END, PageTable};
 use crate::proc::current_proc;
-use crate::trap::TrapContext;
 
 pub fn sys_mmap(ctx: &mut TrapContext) -> usize {
     let begin = ctx.a0;

@@ -1,10 +1,10 @@
 use core::slice;
 
+use crate::irq::TrapContext;
 use crate::mem::PageTable;
 use crate::mem::uvm;
 use crate::printk;
 use crate::proc::current_proc;
-use crate::trap::TrapContext;
 
 pub fn sys_copyout(ctx: &mut TrapContext) -> usize {
     let u_dst = ctx.a0;

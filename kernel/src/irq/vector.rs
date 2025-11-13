@@ -34,7 +34,7 @@ fn timer_vector_update_from_mscratch() {
     }
 }
 
-pub fn set() {
+pub fn init() {
     let kernel_vec_addr = kernel_vector as usize;
     let vec = Stvec::new(kernel_vec_addr, stvec::TrapMode::Direct);
     unsafe {

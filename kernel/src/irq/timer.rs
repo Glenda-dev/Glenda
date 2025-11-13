@@ -1,6 +1,5 @@
-#![allow(dead_code)]
 use super::clint::{get_mtime, get_mtimecmp, set_mtimecmp};
-use super::handler::vector::timer_vector_base;
+use super::vector::timer_vector_base;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use riscv::register::mtvec::{self, Mtvec};
 use riscv::register::time;

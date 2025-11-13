@@ -1,5 +1,5 @@
+use super::super::vector;
 use super::super::{TrapContext, TrapFrame};
-use super::vector;
 use crate::mem::vm;
 use crate::mem::{PGSIZE, VA_MAX};
 use crate::proc::current_proc;

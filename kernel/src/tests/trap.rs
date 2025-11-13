@@ -1,8 +1,8 @@
 use super::barrier::MultiCoreTestBarrier;
 use crate::dtb;
+use crate::irq::timer;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET, ANSI_YELLOW};
-use crate::trap::timer;
 use riscv::register::sie;
 
 /// 运行时钟滴答测试和 UART 输出测试

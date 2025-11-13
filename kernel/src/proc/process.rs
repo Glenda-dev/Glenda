@@ -2,6 +2,8 @@ use super::ProcContext;
 use super::set_current_user_satp;
 use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
 use crate::hart;
+use crate::irq::TrapFrame;
+use crate::irq::vector;
 use crate::mem::addr::align_down;
 use crate::mem::mmap::{self, MmapRegion};
 use crate::mem::pmem;
@@ -11,8 +13,6 @@ use crate::mem::vm;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::proc::scheduler::wakeup;
-use crate::trap::TrapFrame;
-use crate::trap::vector;
 use core::sync::atomic::Ordering;
 use riscv::asm::wfi;
 use riscv::register::{satp, sscratch};
@@ -313,7 +313,7 @@ pub fn exit() {
     free(proc);
     // Wake up parent if sleeping in wait()
     if !proc.parent.is_null() {
-        let parent = unsafe { &mut *proc.parent };
+        let parent = unsafe { &mut *proc.parent } as *mut Process as usize;
         wakeup(parent);
     }
     {
