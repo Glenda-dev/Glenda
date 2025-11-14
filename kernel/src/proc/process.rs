@@ -20,7 +20,7 @@ use riscv::register::{satp, sscratch};
 
 unsafe extern "C" {
     pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
-    fn trap_user_return() -> !;
+    fn trap_user_return(ctx: &mut ProcContext) -> !;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +122,7 @@ unsafe impl Sync for Process {}
 #[unsafe(no_mangle)]
 extern "C" fn proc_return() -> ! {
     // TODO: Implement this
+    printk!("PROC: proc_return called");
     loop {
         wfi();
     }
@@ -256,6 +257,7 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     unsafe { sscratch::write(tf_user_va as usize) };
     tf.a0 = tf_user_va as usize;
     // 设置内核态上下文
+    proc.context.ra = trap_user_return as usize;
     let kstack_va = proc.kernel_stack as *mut u8;
     proc.context.sp = kstack_va as usize;
     // 设置进程状态为可运行
