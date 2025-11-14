@@ -25,10 +25,10 @@ fn launch_test_proc() {
     if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
         printk!("Launching external test payload");
         let mut proc = process::create(&PROC_PAYLOAD);
-        process::launch(&mut proc);
+        proc.launch();
     } else {
         printk!("Launching internal test payload");
         let mut proc = process::create(&USER_INIT_CODE);
-        process::launch(&mut proc);
+        proc.launch();
     }
 }

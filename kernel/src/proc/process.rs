@@ -114,6 +114,122 @@ impl Process {
         tf.print();
         self.context.print();
     }
+
+    pub fn free(&mut self) {
+        let page_table = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
+        // Free mmap regions
+        mmap::region_free(self.mmap_head);
+        // Destory page table;
+        page_table.destroy();
+    }
+
+    pub fn exit(&mut self) {
+        // Free process resources
+        self.free();
+        // Wake up parent if sleeping in wait()
+        if !self.parent.is_null() {
+            let parent = unsafe { &mut *self.parent } as *mut Process as usize;
+            wakeup(parent);
+        }
+        {
+            let mut table = PROC_TABLE.lock();
+            let init_ptr: *mut Process = table.as_mut_ptr();
+            for i in 0..NPROC {
+                let p = &mut table[i];
+                if p.parent == (self as *mut Process) {
+                    p.parent = init_ptr; // init process
+                }
+            }
+        }
+        self.state = ProcState::Zombie;
+    }
+
+    pub fn launch(&mut self) {
+        // 直接使用内核可见的 TrapFrame 指针进入 trap_user_return（不返回）
+        printk!("PROC: Launching proc with pid={}", self.pid);
+        let hart = hart::get();
+        hart.proc = self as *mut Process;
+        unsafe {
+            switch_context(&mut hart.context, &mut self.context);
+        }
+    }
+
+    // TODO: Copy-on-write fork
+    pub fn fork(&mut self) -> &'static mut Process {
+        let child = alloc().expect("Failed to allocate process");
+        // Copy process state from parent to child
+        child.parent = self as *mut Process;
+        child.entry_va = self.entry_va;
+        child.user_sp_va = self.user_sp_va;
+        // Copy page table
+        let parent_pt = unsafe { &*(self.root_pt_pa as *const PageTable) };
+        let child_pt_pa = parent_pt.copy().expect("Failed to copy page table");
+        child.root_pt_pa = child_pt_pa;
+        // Copy heap info
+        child.heap_base = self.heap_base;
+        child.heap_top = self.heap_top;
+        // Copy stack size
+        child.stack_pages = self.stack_pages;
+        // Copy TrapFrame
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1);
+        }
+        // Update child's TrapFrame to return 0 from fork
+        let child_tf = unsafe { &mut *child.trapframe };
+        child_tf.a0 = 0; // fork 返回值为0
+        let parent_tf = unsafe { &mut *self.trapframe };
+        parent_tf.a0 = self.pid; // 父进程 fork 返回值为子进程 PID
+        // Set up child's kernel context to return to user space
+        child.context.sp = (child.kernel_stack) as usize;
+        child.state = ProcState::Runnable;
+        child
+    }
+
+    pub fn exec(&mut self, payload: &[u8]) {
+        let page_table = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
+        let empty_va = 0usize;
+        let code_va = empty_va + PGSIZE;
+        let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
+        let mut mapped_len = 0usize;
+        if src_len == 0 {
+            let code_pa = pmem::alloc(false) as PhysAddr;
+            unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
+            vm::mappages(
+                page_table,
+                code_va,
+                code_pa,
+                PGSIZE,
+                PTE_U | PTE_R | PTE_W | PTE_X | PTE_A,
+            );
+            mapped_len = PGSIZE;
+        } else {
+            let total = src_len;
+            while mapped_len < total {
+                let pa = pmem::alloc(false) as PhysAddr;
+                let this_len = core::cmp::min(PGSIZE, total - mapped_len);
+                unsafe {
+                    core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE);
+                    core::ptr::copy_nonoverlapping(
+                        src_ptr.add(mapped_len),
+                        pa as *mut u8,
+                        this_len,
+                    );
+                }
+                let va = code_va + mapped_len;
+                vm::mappages(
+                    page_table,
+                    va,
+                    pa,
+                    PGSIZE,
+                    PTE_U | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D,
+                );
+                mapped_len += this_len;
+            }
+        }
+        self.entry_va = code_va;
+        self.heap_top = align_down(code_va + ((mapped_len + PGSIZE - 1) & !(PGSIZE - 1)));
+        self.heap_base = self.heap_top;
+    }
 }
 
 unsafe impl Send for Process {}
@@ -155,14 +271,6 @@ pub fn alloc() -> Option<&'static mut Process> {
     None
 }
 
-pub fn free(p: &mut Process) {
-    let page_table = unsafe { &mut *(p.root_pt_pa as *mut PageTable) };
-    // Free mmap regions
-    mmap::region_free(p.mmap_head);
-    // Destory page table;
-    page_table.destroy();
-}
-
 /*
 用户地址空间布局：
 trampoline  (1 page) 映射在最高地址
@@ -193,49 +301,14 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     proc.trapframe_va = trapframe_va;
     proc.trapframe = trapframe_pa as *mut TrapFrame;
     vm::mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
-    // Setup Protected Page
-    let empty_va = 0usize; // 最低的空闲页虚拟地址
-    let code_va = empty_va + PGSIZE;
-    let (src_ptr, src_len) = (payload.as_ptr(), payload.len());
-    let mut mapped_len = 0usize;
-    if src_len == 0 {
-        let code_pa = pmem::alloc(false) as PhysAddr;
-        unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
-        // Map first user page as code+data: allow writes for .data/.bss
-        vm::mappages(page_table, code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A);
-        mapped_len = PGSIZE;
-    } else {
-        let total = src_len;
-        while mapped_len < total {
-            let pa = pmem::alloc(false) as PhysAddr;
-            let this_len = core::cmp::min(PGSIZE, total - mapped_len);
-            unsafe {
-                core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE);
-                core::ptr::copy_nonoverlapping(src_ptr.add(mapped_len), pa as *mut u8, this_len);
-            }
-            let va = code_va + mapped_len;
-            // Map user code+data page writable to support globals (.data/.bss)
-            vm::mappages(
-                page_table,
-                va,
-                pa,
-                PGSIZE,
-                // 设置 A/D，避免因硬件访问/脏位产生异常
-                PTE_U | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D,
-            );
-            mapped_len += this_len;
-        }
-    }
-    proc.entry_va = code_va;
+    // Load payload
+    proc.exec(payload);
     // Setup Kernel Stack
     let kstack_pa = pmem::alloc(true) as PhysAddr;
     unsafe {
         core::ptr::write_bytes(kstack_pa as *mut u8, 0, PGSIZE);
     }
     proc.kernel_stack = kstack_pa + PGSIZE;
-    // Setup Heap
-    proc.heap_top = align_down(code_va + ((mapped_len + PGSIZE - 1) & !(PGSIZE - 1)));
-    proc.heap_base = proc.heap_top;
     // Setup initial user stack top (matches service/hello/link.ld)
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code
@@ -263,70 +336,4 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     // 设置进程状态为可运行
     proc.state = ProcState::Runnable;
     proc
-}
-
-pub fn launch(proc: &mut Process) {
-    // 直接使用内核可见的 TrapFrame 指针进入 trap_user_return（不返回）
-    printk!("PROC: Launching proc with pid={}", proc.pid);
-    let hart = hart::get();
-    hart.proc = proc as *mut Process;
-    unsafe {
-        switch_context(&mut hart.context, &mut proc.context);
-    }
-}
-
-// TODO: Copy-on-write fork
-pub fn fork(parent: &mut Process) -> &'static mut Process {
-    let child = alloc().expect("Failed to allocate process");
-    // Copy process state from parent to child
-    child.parent = parent as *mut Process;
-    child.entry_va = parent.entry_va;
-    child.user_sp_va = parent.user_sp_va;
-    // Copy page table
-    let parent_pt = unsafe { &*(parent.root_pt_pa as *const PageTable) };
-    let child_pt_pa = parent_pt.copy().expect("Failed to copy page table");
-    child.root_pt_pa = child_pt_pa;
-    // Copy heap info
-    child.heap_base = parent.heap_base;
-    child.heap_top = parent.heap_top;
-    // Copy stack size
-    child.stack_pages = parent.stack_pages;
-    // Copy TrapFrame
-    unsafe {
-        core::ptr::copy_nonoverlapping(parent.trapframe, child.trapframe, 1);
-    }
-    // Update child's TrapFrame to return 0 from fork
-    let child_tf = unsafe { &mut *child.trapframe };
-    child_tf.a0 = 0; // fork 返回值为0
-    let parent_tf = unsafe { &mut *parent.trapframe };
-    parent_tf.a0 = child.pid; // 父进程 fork 返回值为子进程 PID
-    // Set up child's kernel context to return to user space
-    child.context.sp = (child.kernel_stack) as usize;
-    child.state = ProcState::Runnable;
-    child
-}
-
-pub fn exit() {
-    let proc = unsafe {
-        let hart = hart::get();
-        &mut *hart.proc
-    };
-    // Free process resources
-    free(proc);
-    // Wake up parent if sleeping in wait()
-    if !proc.parent.is_null() {
-        let parent = unsafe { &mut *proc.parent } as *mut Process as usize;
-        wakeup(parent);
-    }
-    {
-        let mut table = PROC_TABLE.lock();
-        let init_ptr: *mut Process = table.as_mut_ptr();
-        for i in 0..NPROC {
-            let p = &mut table[i];
-            if p.parent == (proc as *mut Process) {
-                p.parent = init_ptr; // init process
-            }
-        }
-    }
-    proc.state = ProcState::Zombie;
 }

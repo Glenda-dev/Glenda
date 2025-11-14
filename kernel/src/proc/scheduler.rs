@@ -59,7 +59,7 @@ pub fn wait() {
         }
         if p.state == ProcState::Zombie {
             // Found a zombie child
-            process::free(p);
+            p.free();
         }
     }
     let proc_addr = proc as *mut process::Process as usize;
