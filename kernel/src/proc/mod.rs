@@ -22,5 +22,8 @@ pub fn current_user_satp() -> Option<usize> {
 
 pub fn current_proc() -> &'static mut Process {
     let hart = hart::get();
+    if hart.proc.is_null() {
+        panic!("current_proc: hart.proc is null");
+    }
     unsafe { &mut *hart.proc }
 }

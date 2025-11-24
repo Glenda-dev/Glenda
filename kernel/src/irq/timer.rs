@@ -34,6 +34,7 @@ pub fn create() {
 }
 pub fn update() {
     SYS_TICKS.fetch_add(1, Ordering::Relaxed);
+    crate::proc::scheduler::wakeup(&SYS_TICKS as *const _ as usize);
 }
 pub fn get_ticks() -> usize {
     SYS_TICKS.load(Ordering::Relaxed)
@@ -56,4 +57,10 @@ pub fn start(hartid: usize) {
     }
 }
 
-pub fn wait(ticks: usize) {}
+pub fn wait(ticks: usize) {
+    let start = get_ticks();
+    let target = start + ticks;
+    while get_ticks() < target {
+        crate::proc::scheduler::sleep(&SYS_TICKS as *const _ as usize);
+    }
+}

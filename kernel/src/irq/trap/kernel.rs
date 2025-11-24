@@ -50,9 +50,7 @@ fn exception_handler(
     if e == 8 {
         user::syscall_handler(ctx);
         // advance sepc to next instruction
-        unsafe {
-            sepc::write(epc.wrapping_add(4));
-        }
+        unsafe { sepc::write(epc.wrapping_add(4)); }
         return;
     }
 
@@ -87,9 +85,9 @@ fn interrupt_handler(
     match e {
         9 => external_handler(),
         // S-mode timer interrupt
-        5 => timer_handler_stip(),
+        5 => timer_handler_stip(sstatus_bits),
         // S-mode software interrupt
-        1 => timer_handler_ssip(),
+        1 => timer_handler_ssip(sstatus_bits),
         // 剩下的被认为是需要打印的内容
         _ => {
             printk!(
@@ -123,18 +121,26 @@ pub fn external_handler() {
     plic::complete(hartid, id);
 }
 
-pub fn timer_handler_ssip() {
+pub fn timer_handler_ssip(sstatus_bits: usize) {
     if hart::getid() == 0 {
         timer::update();
     }
     unsafe {
         sip::clear_pending(Interrupt::SupervisorSoft);
     }
+
+    if (sstatus_bits & (1 << 8)) == 0 {
+        proc::scheduler::yield_proc();
+    }
 }
 
-pub fn timer_handler_stip() {
+pub fn timer_handler_stip(sstatus_bits: usize) {
     if hart::getid() == 0 {
         timer::update();
     }
     timer::program_next_tick();
+
+    if (sstatus_bits & (1 << 8)) == 0 {
+        proc::scheduler::yield_proc();
+    }
 }

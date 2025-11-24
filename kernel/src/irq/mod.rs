@@ -23,3 +23,7 @@ pub fn init_hart(hartid: usize) {
     interrupt::enable_s();
     printk!("IRQ: Initialized for hart {}", hartid);
 }
+
+pub fn enable_s() {
+    interrupt::enable_s();
+}
