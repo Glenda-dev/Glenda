@@ -99,18 +99,34 @@ timer_vector_base:
 .align 2
 .globl timer_vector
 timer_vector:
-    // 交换 a0 和 mscratch，使用 a0 作为临时寄存器指针
+    // Swap a0 and mscratch. a0 now points to the scratch area (MSCRATCH[hartid]).
     csrrw a0, mscratch, a0
-    // 保存 a1, a2, a3 到 mscratch 指向的内存
-    sd a1, 0(a0)    // 偏移 0: a1
-    sd a2, 8(a0)    // 偏移 8: a2
-    sd a3, 16(a0)   // 偏移 16: a3
-    // 调用 Rust 中的处理函数
-    call timer_vector_body
-    // 恢复 a1, a2, a3
+
+    // Save a1, a2, a3 to the scratch area.
+    // Offsets match MSCRATCH layout: [a1_save, a2_save, a3_save, mtimecmp_addr, interval]
+    sd a1, 0(a0)
+    sd a2, 8(a0)
+    sd a3, 16(a0)
+
+    // Load mtimecmp address (offset 24) and interval (offset 32)
+    ld a1, 24(a0)
+    ld a2, 32(a0)
+
+    // Load current mtimecmp value
+    ld a3, 0(a1)
+    // Add interval
+    add a3, a3, a2
+    // Store new mtimecmp value
+    sd a3, 0(a1)
+
+    // Trigger S-mode software interrupt (SSIP is bit 1 of mip)
+    li a1, 2
+    csrs mip, a1
+
+    // Restore a1, a2, a3
     ld a3, 16(a0)
     ld a2, 8(a0)
     ld a1, 0(a0)
-    // 恢复 a0 并返回
+
     csrrw a0, mscratch, a0
     mret
