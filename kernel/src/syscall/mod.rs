@@ -5,7 +5,8 @@ pub mod brk;
 pub mod copy;
 pub mod helloworld;
 pub mod mmap;
-pub mod sys_proc;
+pub mod proc;
+pub mod util;
 
 // 对齐用户侧 include/kernel/syscall/num.h
 pub const SYS_HELLOWORLD: usize = 1;
@@ -33,13 +34,13 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_BRK => brk::sys_brk(ctx),
         n if n == SYS_MMAP => mmap::sys_mmap(ctx),
         n if n == SYS_MUNMAP => mmap::sys_munmap(ctx),
-        n if n == SYS_PRINT_STR => sys_proc::sys_print_str(ctx),
-        n if n == SYS_PRINT_INT => sys_proc::sys_print_int(ctx),
-        n if n == SYS_GETPID => sys_proc::sys_getpid(),
-        n if n == SYS_FORK => sys_proc::sys_fork(),
-        n if n == SYS_WAIT => sys_proc::sys_wait(ctx),
-        n if n == SYS_EXIT => sys_proc::sys_exit(ctx),
-        n if n == SYS_SLEEP => sys_proc::sys_sleep(ctx),
+        n if n == SYS_PRINT_STR => util::sys_print_str(ctx),
+        n if n == SYS_PRINT_INT => util::sys_print_int(ctx),
+        n if n == SYS_GETPID => proc::sys_getpid(),
+        n if n == SYS_FORK => proc::sys_fork(),
+        n if n == SYS_WAIT => proc::sys_wait(ctx),
+        n if n == SYS_EXIT => proc::sys_exit(ctx),
+        n if n == SYS_SLEEP => proc::sys_sleep(ctx),
         n => {
             printk!("SYSCALL: unknown number {}", n);
             usize::MAX
