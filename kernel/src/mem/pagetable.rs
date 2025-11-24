@@ -43,7 +43,8 @@ impl PageTable {
                 }
                 unsafe {
                     core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
-                    *pte_ref = pa_to_pte(new_table as usize, PTE_V); // 仅 V 置位表示中间层
+                    let new_pte = pa_to_pte(new_table as usize, PTE_V);
+                    *pte_ref = new_pte; // 仅 V 置位表示中间层
                 }
                 table = new_table;
             }
@@ -234,7 +235,7 @@ impl PageTable {
         }
     }
     // Destroy a 3-level Sv39 page table rooted at `root_pa`.
-    pub fn destroy(self) {
+    pub fn destroy(&mut self) {
         fn destroy_level(table_pa: usize) {
             let table = table_pa as *mut PageTable;
             for i in 0..super::PGNUM {
@@ -254,6 +255,11 @@ impl PageTable {
                     }
                 } else if pte::is_table(pte) {
                     let child_pa = pte_to_pa(pte);
+                    if child_pa == 0 {
+                         crate::printk!("[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}", pte);
+                         unsafe { (*table).entries[i] = 0; }
+                         continue;
+                    }
                     destroy_level(child_pa);
                     // free the child page table page (kernel pool)
                     pmem::free(child_pa, true);
@@ -263,7 +269,7 @@ impl PageTable {
                 }
             }
         }
-        let root_pa = &self as *const PageTable as usize;
+        let root_pa = self as *const PageTable as usize;
         destroy_level(root_pa);
         // finally free root table page
         pmem::free(root_pa, true);
@@ -274,8 +280,7 @@ impl PageTable {
     /// - For trapframe-like pages: allocate new kernel page and copy data.
     /// - For trampoline-like pages: reuse the same PA, do not copy.
     /// TODO: handle copy-on-write pages.
-    pub fn copy(self) -> Result<PhysAddr, UvmError> {
-        let src_root_pa = &self as *const PageTable as usize;
+    pub fn copy(&self) -> Result<PhysAddr, UvmError> {
         // allocate destination root
         let dst_root = pmem::alloc(true) as usize;
         if dst_root == 0 {
@@ -287,7 +292,7 @@ impl PageTable {
         let dst_pt = unsafe { &mut *(dst_root as *mut PageTable) };
 
         unsafe {
-            let l2 = src_root_pa as *const PageTable;
+            let l2 = self as *const PageTable;
             for i in 0..super::PGNUM {
                 let pte2 = (*l2).entries[i];
                 if !pte::is_valid(pte2) {
@@ -328,14 +333,15 @@ impl PageTable {
                         };
 
                         if (flags & PTE_U) != 0 {
-                            // user page
-                            let new_pa = pmem::alloc(false) as usize;
-                            if new_pa == 0 {
-                                return Err(UvmError::NoMem);
-                            }
-                            ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                            if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                return Err(UvmError::MapFailed);
+                            match pmem::get_region(pa) {
+                                Some(for_kernel) if !for_kernel => {
+                                    let new_pa = pmem::alloc(false) as usize;
+                                    if new_pa == 0 { return Err(UvmError::NoMem); }
+                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                }
+                                // FIXME: This is nonsense
+                                _ => {}
                             }
                         } else if (flags & PTE_X) != 0 {
                             // trampoline-like
@@ -343,14 +349,15 @@ impl PageTable {
                                 return Err(UvmError::MapFailed);
                             }
                         } else {
-                            // trapframe-like
-                            let new_pa = pmem::alloc(true) as usize;
-                            if new_pa == 0 {
-                                return Err(UvmError::NoMem);
-                            }
-                            ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                            if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                return Err(UvmError::MapFailed);
+                            // trapframe-like: must be in kernel region
+                            match pmem::get_region(pa) {
+                                Some(for_kernel) if for_kernel => {
+                                    let new_pa = pmem::alloc(true) as usize;
+                                    if new_pa == 0 { return Err(UvmError::NoMem); }
+                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                }
+                                _ => { /* skip invalid or user-mapped entries quietly */ }
                             }
                         }
                     }

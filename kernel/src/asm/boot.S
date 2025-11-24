@@ -2,7 +2,7 @@
     .globl _start
     .globl secondary_start
 
-    .equ BOOT_STACK_SIZE, 4096 // 4KB 启动栈
+    .equ BOOT_STACK_SIZE, 65536 // 64KB 启动栈
     .equ MAX_BOOT_HARTS, 8  // 最多 8 个 hart 并发启动
 
     .macro HART_ENTRY

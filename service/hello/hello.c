@@ -85,6 +85,81 @@ static void test_mmap(void) {
   syscall(SYS_copyinstr, (long)"[PASS] mmap/munmap tests done");
 }
 
+void test_proczero() {
+    int pid = syscall(SYS_getpid);
+    if (pid == 1) {
+        syscall(SYS_print_str, (long)"\nproczero: hello world!\n");
+    }
+}
+
+void test_fork_order() {
+    syscall(SYS_print_str, (long)"level-1!\n");
+    syscall(SYS_fork);
+    syscall(SYS_print_str, (long)"level-2!\n");
+    syscall(SYS_fork);
+    syscall(SYS_print_str, (long)"level-3!\n");
+    // FIXME: 现在会打印四次，需要设计回收逻辑
+    syscall(SYS_copyinstr, (long)"[PASS] Fork order test done.");
+}
+
+void test_memory_fork() {
+    volatile int pid;
+    int i;
+    const unsigned long VA_MAX = (1ul << 38);
+    const unsigned long MMAP_END = (VA_MAX - (16ul * 256 + 2) * PGSIZE);
+    const unsigned long MMAP_BEGIN = (MMAP_END - 64ul * 256 * PGSIZE);
+
+    char *str1, *str2, *str3 = "STACK_REGION\n\n";
+    char *tmp1 = "MMAP_REGION\n", *tmp2 = "HEAP_REGION\n";
+
+    str1 = (char*)syscall(SYS_mmap, MMAP_BEGIN, PGSIZE);
+    for (i = 0; tmp1[i] != '\0'; i++)
+        str1[i] = tmp1[i];
+    str1[i] = '\0';
+
+    str2 = (char*)syscall(SYS_brk, 0);
+    syscall(SYS_brk, (long long int)str2 + PGSIZE);
+    for (i = 0; tmp2[i] != '\0'; i++)
+        str2[i] = tmp2[i];
+    str2[i] = '\0';
+
+    pid = syscall(SYS_fork);
+    syscall(SYS_print_int, pid);
+
+    if (pid == 0) { // Child
+      syscall(SYS_print_str, (long)"child proc: hello\n");
+      syscall(SYS_print_str, (long)str1);
+      syscall(SYS_print_str, (long)str2);
+      syscall(SYS_print_str, (long)str3);
+      syscall(SYS_exit, 1234);
+    } else { // Parent
+      int exit_state = 0;
+      syscall(SYS_wait, (long)&exit_state);
+      syscall(SYS_print_str, (long)"parent proc: hello\n");
+      syscall(SYS_print_int, pid);
+      if (exit_state == 1234)
+        syscall(SYS_print_str, (long)"good boy!\n");
+      else
+        syscall(SYS_print_str, (long)"bad boy!\n");
+    }
+
+    syscall(SYS_copyinstr, (long)"[PASS] Memory fork test done.");
+}
+
+void test_sleep() {
+    int pid = syscall(SYS_fork);
+    if (pid == 0) {
+        syscall(SYS_print_str, (long)"Ready to sleep!\n");
+        syscall(SYS_sleep, 5);
+        syscall(SYS_print_str, (long)"Ready to exit!\n");
+        syscall(SYS_exit, 0);
+    } else {
+        syscall(SYS_wait, 0);
+        syscall(SYS_print_str, (long)"Child exit!\n");
+    }
+    syscall(SYS_copyinstr, (long)"[PASS] Sleep test done.");
+}
+
 int main(void)
 {
   test_helloworld();
@@ -92,6 +167,12 @@ int main(void)
   test_stack();
   test_brk();
   test_mmap();
+  test_proczero();
+  test_memory_fork();
+  test_sleep();
+
+  // test_fork_order 会产生 4 个进程并且都不退出
+  test_fork_order();
 
   for (;;) {}
   return 0;

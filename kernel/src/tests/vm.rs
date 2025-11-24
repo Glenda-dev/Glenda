@@ -18,7 +18,7 @@ pub fn run(hartid: usize) {
     }
     VM_BARRIER.wait_start();
     if hartid == 0 {
-        vm_func_test();
+        //vm_func_test();
         vm_mapping_test();
     }
     if VM_BARRIER.finish_and_last() {

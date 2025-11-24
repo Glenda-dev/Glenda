@@ -5,6 +5,7 @@ use crate::mem::{MMAP_BEGIN, MMAP_END, PageTable};
 use crate::proc::current_proc;
 
 pub fn sys_mmap(ctx: &mut TrapContext) -> usize {
+    crate::printk!("sys_mmap: begin=0x{:x}, len=0x{:x}", ctx.a0, ctx.a1);
     let begin = ctx.a0;
     let len = ctx.a1;
     let flags = 0;

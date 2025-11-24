@@ -80,6 +80,7 @@ pub fn init() {
 
 // Allocate a node from the warehouse and return a pointer to its embedded MmapRegion.
 pub fn region_alloc() -> *mut MmapRegion {
+    crate::printk!("region_alloc: enter");
     init();
     let mut warehouse = WAREHOUSE.lock();
     unsafe {

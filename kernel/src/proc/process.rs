@@ -16,10 +16,9 @@ use crate::proc::scheduler::wakeup;
 use core::sync::atomic::Ordering;
 use riscv::asm::wfi;
 use riscv::register::{satp, sscratch};
-// per-process lock is deferred; use global table lock for now
 
 unsafe extern "C" {
-    pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
+    pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
     fn trap_user_return(ctx: &mut ProcContext) -> !;
 }
 
@@ -124,11 +123,9 @@ impl Process {
     }
 
     pub fn exit(&mut self) {
-        // Free process resources
-        self.free();
         // Wake up parent if sleeping in wait()
         if !self.parent.is_null() {
-            let parent = unsafe { &mut *self.parent } as *mut Process as usize;
+            let parent = self.parent as usize;
             wakeup(parent);
         }
         {
@@ -145,22 +142,21 @@ impl Process {
     }
 
     pub fn launch(&mut self) {
-        // 直接使用内核可见的 TrapFrame 指针进入 trap_user_return（不返回）
-        printk!("PROC: Launching proc with pid={}", self.pid);
         let hart = hart::get();
         hart.proc = self as *mut Process;
-        unsafe {
-            switch_context(&mut hart.context, &mut self.context);
-        }
+        unsafe { switch_context(&mut hart.context, &mut self.context); }
     }
 
     // TODO: Copy-on-write fork
     pub fn fork(&mut self) -> &'static mut Process {
         let child = alloc().expect("Failed to allocate process");
+        // quiet fork path in release
         // Copy process state from parent to child
         child.parent = self as *mut Process;
         child.entry_va = self.entry_va;
         child.user_sp_va = self.user_sp_va;
+        child.trapframe_va = self.trapframe_va;
+
         // Copy page table
         let parent_pt = unsafe { &*(self.root_pt_pa as *const PageTable) };
         let child_pt_pa = parent_pt.copy().expect("Failed to copy page table");
@@ -170,17 +166,34 @@ impl Process {
         child.heap_top = self.heap_top;
         // Copy stack size
         child.stack_pages = self.stack_pages;
-        // Copy TrapFrame
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1);
-        }
+
+        // Allocate new TrapFrame page for child
+        let child_tf_pa = pmem::alloc(true) as PhysAddr;
+        child.trapframe = child_tf_pa as *mut TrapFrame;
+
+        // Allocate new Kernel Stack for child
+        let child_kstack_pa = pmem::alloc(true) as PhysAddr;
+        child.kernel_stack = child_kstack_pa + PGSIZE;
+
+        // Map new TrapFrame in child's page table (overwrite copied mapping)
+        let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
+        vm::unmappages(child_pt, child.trapframe_va, PGSIZE, false);
+        vm::mappages(child_pt, child.trapframe_va, child_tf_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+
+        // Copy TrapFrame content
+        unsafe { core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1); }
+
         // Update child's TrapFrame to return 0 from fork
         let child_tf = unsafe { &mut *child.trapframe };
         child_tf.a0 = 0; // fork 返回值为0
+        child_tf.kernel_epc = child_tf.kernel_epc.wrapping_add(4); // skip ecall
+        child_tf.kernel_sp = child.kernel_stack; // Use child's own kernel stack
+
         let parent_tf = unsafe { &mut *self.trapframe };
-        parent_tf.a0 = self.pid; // 父进程 fork 返回值为子进程 PID
-        // Set up child's kernel context to return to user space
+        // 父进程从 fork 返回子进程的 pid
+        parent_tf.a0 = child.pid;
         child.context.sp = (child.kernel_stack) as usize;
+        child.context.ra = trap_user_return as usize;
         child.state = ProcState::Runnable;
         child
     }
@@ -237,8 +250,7 @@ unsafe impl Sync for Process {}
 
 #[unsafe(no_mangle)]
 extern "C" fn proc_return() -> ! {
-    // TODO: Implement this
-    printk!("PROC: proc_return called");
+    crate::proc::scheduler::sched();
     loop {
         wfi();
     }
