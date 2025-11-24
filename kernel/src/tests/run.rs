@@ -2,6 +2,7 @@ use core::hint::spin_loop;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::barrier::FINAL_BARRIER;
+use crate::irq::interrupt;
 use crate::mem::vm;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET};
@@ -36,6 +37,7 @@ pub fn run_tests(hartid: usize) {
         }
     }
     vm::switch_to_kernel(hartid); // 恢复 VM，返回内核页表
+    interrupt::enable_s(); // 启用中断
 }
 
 pub fn run_tests_user(hartid: usize) {

@@ -1,5 +1,5 @@
 mod clint;
-mod interrupt;
+pub mod interrupt;
 mod plic;
 pub mod timer;
 pub mod trap;
@@ -22,8 +22,4 @@ pub fn init_hart(hartid: usize) {
     // 启用 S-mode 中断
     interrupt::enable_s();
     printk!("IRQ: Initialized for hart {}", hartid);
-}
-
-pub fn enable_s() {
-    interrupt::enable_s();
 }

@@ -74,7 +74,6 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     #[cfg(feature = "tests")]
     {
         tests::test(hartid);
-        crate::irq::enable_s();
     }
 
     if hartid == 0 {
