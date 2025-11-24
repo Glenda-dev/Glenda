@@ -1,7 +1,7 @@
 use super::UART;
 
 #[cfg(feature = "uart-unicode")]
-use crate::utf8::{CONSOLE_ECHO, Utf8PushResult, char_display_width};
+use crate::uart::utf8::{CONSOLE_ECHO, Utf8PushResult, char_display_width};
 
 pub fn handler() {
     let uart = UART.get().expect("UART not initialized in interrupt handler");
@@ -45,7 +45,8 @@ pub fn handler() {
                         con.decoder.clear();
                     }
                     let ch = b as char;
-                    uart.puts("{}", ch);
+                    let mut buf = [0u8; 4];
+                    uart.puts(ch.encode_utf8(&mut buf));
                     con.push_width(1);
                 }
                 _ => {
@@ -56,7 +57,8 @@ pub fn handler() {
                         }
                         Utf8PushResult::Completed(c) => {
                             let w = char_display_width(c);
-                            uart.puts("{}", c);
+                            let mut buf = [0u8; 4];
+                            uart.puts(c.encode_utf8(&mut buf));
                             con.push_width(w);
                         }
                         Utf8PushResult::Invalid => {

@@ -18,6 +18,11 @@ macro_rules! printk {
     ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk(format_args!(concat!($fmt, "\n"), $($arg)*)) };
 }
 
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => { crate::printk::_printk(format_args!($($arg)*)) };
+}
+
 pub const ANSI_RESET: &str = "\x1b[0m";
 pub const ANSI_RED: &str = "\x1b[31m";
 pub const ANSI_GREEN: &str = "\x1b[32m";
