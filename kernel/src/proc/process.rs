@@ -95,7 +95,7 @@ impl Process {
         use crate::printk;
 
         printk!(
-            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}",
+            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}\n",
             self.pid,
             self.root_pt_pa,
             self.heap_top,
@@ -144,7 +144,9 @@ impl Process {
     pub fn launch(&mut self) {
         let hart = hart::get();
         hart.proc = self as *mut Process;
-        unsafe { switch_context(&mut hart.context, &mut self.context); }
+        unsafe {
+            switch_context(&mut hart.context, &mut self.context);
+        }
     }
 
     // TODO: Copy-on-write fork
@@ -178,10 +180,18 @@ impl Process {
         // Map new TrapFrame in child's page table (overwrite copied mapping)
         let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
         vm::unmappages(child_pt, child.trapframe_va, PGSIZE, false);
-        vm::mappages(child_pt, child.trapframe_va, child_tf_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+        vm::mappages(
+            child_pt,
+            child.trapframe_va,
+            child_tf_pa,
+            PGSIZE,
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
 
         // Copy TrapFrame content
-        unsafe { core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1); }
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1);
+        }
 
         // Update child's TrapFrame to return 0 from fork
         let child_tf = unsafe { &mut *child.trapframe };

@@ -1,5 +1,4 @@
 use crate::irq::TrapContext;
-use crate::irq::timer;
 use crate::mem::PageTable;
 use crate::mem::uvm;
 use crate::printk;
@@ -14,7 +13,7 @@ pub fn sys_print_str(ctx: &mut TrapContext) -> usize {
         Ok(len) => {
             let s = &buf[..len.saturating_sub(1)];
             if let Ok(text) = core::str::from_utf8(s) {
-                crate::print!("{}", text);
+                printk!("{}", text);
             }
             0
         }

@@ -38,9 +38,9 @@ pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
                 continue;
             }
             match sbi_hart_start(target, start_addr, opaque) {
-                Ok(()) => printk!("HARTS: Started hart {} via SBI", target),
+                Ok(()) => printk!("HARTS: Started hart {} via SBI\n", target),
                 Err(err) => printk!(
-                    "{}HARTS: Failed to start hart {} via SBI: error {}{}",
+                    "{}HARTS: Failed to start hart {} via SBI: error {}{}\n",
                     ANSI_RED,
                     target,
                     err,

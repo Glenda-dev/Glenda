@@ -44,7 +44,7 @@ impl ProcContext {
     pub fn print(&self) {
         use crate::printk;
         printk!(
-            "ProcContext:\n  ra: 0x{:x}\n  sp: 0x{:x}\n  s0: 0x{:x}\n  s1: 0x{:x}\n  s2: 0x{:x}\n  s3: 0x{:x}\n  s4: 0x{:x}\n  s5: 0x{:x}\n  s6: 0x{:x}\n  s7: 0x{:x}\n  s8: 0x{:x}\n  s9: 0x{:x}\n  s10: 0x{:x}\n  s11: 0x{:x}",
+            "ProcContext:\n  ra: 0x{:x}\n  sp: 0x{:x}\n  s0: 0x{:x}\n  s1: 0x{:x}\n  s2: 0x{:x}\n  s3: 0x{:x}\n  s4: 0x{:x}\n  s5: 0x{:x}\n  s6: 0x{:x}\n  s7: 0x{:x}\n  s8: 0x{:x}\n  s9: 0x{:x}\n  s10: 0x{:x}\n  s11: 0x{:x}\n",
             self.ra,
             self.sp,
             self.s0,

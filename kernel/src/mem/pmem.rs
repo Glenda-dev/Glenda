@@ -33,7 +33,7 @@ pub fn initialize_regions(hartid: usize) {
     let alloc_end = mem_end;
     let total_free = alloc_end.saturating_sub(alloc_begin);
     printk!(
-        "PMEM: physical memory [{:#x}, {:#x}) -> {} MiB, free [{:#x}, {:#x}) -> {} MiB",
+        "PMEM: physical memory [{:#x}, {:#x}) -> {} MiB, free [{:#x}, {:#x}) -> {} MiB\n",
         mem_range.start,
         mem_end,
         mem_range.size / (1024 * 1024),
@@ -63,7 +63,7 @@ pub fn initialize_regions(hartid: usize) {
     debug_assert_eq!(u.end & (PGSIZE - 1), 0);
 
     printk!(
-        "PMEM: Initialized kernel [{:#x}, {:#x}) -> {} pages, user [{:#x}, {:#x}) -> {} pages on hart {}",
+        "PMEM: Initialized kernel [{:#x}, {:#x}) -> {} pages, user [{:#x}, {:#x}) -> {} pages on hart {}\n",
         k.begin,
         k.end,
         k.allocable,

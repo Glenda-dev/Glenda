@@ -1,5 +1,6 @@
 use crate::irq::TrapContext;
 use crate::printk;
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 
 pub mod brk;
 pub mod copy;
@@ -42,7 +43,7 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_EXIT => proc::sys_exit(ctx),
         n if n == SYS_SLEEP => proc::sys_sleep(ctx),
         n => {
-            printk!("SYSCALL: unknown number {}", n);
+            printk!("{}[WARN] SYSCALL: unknown number {}{}\n", ANSI_YELLOW, n, ANSI_RESET);
             usize::MAX
         }
     }

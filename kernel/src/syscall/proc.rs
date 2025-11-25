@@ -2,7 +2,6 @@ use crate::irq::TrapContext;
 use crate::irq::timer;
 use crate::mem::PageTable;
 use crate::mem::uvm;
-use crate::printk;
 use crate::proc::{current_proc, scheduler};
 
 pub fn sys_getpid() -> usize {

@@ -21,7 +21,7 @@ fn timer_tick_test(hartid: usize) {
         }
         timer::start(hartid);
         printk!(
-            "{}[TEST]{} Timer tick test start ({} harts)",
+            "{}[TEST]{} Timer tick test start ({} harts)\n",
             ANSI_YELLOW,
             ANSI_RESET,
             TIMER_BARRIER.total()
@@ -45,7 +45,7 @@ fn timer_tick_test(hartid: usize) {
             core::hint::spin_loop();
         }
         let delta = last.saturating_sub(base);
-        printk!("[hart {}] di da, ticks={}", hartid, delta);
+        printk!("[hart {}] di da, ticks={}\n", hartid, delta);
     }
 
     if TIMER_BARRIER.finish_and_last() {
@@ -61,20 +61,15 @@ fn uart_output_test(hartid: usize) {
     UART_BARRIER.ensure_inited(dtb::hart_count());
     if hartid == 0 {
         UART_BARRIER.init(dtb::hart_count());
-        printk!(
-            "{}[TEST]{} UART output test start ({} harts)",
-            ANSI_YELLOW,
-            ANSI_RESET,
-            UART_BARRIER.total()
-        );
+        printk!("[TEST] UART output test start ({} harts)\n", UART_BARRIER.total());
     }
     // 等待所有 hart 初始化完成
     while UART_BARRIER.total() == 0 {}
     UART_BARRIER.wait_start();
 
-    printk!("[hart {}] UART test", hartid);
+    printk!("[hart {}] UART test\n", hartid);
 
     if UART_BARRIER.finish_and_last() {
-        printk!("{}[PASS]{} UART output test", ANSI_GREEN, ANSI_RESET);
+        printk!("[PASS] UART output test\n");
     }
 }

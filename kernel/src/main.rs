@@ -52,22 +52,22 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     {
         match dtb_result {
             Ok(_) => {
-                printk!("Device tree blob at {:p}", dtb);
+                printk!("Device tree blob at {:p}\n", dtb);
                 printk!(
-                    "UART in use: base=0x{:x}, thr=0x{:x}, lsr=0x{:x}",
+                    "UART in use: base=0x{:x}, thr=0x{:x}, lsr=0x{:x}\n",
                     uart_cfg.base,
                     uart_cfg.thr_offset,
                     uart_cfg.lsr_offset
                 );
-                printk!("{} harts detected", dtb::hart_count());
+                printk!("{} harts detected\n", dtb::hart_count());
             }
             Err(err) => {
-                printk!("Device tree parsing failed: {:?}", err);
-                printk!("Falling back to QEMU-virt default UART @ 0x10000000");
+                printk!("Device tree parsing failed: {:?}\n", err);
+                printk!("Falling back to QEMU-virt default UART @ 0x10000000\n");
             }
         }
-        printk!("{}", LOGO);
-        printk!("{}Glenda microkernel booting{}", ANSI_BLUE, ANSI_RESET);
+        printk!("{}\n", LOGO);
+        printk!("{}Glenda microkernel booting{}\n", ANSI_BLUE, ANSI_RESET);
     }
 
     init(hartid, dtb);
@@ -78,18 +78,18 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
 
     if hartid == 0 {
         if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
-            printk!("Creating init process from payload...");
+            printk!("Creating init process from payload...\n");
             proc::process::create(PROC_PAYLOAD);
         } else {
-            printk!("Creating init process from fallback...");
+            printk!("Creating init process from fallback...\n");
             // wfi()
             proc::process::create(&[0x6f, 0x00, 0x00, 0x00]);
         }
-        printk!("Starting scheduler on hart 0...");
+        printk!("Starting scheduler on hart 0...\n");
         proc::scheduler::scheduler();
     }
 
-    printk!("{}Hart {} entering main loop{}", ANSI_BLUE, hartid, ANSI_RESET);
+    printk!("{}Hart {} entering main loop{}\n", ANSI_BLUE, hartid, ANSI_RESET);
     loop {
         wfi();
     }
@@ -97,7 +97,7 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
 
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
-    printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
+    printk!("{}PANIC{}: {}\n", ANSI_RED, ANSI_RESET, info);
     loop {
         wfi();
     }

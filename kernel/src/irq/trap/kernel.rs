@@ -50,7 +50,9 @@ fn exception_handler(
     if e == 8 {
         user::syscall_handler(ctx);
         // advance sepc to next instruction
-        unsafe { sepc::write(epc.wrapping_add(4)); }
+        unsafe {
+            sepc::write(epc.wrapping_add(4));
+        }
         return;
     }
 
@@ -62,7 +64,7 @@ fn exception_handler(
         }
     }
     printk!(
-        "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
+        "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
         ANSI_RED,
         ANSI_RESET,
         e,
@@ -91,7 +93,7 @@ fn interrupt_handler(
         // 剩下的被认为是需要打印的内容
         _ => {
             printk!(
-                "{}TRAP(Interrupt){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}",
+                "{}TRAP(Interrupt){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
                 ANSI_YELLOW,
                 ANSI_RESET,
                 e,

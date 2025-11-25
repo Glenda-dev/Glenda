@@ -11,7 +11,7 @@ pub fn run(hartid: usize) {
     if hartid == 0 {
         PRINTK_BARRIER.init(dtb::hart_count());
         printk!(
-            "{}[TEST]{} Printk test start ({} harts)",
+            "{}[TEST]{} Printk test start ({} harts)\n",
             ANSI_YELLOW,
             ANSI_RESET,
             PRINTK_BARRIER.total()
@@ -26,7 +26,7 @@ pub fn run(hartid: usize) {
 
     // 结束同步：最后一个 hart 输出 PASS
     if PRINTK_BARRIER.finish_and_last() {
-        printk!("{}[PASS]{} Printk test", ANSI_GREEN, ANSI_RESET);
+        printk!("{}[PASS]{} Printk test\n", ANSI_GREEN, ANSI_RESET);
     }
 }
 
@@ -42,7 +42,7 @@ fn printk_test(hart: usize) {
         _ => ANSI_WHITE,
     };
     printk!(
-        "{}[hart {}]{} Colors => {}Red{} {}Green{} {}Yellow{} {}Blue{} {}Magenta{} {}Cyan{} {}White{}",
+        "{}[hart {}]{} Colors => {}Red{} {}Green{} {}Yellow{} {}Blue{} {}Magenta{} {}Cyan{} {}White{}\n",
         color,
         hart,
         ANSI_RESET,

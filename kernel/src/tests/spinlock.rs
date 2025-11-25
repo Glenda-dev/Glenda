@@ -21,7 +21,7 @@ pub fn run(hartid: usize) {
     let total = dtb::hart_count();
     TEST_BARRIER.ensure_inited(total);
     if START_PRINTED.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
-        printk!("{}[TEST]{} Spinlock test start ({} harts)", ANSI_YELLOW, ANSI_RESET, total);
+        printk!("{}[TEST]{} Spinlock test start ({} harts)\n", ANSI_YELLOW, ANSI_RESET, total);
     }
 
     // 启动栅栏（所有核一致开始）
@@ -30,7 +30,7 @@ pub fn run(hartid: usize) {
         // 只有第一个到达 wait_start 阶段且尚未打印过 ready 的情况下打印（允许多核初次阶段交错）
         if hartid == 0 {
             printk!(
-                "{}All {} harts ready. Starting spinlock test{}",
+                "{}All {} harts ready. Starting spinlock test{}\n",
                 ANSI_BLUE,
                 TEST_BARRIER.total(),
                 ANSI_RESET
@@ -55,7 +55,7 @@ pub fn run(hartid: usize) {
             expected, final_value
         );
         printk!(
-            "{}[PASS]{} Spinlock test: counter reached {}",
+            "{}[PASS]{} Spinlock test: counter reached {}\n",
             ANSI_GREEN,
             ANSI_RESET,
             final_value

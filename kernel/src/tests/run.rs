@@ -25,7 +25,7 @@ pub fn run_tests(hartid: usize) {
     let last = FINAL_BARRIER.finish_and_last();
     if last {
         printk!(
-            "{}All tests completed across {} harts{}",
+            "{}All tests completed across {} harts{}\n",
             ANSI_GREEN,
             FINAL_BARRIER.total(),
             ANSI_RESET

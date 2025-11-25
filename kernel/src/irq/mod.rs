@@ -13,7 +13,7 @@ pub fn init() {
     timer::create();
     // 使能 UART 接收中断
     drivers::uart::irq::enable();
-    printk!("IRQ: Initialized global IRQs");
+    printk!("IRQ: Initialized global IRQs\n");
 }
 
 pub fn init_hart(hartid: usize) {
@@ -21,5 +21,5 @@ pub fn init_hart(hartid: usize) {
     vector::init();
     // 启用 S-mode 中断
     interrupt::enable_s();
-    printk!("IRQ: Initialized for hart {}", hartid);
+    printk!("IRQ: Initialized for hart {}\n", hartid);
 }

@@ -16,18 +16,18 @@ pub fn run(hartid: usize) {
     if hartid != 0 {
         return;
     }
-    printk!("{}[TEST]{} Starting syscall tests on hart {}", ANSI_YELLOW, ANSI_RESET, hartid);
+    printk!("{}[TEST]{} Starting syscall tests on hart {}\n", ANSI_YELLOW, ANSI_RESET, hartid);
     launch_test_proc();
-    printk!("{}[PASS]{} Syscall tests", ANSI_GREEN, ANSI_RESET);
+    printk!("{}[PASS]{} Syscall tests\n", ANSI_GREEN, ANSI_RESET);
 }
 
 fn launch_test_proc() {
     if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
-        printk!("Launching external test payload");
+        printk!("Launching external test payload\n");
         let mut proc = process::create(&PROC_PAYLOAD);
         proc.launch();
     } else {
-        printk!("Launching internal test payload");
+        printk!("Launching internal test payload\n");
         let mut proc = process::create(&USER_INIT_CODE);
         proc.launch();
     }

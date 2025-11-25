@@ -1,3 +1,5 @@
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
+
 use super::addr::{align_down, align_up, vpn};
 use super::pmem::{self, get_region};
 use super::pte::{self, PTE_U, PTE_V, PTE_X, Pte, pa_to_pte, pte_to_pa};
@@ -142,6 +144,7 @@ impl PageTable {
         }
         true
     }
+    // TODO: Assert
     #[cfg(debug_assertions)]
     pub fn print(&self) {
         use crate::printk;
@@ -160,7 +163,7 @@ impl PageTable {
         }
 
         let pgtbl_2 = self as *const PageTable as usize;
-        printk!("L2 PT @ 0x{:x}", pgtbl_2);
+        printk!("L2 PT @ 0x{:x}\n", pgtbl_2);
 
         for i in 0..PGNUM {
             let pte2 = unsafe { (*(pgtbl_2 as *const PageTable)).entries[i] };
@@ -168,21 +171,21 @@ impl PageTable {
                 continue;
             }
             if !pte::is_table(pte2) {
-                printk!("ASSERT: L2 entry is not table, i={}", i);
+                printk!("ASSERT: L2 entry is not table, i={}\n", i);
                 return;
             }
 
             let pgtbl_1_pa = pte_to_pa(pte2);
             if (pgtbl_1_pa & (PGSIZE - 1)) != 0 {
-                printk!("ASSERT: L1 pa not page-aligned: 0x{:x}", pgtbl_1_pa);
+                printk!("ASSERT: L1 pa not page-aligned: 0x{:x}\n", pgtbl_1_pa);
                 return;
             }
             if !pa_in_any_region(pgtbl_1_pa) {
-                printk!("ASSERT: L1 pa out of region: 0x{:x}", pgtbl_1_pa);
+                printk!("ASSERT: L1 pa out of region: 0x{:x}\n", pgtbl_1_pa);
                 return;
             }
 
-            printk!(".. L1[{}] pa=0x{:x}", i, pgtbl_1_pa);
+            printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa);
 
             let pgtbl_1 = pgtbl_1_pa as *const PageTable;
             for j in 0..PGNUM {
@@ -191,21 +194,21 @@ impl PageTable {
                     continue;
                 }
                 if !pte::is_table(pte1) {
-                    printk!("ASSERT: L1 entry is not table, j={}", j);
+                    printk!("ASSERT: L1 entry is not table, j={}\n", j);
                     return;
                 }
 
                 let pgtbl_0_pa = pte_to_pa(pte1);
                 if (pgtbl_0_pa & (PGSIZE - 1)) != 0 {
-                    printk!("ASSERT: L0 pa not page-aligned: 0x{:x}", pgtbl_0_pa);
+                    printk!("ASSERT: L0 pa not page-aligned: 0x{:x}\n", pgtbl_0_pa);
                     return;
                 }
                 if !pa_in_any_region(pgtbl_0_pa) {
-                    printk!("ASSERT: L0 pa out of region: 0x{:x}", pgtbl_0_pa);
+                    printk!("ASSERT: L0 pa out of region: 0x{:x}\n", pgtbl_0_pa);
                     return;
                 }
 
-                printk!(".. .. L0[{}] pa=0x{:x}", j, pgtbl_0_pa);
+                printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa);
 
                 let pgtbl_0 = pgtbl_0_pa as *const PageTable;
                 for k in 0..PGNUM {
@@ -214,7 +217,7 @@ impl PageTable {
                         continue;
                     }
                     if !pte::is_leaf(pte0) {
-                        printk!("ASSERT: L0 entry not leaf, k={}", k);
+                        printk!("ASSERT: L0 entry not leaf, k={}\n", k);
                         return;
                     }
 
@@ -224,7 +227,7 @@ impl PageTable {
                     let flags = pte::get_flags(pte0);
 
                     printk!(
-                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags=0x{:x}",
+                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags=0x{:x}\n",
                         k,
                         va,
                         pa,
@@ -256,9 +259,16 @@ impl PageTable {
                 } else if pte::is_table(pte) {
                     let child_pa = pte_to_pa(pte);
                     if child_pa == 0 {
-                         crate::printk!("[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}", pte);
-                         unsafe { (*table).entries[i] = 0; }
-                         continue;
+                        crate::printk!(
+                            "{}[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}{}\n",
+                            ANSI_YELLOW,
+                            pte,
+                            ANSI_RESET
+                        );
+                        unsafe {
+                            (*table).entries[i] = 0;
+                        }
+                        continue;
                     }
                     destroy_level(child_pa);
                     // free the child page table page (kernel pool)
@@ -336,9 +346,17 @@ impl PageTable {
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if !for_kernel => {
                                     let new_pa = pmem::alloc(false) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
                                 // FIXME: This is nonsense
                                 _ => {}
@@ -353,9 +371,17 @@ impl PageTable {
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if for_kernel => {
                                     let new_pa = pmem::alloc(true) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
                                 _ => { /* skip invalid or user-mapped entries quietly */ }
                             }

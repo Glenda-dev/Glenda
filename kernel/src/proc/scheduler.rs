@@ -3,8 +3,8 @@ use super::ProcState;
 use super::Process;
 use super::table::{NPROC, PROC_TABLE};
 use crate::hart;
-use riscv::register::sstatus;
 use crate::printk;
+use riscv::register::sstatus;
 
 unsafe extern "C" {
     fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
@@ -13,7 +13,9 @@ unsafe extern "C" {
 pub fn scheduler() {
     loop {
         // Avoid deadlocks
-        unsafe { sstatus::clear_sie(); }
+        unsafe {
+            sstatus::clear_sie();
+        }
 
         let mut found = false;
         for i in 0..NPROC {
@@ -41,7 +43,9 @@ pub fn scheduler() {
         }
         if !found {
             // Enable interrupts to allow timer to fire and wake up processes
-            unsafe { sstatus::set_sie(); }
+            unsafe {
+                sstatus::set_sie();
+            }
             riscv::asm::wfi();
         }
     }
@@ -134,7 +138,7 @@ pub fn wait() -> Option<(usize, i32)> {
                     pt.destroy();
                 }
             } else {
-                printk!("wait(): zombie had root_pt_pa=0 (pid={})", pid);
+                printk!("wait(): zombie had root_pt_pa=0 (pid={})\n", pid);
             }
             if zombie_kernel_stack_top != 0 {
                 let base = zombie_kernel_stack_top.saturating_sub(crate::mem::PGSIZE);

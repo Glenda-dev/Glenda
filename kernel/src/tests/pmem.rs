@@ -45,7 +45,7 @@ unsafe impl Sync for HartSlotTable {}
 static PAGE_SLOTS: HartSlotTable = HartSlotTable::new();
 
 pub fn run(hartid: usize) {
-    printk!("{}[TEST]{} PMEM test started on hart {}", ANSI_YELLOW, ANSI_RESET, hartid);
+    printk!("{}[TEST]{} PMEM test started on hart {}\n", ANSI_YELLOW, ANSI_RESET, hartid);
     kernel_concurrent_alloc_test(hartid);
 
     if hartid == 0 {
@@ -55,7 +55,7 @@ pub fn run(hartid: usize) {
         }
         // 再进行 user region 测试，避免与并发阶段重叠
         user_region_validation();
-        printk!("{}[PASS]{} PMEM test", ANSI_GREEN, ANSI_RESET);
+        printk!("{}[PASS]{} PMEM test\n", ANSI_GREEN, ANSI_RESET);
         ALL_DONE.store(true, Ordering::Release);
     } else {
         // 非 hart0：等待整个测试完成
@@ -91,14 +91,14 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
     let active = ACTIVE_HARTS.load(Ordering::Acquire);
     if active == 0 {
         if hartid == 0 {
-            printk!("pmem::kernel_concurrent: kernel region empty (allocable=0)");
+            printk!("pmem::kernel_concurrent: kernel region empty (allocable=0)\n");
             // 立即标记完成
             TEST_DONE.store(true, Ordering::Release);
         }
         return;
     }
     if hartid >= active {
-        printk!("pmem::kernel_concurrent: hart {} idle ({} active)", hartid, active);
+        printk!("pmem::kernel_concurrent: hart {} idle ({} active)\n", hartid, active);
         // 等待测试整体完成
         while !TEST_DONE.load(Ordering::Acquire) {
             spin_loop();
@@ -142,7 +142,7 @@ fn kernel_concurrent_alloc_test(hartid: usize) {
             "pmem::kernel_concurrent: final allocable {} expected {}",
             final_info.allocable, expected
         );
-        printk!("pmem::kernel_concurrent: {} pages restored", expected);
+        printk!("pmem::kernel_concurrent: {} pages restored\n", expected);
         TEST_DONE.store(true, Ordering::SeqCst); // 仅表示 kernel 并发部分结束
     } else {
         while !TEST_DONE.load(Ordering::Acquire) {
@@ -207,7 +207,7 @@ fn user_region_validation() {
     assert!(zero_verified, "pmem::user_region: zero check failed");
 
     assert!(exhaust_user_region(), "pmem::user_region: exhaustion test failed");
-    printk!("pmem::user_region: allocation/free/zero validated");
+    printk!("pmem::user_region: allocation/free/zero validated\n");
 }
 
 fn is_zeroed(page: usize) -> bool {

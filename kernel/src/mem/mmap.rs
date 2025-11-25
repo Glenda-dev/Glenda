@@ -74,19 +74,19 @@ pub fn init() {
             node_i.next = if i + 1 < N_MMAP { unsafe { base.add(i + 1) as usize } } else { 0 };
         }
         warehouse.head.next = base as usize;
-        printk!("MMAP: initialized warehouse (nodes = {})", N_MMAP);
+        printk!("MMAP: initialized warehouse (nodes = {})\n", N_MMAP);
     });
 }
 
 // Allocate a node from the warehouse and return a pointer to its embedded MmapRegion.
 pub fn region_alloc() -> *mut MmapRegion {
-    crate::printk!("region_alloc: enter");
+    printk!("region_alloc: enter\n");
     init();
     let mut warehouse = WAREHOUSE.lock();
     unsafe {
         let head_next = warehouse.head.next as *mut MmapRegionNode;
         if head_next.is_null() {
-            printk!("MMAP: region_alloc failed - out of nodes!");
+            printk!("MMAP: region_alloc failed - out of nodes!\n");
             return null_mut();
         }
         let first = head_next;
@@ -94,7 +94,7 @@ pub fn region_alloc() -> *mut MmapRegion {
         (*first).next = 0;
         (*first).mmap = MmapRegion::zero();
         if let Some(idx) = node_index(first, &*warehouse) {
-            printk!("MMAP: alloc node index = {}", idx);
+            printk!("MMAP: alloc node index = {}\n", idx);
         }
         &mut (*first).mmap as *mut MmapRegion
     }
@@ -112,7 +112,7 @@ pub fn region_free(region: *mut MmapRegion) {
         let node_ptr = (region as usize - offset_of!(MmapRegionNode, mmap)) as *mut MmapRegionNode;
         (*node_ptr).mmap = MmapRegion::zero();
         if let Some(idx) = node_index(node_ptr, &*warehouse) {
-            printk!("MMAP: free node index = {}", idx);
+            printk!("MMAP: free node index = {}\n", idx);
         }
         (*node_ptr).next = warehouse.head.next;
         warehouse.head.next = node_ptr as usize;
@@ -136,6 +136,7 @@ pub fn print_nodelist() {
             }
             p = (*p).next as *mut MmapRegionNode;
         }
+        printk!("\n");
     }
 }
 
@@ -158,5 +159,6 @@ pub fn print_mmaplist(mut head: *mut MmapRegion) {
         if first {
             printk!("  <empty>");
         }
+        printk!("\n");
     }
 }

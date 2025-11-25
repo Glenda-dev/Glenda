@@ -1,11 +1,13 @@
 use crate::irq::TrapContext;
 use crate::mem::mmap;
 use crate::mem::uvm;
+use crate::mem::vm;
 use crate::mem::{MMAP_BEGIN, MMAP_END, PageTable};
+use crate::printk;
 use crate::proc::current_proc;
 
 pub fn sys_mmap(ctx: &mut TrapContext) -> usize {
-    crate::printk!("sys_mmap: begin=0x{:x}, len=0x{:x}", ctx.a0, ctx.a1);
+    printk!("sys_mmap: begin=0x{:x}, len=0x{:x}\n", ctx.a0, ctx.a1);
     let begin = ctx.a0;
     let len = ctx.a1;
     let flags = 0;
@@ -16,7 +18,7 @@ pub fn sys_mmap(ctx: &mut TrapContext) -> usize {
             #[cfg(feature = "tests")]
             {
                 mmap::print_mmaplist(p.mmap_head);
-                crate::mem::vm::print(pt);
+                vm::print(pt);
             }
             va
         }
@@ -34,7 +36,7 @@ pub fn sys_munmap(ctx: &mut TrapContext) -> usize {
             #[cfg(feature = "tests")]
             {
                 mmap::print_mmaplist(p.mmap_head);
-                crate::mem::vm::print(pt);
+                vm::print(pt);
             }
             0
         }

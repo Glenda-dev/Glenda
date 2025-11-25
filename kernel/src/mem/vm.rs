@@ -8,6 +8,7 @@ use super::{PageTable, PhysAddr, VirtAddr};
 use crate::dtb;
 use crate::irq::vector;
 use crate::printk;
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::{Mutex, Once};
@@ -32,7 +33,7 @@ static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
 pub fn map_kstack0() {
     KSTACK0_INIT.call_once(|| {
         let pa = pmem::alloc(true) as PhysAddr;
-        printk!("VM: KSTACK(0) assigned PA={:p} (identity-mapped)", pa as *const u8);
+        printk!("VM: KSTACK(0) assigned PA={:p} (identity-mapped)\n", pa as *const u8);
         *KSTACK0_PA.lock() = Some(pa);
     });
 }
@@ -40,7 +41,7 @@ pub fn map_kstack0() {
 #[inline(always)]
 pub fn kstack_base(procid: usize) -> VirtAddr {
     assert!(procid == 0, "only KSTACK(0) is supported in LAB4");
-    *KSTACK0_PA.lock().as_ref().expect("KSTACK(0) not initialized")
+    *KSTACK0_PA.lock().as_ref().expect("KSTACK(0) not initialized\n")
 }
 
 #[inline(always)]
@@ -51,19 +52,19 @@ pub fn kstack_top(procid: usize) -> VirtAddr {
 pub fn getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
     match table.lookup(va) {
         Some(p) => p,
-        None => panic!("vm_getpte: failed for VA {:#x}", va),
+        None => panic!("vm_getpte: failed for VA {:#x}\n", va),
     }
 }
 
 pub fn mappages(table: &mut PageTable, va: VirtAddr, pa: PhysAddr, size: usize, perm: usize) {
     if !table.map(va, pa, size, perm) {
-        panic!("vm_mappages: failed map VA {:#x} -> PA {:#x}", va, pa);
+        panic!("vm_mappages: failed map VA {:#x} -> PA {:#x}\n", va, pa);
     }
 }
 
 pub fn unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: bool) {
     if !table.unmap(va, size, free) {
-        panic!("vm_unmappages: failed unmap VA {:#x}", va);
+        panic!("vm_unmappages: failed unmap VA {:#x}\n", va);
     }
 }
 
@@ -86,7 +87,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let text_start_addr = unsafe { &__text_start as *const u8 as usize };
         let text_end_addr = unsafe { &__text_end as *const u8 as usize };
         printk!(
-            "VM: Map .text [{:p}, {:p})",
+            "VM: Map .text [{:p}, {:p})\n",
             text_start_addr as *const u8,
             text_end_addr as *const u8
         );
@@ -101,7 +102,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let rodata_start_addr = unsafe { &__rodata_start as *const u8 as usize };
         let rodata_end_addr = unsafe { &__rodata_end as *const u8 as usize };
         printk!(
-            "VM: Map .rodata [{:p}, {:p})",
+            "VM: Map .rodata [{:p}, {:p})\n",
             rodata_start_addr as *const u8,
             rodata_end_addr as *const u8
         );
@@ -116,7 +117,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let data_start_addr = unsafe { &__data_start as *const u8 as usize };
         let data_end_addr = unsafe { &__data_end as *const u8 as usize };
         printk!(
-            "VM: Map .data [{:p}, {:p})",
+            "VM: Map .data [{:p}, {:p})\n",
             data_start_addr as *const u8,
             data_end_addr as *const u8
         );
@@ -131,7 +132,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let bss_start_addr = unsafe { &__bss_start as *const u8 as usize };
         let bss_end_addr = unsafe { &__bss_end as *const u8 as usize };
         printk!(
-            "VM: Map .bss [{:p}, {:p})",
+            "VM: Map .bss [{:p}, {:p})\n",
             bss_start_addr as *const u8,
             bss_end_addr as *const u8
         );
@@ -147,7 +148,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let tramp_pa = align_down(vector::trampoline as usize);
         let tramp_va = super::VA_MAX - super::PGSIZE;
         printk!(
-            "VM: Map TRAMPOLINE VA={:p} -> PA={:p}",
+            "VM: Map TRAMPOLINE VA={:p} -> PA={:p}\n",
             tramp_va as *const u8,
             tramp_pa as *const u8
         );
@@ -156,22 +157,30 @@ pub fn init_kernel_vm(hartid: usize) {
         // MMIO 映射
         let uart_base = dtb::uart_config().unwrap_or(drivers::uart::DEFAULT_QEMU_VIRT).base;
         let uart_size = PGSIZE;
-        printk!("VM: Map UART @ {:p}", uart_base as *const u8);
+        printk!("VM: Map UART @ {:p}\n", uart_base as *const u8);
         mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
 
         // PLIC 映射
         let plic_base = match dtb::plic_base() {
             Some(b) => b,
             None => {
-                printk!("[WARNING] PLIC not found in DTB; skipping PLIC mapping");
-                printk!("[WARNING] External interrupts may fault under VM");
+                printk!(
+                    "{}[WARN] PLIC not found in DTB; skipping PLIC mapping{}\n",
+                    ANSI_YELLOW,
+                    ANSI_RESET
+                );
+                printk!(
+                    "{}[WARN] External interrupts may fault under VM{}\n",
+                    ANSI_YELLOW,
+                    ANSI_RESET
+                );
                 return;
             }
         };
         let plic_low_start = plic_base;
         let plic_low_end = plic_base + 0x3000;
         printk!(
-            "VM: Map PLIC low [{:p}, {:p})",
+            "VM: Map PLIC low [{:p}, {:p})\n",
             plic_low_start as *const u8,
             plic_low_end as *const u8
         );
@@ -188,7 +197,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let max_ctx_index = if harts > 0 { (harts - 1) * 2 + 1 } else { 1 };
         let plic_ctx_end = plic_ctx_start + (max_ctx_index + 1) * 0x1000;
         printk!(
-            "VM: Map PLIC ctx [{:p}, {:p})",
+            "VM: Map PLIC ctx [{:p}, {:p})\n",
             plic_ctx_start as *const u8,
             plic_ctx_end as *const u8
         );
@@ -206,7 +215,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let map_end = align_up(kernel_info.end);
         if map_start < map_end {
             printk!(
-                "VM: Map kernel pool [{:p}, {:p})",
+                "VM: Map kernel pool [{:p}, {:p})\n",
                 map_start as *const u8,
                 map_end as *const u8
             );
@@ -218,7 +227,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let user_end = align_up(user.end);
         if user_start < user_end {
             printk!(
-                "VM: Map user pool [{:p}, {:p})",
+                "VM: Map user pool [{:p}, {:p})\n",
                 user_start as *const u8,
                 user_end as *const u8
             );
@@ -230,7 +239,7 @@ pub fn init_kernel_vm(hartid: usize) {
                 PTE_R | PTE_W | PTE_A | PTE_D,
             );
         }
-        printk!("VM: Root page table built by hart {}", hartid);
+        printk!("VM: Root page table built by hart {}\n", hartid);
     });
     map_kstack0();
 }
@@ -246,7 +255,7 @@ pub fn switch_to_kernel(hartid: usize) {
         // flush all TLB entries
         sfence_vma_all();
     }
-    printk!("VM: Hart {} switched to kernel page table", hartid);
+    printk!("VM: Hart {} switched to kernel page table\n", hartid);
 }
 
 pub fn switch_off(hartid: usize) {
@@ -254,5 +263,5 @@ pub fn switch_off(hartid: usize) {
         satp::set(satp::Mode::Bare, 0, 0);
         sfence_vma_all();
     }
-    printk!("VM: Hart {} switching off VM", hartid);
+    printk!("VM: Hart {} switching off VM\n", hartid);
 }

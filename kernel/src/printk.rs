@@ -13,14 +13,8 @@ pub fn _printk(args: core::fmt::Arguments) {
 }
 #[macro_export]
 macro_rules! printk {
-    () => { crate::printk::_printk(format_args!("\n")) };
-    ($fmt:expr) => { crate::printk::_printk(format_args!(concat!($fmt, "\n"))) };
-    ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk(format_args!(concat!($fmt, "\n"), $($arg)*)) };
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => { crate::printk::_printk(format_args!($($arg)*)) };
+    ($fmt:expr) => { crate::printk::_printk(format_args!($fmt)) };
+    ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk(format_args!($fmt, $($arg)*)) };
 }
 
 pub const ANSI_RESET: &str = "\x1b[0m";
