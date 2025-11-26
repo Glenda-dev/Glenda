@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod drivers;
 mod dtb;
 mod hart;
 mod init;
@@ -37,39 +38,6 @@ include!("../../target/proc_payload.rs");
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
-    // 解析设备树
-    let dtb_result = dtb::init(dtb);
-
-    // 初始化串口驱动
-    let uart_cfg = dtb::uart_config().unwrap_or(drivers::uart::DEFAULT_QEMU_VIRT);
-    drivers::uart::init(uart_cfg);
-
-    static START_BANNER_PRINTED: AtomicBool = AtomicBool::new(false);
-
-    if START_BANNER_PRINTED
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
-        match dtb_result {
-            Ok(_) => {
-                printk!("Device tree blob at {:p}\n", dtb);
-                printk!(
-                    "UART in use: base=0x{:x}, thr=0x{:x}, lsr=0x{:x}\n",
-                    uart_cfg.base,
-                    uart_cfg.thr_offset,
-                    uart_cfg.lsr_offset
-                );
-                printk!("{} harts detected\n", dtb::hart_count());
-            }
-            Err(err) => {
-                printk!("Device tree parsing failed: {:?}\n", err);
-                printk!("Falling back to QEMU-virt default UART @ 0x10000000\n");
-            }
-        }
-        printk!("{}\n", LOGO);
-        printk!("{}Glenda microkernel booting{}\n", ANSI_BLUE, ANSI_RESET);
-    }
-
     init(hartid, dtb);
     #[cfg(feature = "tests")]
     {

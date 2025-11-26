@@ -4,12 +4,12 @@ pub mod irq;
 #[cfg(feature = "uart-unicode")]
 pub mod utf8;
 
+use crate::dtb;
 use core::cmp;
 use core::fmt::{self, Write};
 use core::ptr::{read_volatile, write_volatile};
-use spin::Once;
-
 use fdt::node::FdtNode;
+use spin::Once;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
@@ -157,4 +157,12 @@ fn is_ns16550_compatible(node: &FdtNode<'_, '_>) -> bool {
     node.compatible()
         .map(|compat| compat.all().any(|name| name.contains("ns16550")))
         .unwrap_or(false)
+}
+
+pub fn initialize_from_dtb(dtb: *const u8) {
+    if let Some(cfg) = dtb::uart_config() {
+        init(cfg);
+    } else {
+        init(DEFAULT_QEMU_VIRT);
+    }
 }

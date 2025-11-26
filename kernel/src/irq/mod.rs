@@ -6,6 +6,7 @@ pub mod trap;
 pub mod vector;
 pub use trap::{TrapContext, TrapFrame};
 
+use crate::drivers;
 use crate::printk;
 
 pub fn init() {

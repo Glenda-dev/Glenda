@@ -5,6 +5,7 @@ use super::addr::{align_down, align_up};
 use super::pmem::{self, kernel_region_info, user_region_info};
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_W, PTE_X, Pte};
 use super::{PageTable, PhysAddr, VirtAddr};
+use crate::drivers;
 use crate::dtb;
 use crate::irq::vector;
 use crate::printk;

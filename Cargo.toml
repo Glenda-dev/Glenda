@@ -1,9 +1,5 @@
 [workspace]
-members = [
-  "kernel",
-  "drivers",
-  "xtask",
-]
+members = ["kernel", "xtask"]
 resolver = "2"
 
 [profile.dev]

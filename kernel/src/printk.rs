@@ -1,5 +1,5 @@
+use crate::drivers::uart::_print;
 use crate::hart;
-use drivers::uart::_print;
 use spin::Mutex;
 
 static PRINTK_LOCK: Mutex<()> = Mutex::new(());

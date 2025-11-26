@@ -4,6 +4,7 @@ use super::super::plic;
 use super::super::timer;
 use super::user;
 use super::{EXCEPTION_INFO, INTERRUPT_INFO};
+use crate::drivers;
 use crate::hart;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};

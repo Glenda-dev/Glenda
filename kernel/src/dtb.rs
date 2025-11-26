@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
+use crate::drivers::uart::Config as UartConfig;
+use crate::printk;
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicU8, Ordering};
-
-use drivers::uart::Config as UartConfig;
 use fdt::Fdt;
 
 #[derive(Debug, Clone, Copy)]
@@ -128,7 +128,7 @@ unsafe impl Sync for DeviceTreeCell {}
 
 static DEVICE_TREE: DeviceTreeCell = DeviceTreeCell::new();
 
-pub fn init(dtb: *const u8) -> Result<&'static DeviceTreeInfo, fdt::FdtError> {
+fn _init(dtb: *const u8) -> Result<&'static DeviceTreeInfo, fdt::FdtError> {
     DEVICE_TREE
         .get_or_try_init(|| unsafe { Fdt::from_ptr(dtb) }.map(|fdt| DeviceTreeInfo::new(&fdt)))
 }
@@ -200,4 +200,18 @@ fn parse_plic_base(fdt: &Fdt) -> Option<usize> {
         }
     }
     None
+}
+
+pub fn init(dtb: *const u8) {
+    // 解析设备树
+    let dtb_result = _init(dtb);
+    match dtb_result {
+        Ok(_) => {
+            printk!("Device tree blob at {:p}\n", dtb);
+            printk!("{} harts detected\n", hart_count());
+        }
+        Err(err) => {
+            panic!("Device tree parsing failed: {:?}\n", err);
+        }
+    }
 }
