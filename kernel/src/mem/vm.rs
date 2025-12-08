@@ -35,7 +35,7 @@ pub fn map_kstack0() {
     KSTACK0_INIT.call_once(|| {
         let pa = pmem::alloc_contiguous(KSTACK_SIZE / super::PGSIZE, true) as PhysAddr;
         printk!(
-            "VM: KSTACK(0) assigned PA={:p} (identity-mapped, size={}KB)",
+            "VM: KSTACK(0) assigned PA={:p} (identity-mapped, size={}KB)\n",
             pa as *const u8,
             KSTACK_SIZE / 1024
         );

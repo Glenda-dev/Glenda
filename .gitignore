@@ -22,3 +22,5 @@ target
 
 # vscode
 .vscode/
+
+*.img

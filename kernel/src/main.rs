@@ -3,6 +3,7 @@
 
 mod drivers;
 mod dtb;
+mod fs;
 mod hart;
 mod init;
 mod irq;
@@ -12,7 +13,6 @@ mod printk;
 mod proc;
 mod sbi;
 mod syscall;
-mod fs;
 
 #[cfg(feature = "tests")]
 mod tests;
@@ -46,10 +46,7 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
         tests::test(hartid);
     }
 
-    if hartid == 0 {
-        crate::fs::virtio::init();
-        crate::fs::buffer::init();
-    }
+    if hartid == 0 {}
 
     if hartid == 0 {
         if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
@@ -92,10 +89,10 @@ fn backtrace() {
 
             // TODO: embed more info
             if ra_ptr as usize >= 0x80000000 && prev_fp_ptr as usize >= 0x80000000 {
-                 let ra = *ra_ptr;
-                 let prev_fp = *prev_fp_ptr;
-                 printk!("{:>2}: fp={:#x} ra={:#x}", depth, current_fp, ra);
-                 current_fp = prev_fp;
+                let ra = *ra_ptr;
+                let prev_fp = *prev_fp_ptr;
+                printk!("{:>2}: fp={:#x} ra={:#x}", depth, current_fp, ra);
+                current_fp = prev_fp;
             } else {
                 printk!("Invalid fp/ra ptr at {:#x}", current_fp);
                 break;

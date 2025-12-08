@@ -1,25 +1,25 @@
+use crate::fs::{bitmap, buffer, inode};
 use crate::irq::TrapContext;
-use crate::fs::{bitmap, buffer};
 use crate::mem::{PageTable, uvm};
 use crate::proc::current_proc;
 
 pub fn sys_alloc_block() -> usize {
-    bitmap::balloc() as usize
+    bitmap::alloc() as usize
 }
 
 pub fn sys_free_block(ctx: &mut TrapContext) -> usize {
     let block_no = ctx.a0 as u32;
-    bitmap::bfree(block_no);
+    bitmap::free(block_no);
     0
 }
 
 pub fn sys_alloc_inode() -> usize {
-    bitmap::ialloc() as usize
+    inode::alloc() as usize
 }
 
 pub fn sys_free_inode(ctx: &mut TrapContext) -> usize {
     let inode_idx = ctx.a0 as u32;
-    bitmap::ifree(inode_idx);
+    inode::free(inode_idx);
     0
 }
 
@@ -31,7 +31,7 @@ pub fn sys_show_bitmap(ctx: &mut TrapContext) -> usize {
 
 pub fn sys_get_block(ctx: &mut TrapContext) -> usize {
     let block_no = ctx.a0 as u32;
-    buffer::bread(0, block_no) // return buffer index
+    buffer::read(0, block_no) // return buffer index
 }
 
 pub fn sys_read_block(ctx: &mut TrapContext) -> usize {
@@ -63,7 +63,7 @@ pub fn sys_write_block(ctx: &mut TrapContext) -> usize {
 
     match uvm::copyin(pt, data_slice, u_src) {
         Ok(_) => {
-            buffer::bwrite(buf_idx);
+            buffer::write(buf_idx);
             0
         }
         Err(_) => usize::MAX,
@@ -72,7 +72,7 @@ pub fn sys_write_block(ctx: &mut TrapContext) -> usize {
 
 pub fn sys_put_block(ctx: &mut TrapContext) -> usize {
     let buf_idx = ctx.a0;
-    buffer::brelse(buf_idx);
+    buffer::release(buf_idx);
     0
 }
 

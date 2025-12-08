@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::drivers::virtio;
 use crate::printk;
 use spin::Mutex;
 
@@ -13,7 +14,7 @@ pub struct Buffer {
     pub block_no: BlockNo,      // Block number on disk
     pub dev: u32,               // Device ID
     pub refcnt: u32,            // Reference count
-    pub valid: bool,
+    pub valid: bool,            // Is data valid?
     pub dirty: bool,            // Does data need writing to disk?
     pub locked: bool,           // SleepLock equivalent
 }
@@ -57,10 +58,10 @@ pub fn init() {
         c.prev[i] = if i == 0 { head } else { i - 1 };
     }
 
-    printk!("buffer: cache initialized with {} buffers", N_BUFFER);
+    printk!("Buffer: cache initialized with {} buffers\n", N_BUFFER);
 }
 
-fn bget(dev: u32, blockno: u32) -> usize {
+fn get(dev: u32, blockno: u32) -> usize {
     let mut c = CACHE.lock();
 
     // Search for cached
@@ -120,11 +121,11 @@ fn bget(dev: u32, blockno: u32) -> usize {
         b = c.prev[b];
     }
 
-    panic!("bget: no buffers");
+    panic!("buffer_get: no buffers");
 }
 
-pub fn bread(dev: u32, blockno: u32) -> usize {
-    let idx = bget(dev, blockno);
+pub fn read(dev: u32, blockno: u32) -> usize {
+    let idx = get(dev, blockno);
     let valid = {
         let c = CACHE.lock();
         c.bufs[idx].valid
@@ -136,7 +137,7 @@ pub fn bread(dev: u32, blockno: u32) -> usize {
             c.bufs[idx].data.as_mut_ptr()
         };
 
-        crate::fs::virtio::virtio_disk_rw(buf_ptr, blockno, false);
+        virtio::disk::rw(buf_ptr, blockno, false);
 
         let mut c = CACHE.lock();
         c.bufs[idx].valid = true;
@@ -144,18 +145,18 @@ pub fn bread(dev: u32, blockno: u32) -> usize {
     idx
 }
 
-pub fn bwrite(idx: usize) {
+pub fn write(idx: usize) {
     let (buf_ptr, blockno) = {
         let mut c = CACHE.lock();
         (c.bufs[idx].data.as_mut_ptr(), c.bufs[idx].block_no)
     };
-    crate::fs::virtio::virtio_disk_rw(buf_ptr, blockno, true);
+    virtio::disk::rw(buf_ptr, blockno, true);
 
     let mut c = CACHE.lock();
     c.bufs[idx].dirty = false;
 }
 
-pub fn brelse(idx: usize) {
+pub fn release(idx: usize) {
     let mut c = CACHE.lock();
     c.bufs[idx].refcnt -= 1;
     c.bufs[idx].locked = false;

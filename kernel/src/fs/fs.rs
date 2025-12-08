@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::fs::buffer::{bread, brelse, get_data_ptr};
+use crate::fs::buffer;
 use crate::printk;
 use core::ptr::{self, addr_of, addr_of_mut};
 
@@ -18,32 +18,34 @@ pub struct SuperBlock {
     pub bmap_start: u32,
 }
 
-static mut SB: SuperBlock = SuperBlock {
-    magic: 0,
-    size: 0,
-    nblocks: 0,
-    ninodes: 0,
-    inode_start: 0,
-    bmap_start: 0,
-};
+static mut SB: SuperBlock =
+    SuperBlock { magic: 0, size: 0, nblocks: 0, ninodes: 0, inode_start: 0, bmap_start: 0 };
 
 pub fn fs_init() {
     // Read superblock (block 0)
-    let b = bread(0, 0);
-    let data = get_data_ptr(b);
+    let b = buffer::read(0, 0);
+    let data = buffer::get_data_ptr(b);
 
     unsafe {
         ptr::copy_nonoverlapping(data as *const SuperBlock, addr_of_mut!(SB), 1);
     }
 
-    brelse(b);
+    buffer::release(b);
 
     unsafe {
         if (*addr_of!(SB)).magic != MAGIC {
-            panic!("fs_init: invalid file system magic {:#x} (expected {:#x})", (*addr_of!(SB)).magic, MAGIC);
+            panic!(
+                "fs_init: invalid file system magic {:#x} (expected {:#x})",
+                (*addr_of!(SB)).magic,
+                MAGIC
+            );
         }
-        printk!("fs: superblock read. size={} blocks, inodes={}, bmap_start={}",
-            (*addr_of!(SB)).size, (*addr_of!(SB)).ninodes, (*addr_of!(SB)).bmap_start);
+        printk!(
+            "FS: Superblock read: size={} blocks, inodes={}, bmap_start={}\n",
+            (*addr_of!(SB)).size,
+            (*addr_of!(SB)).ninodes,
+            (*addr_of!(SB)).bmap_start
+        );
     }
 }
 
