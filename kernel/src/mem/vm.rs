@@ -29,7 +29,7 @@ unsafe extern "C" {
 static KERNEL_PAGE_TABLE: Mutex<PageTable> = Mutex::new(PageTable::new());
 
 // 256MB region for kernel stacks, below VA_MAX
-pub const KSTACK_REGION_SIZE: usize = 0x1000_0000; 
+pub const KSTACK_REGION_SIZE: usize = 0x1000_0000;
 pub const KSTACK_VA_BASE: usize = super::VA_MAX - KSTACK_REGION_SIZE;
 
 // Increase kernel stack to 4 pages (16KB)
@@ -70,6 +70,28 @@ pub fn free_kstack(pid: usize) {
         unmappages(&mut kpt, va, super::PGSIZE, true);
     }
     sfence_vma_all();
+}
+
+pub struct KernelStack {
+    pid: usize,
+    top: VirtAddr,
+}
+
+impl KernelStack {
+    pub fn new(pid: usize) -> Self {
+        let top = alloc_kstack(pid);
+        Self { pid, top }
+    }
+
+    pub fn top(&self) -> VirtAddr {
+        self.top
+    }
+}
+
+impl Drop for KernelStack {
+    fn drop(&mut self) {
+        free_kstack(self.pid);
+    }
 }
 
 pub fn getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {

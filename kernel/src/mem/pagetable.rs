@@ -253,8 +253,8 @@ impl PageTable {
                 }
                 if pte::is_leaf(pte) {
                     let pa = pte_to_pa(pte);
-                    if let Some(for_kernel) = pmem::get_region(pa) {
-                        pmem::free(pa, for_kernel);
+                    if let Some(false) = pmem::get_region(pa) {
+                        pmem::free(pa, false);
                     }
                     unsafe {
                         (*table).entries[i] = 0;

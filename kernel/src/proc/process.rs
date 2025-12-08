@@ -10,7 +10,7 @@ use crate::mem::mmap::{self, MmapRegion};
 use crate::mem::pmem;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
 use crate::mem::uvm;
-use crate::mem::vm;
+use crate::mem::vm::{self, KernelStack};
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::proc::scheduler::wakeup;
@@ -59,7 +59,7 @@ pub struct Process {
     pub trapframe_frame: Option<PhysFrame>, // RAII frame
     pub trapframe_va: VirtAddr,             // TrapFrame 的用户可见虚拟地址
     pub context: ProcContext,               // 用户态上下文
-    pub kernel_stack: PhysAddr,             // 内核栈地址
+    pub kstack: Option<KernelStack>,        // 内核栈 RAII
     pub entry_va: VirtAddr,                 // 用户入口地址
     pub user_sp_va: VirtAddr,               // 用户栈顶 VA
     pub mmap_head: *mut MmapRegion,         // mmap 链表头
@@ -87,7 +87,7 @@ impl Process {
             trapframe_frame: None,
             trapframe_va: 0,
             context: ProcContext::new(),
-            kernel_stack: 0,
+            kstack: None,
             entry_va: 0,
             user_sp_va: 0,
             mmap_head: core::ptr::null_mut(),
@@ -114,7 +114,7 @@ impl Process {
         use crate::printk;
 
         printk!(
-            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kernel_stack: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}\n",
+            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kstack top: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}\n",
             self.pid,
             self.root_pt_pa,
             self.heap_top,
@@ -122,7 +122,7 @@ impl Process {
             self.stack_pages,
             self.trapframe as usize,
             self.trapframe_va,
-            self.kernel_stack,
+            self.kstack.as_ref().map(|k| k.top()).unwrap_or(0),
             self.entry_va,
             self.user_sp_va,
         );
@@ -143,11 +143,8 @@ impl Process {
         // Free mmap regions
         mmap::region_free(self.mmap_head);
 
-        // Free Kernel Stack
-        if self.kernel_stack != 0 {
-            vm::free_kstack(self.pid);
-            self.kernel_stack = 0;
-        }
+        // Kernel Stack is freed by Drop of KernelStack in self.kstack
+        self.kstack = None;
     }
 
     pub fn exit(&mut self) {
@@ -212,15 +209,20 @@ impl Process {
         child.stack_pages = self.stack_pages;
 
         // Allocate new TrapFrame page for child
-        let child_tf_pa = pmem::alloc(true) as PhysAddr;
+        let child_tf_frame = PhysFrame::alloc().expect("Failed to alloc trapframe");
+        let child_tf_pa = child_tf_frame.addr();
         child.trapframe = child_tf_pa as *mut TrapFrame;
+        child.trapframe_frame = Some(child_tf_frame);
 
         // Allocate new Kernel Stack for child
-        child.kernel_stack = vm::alloc_kstack(child.pid);
+        let kstack = KernelStack::new(child.pid);
+        let kstack_top = kstack.top();
+        child.kstack = Some(kstack);
 
         // Map new TrapFrame in child's page table (overwrite copied mapping)
         let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
-        vm::unmappages(child_pt, child.trapframe_va, PGSIZE, false);
+        // Free the TrapFrame page created by copy() (it was a duplicate of parent's, but we want a fresh one)
+        vm::unmappages(child_pt, child.trapframe_va, PGSIZE, true);
         vm::mappages(
             child_pt,
             child.trapframe_va,
@@ -238,12 +240,12 @@ impl Process {
         let child_tf = unsafe { &mut *child.trapframe };
         child_tf.a0 = 0; // fork 返回值为0
         child_tf.kernel_epc = child_tf.kernel_epc.wrapping_add(4); // skip ecall
-        child_tf.kernel_sp = child.kernel_stack; // Use child's own kernel stack
+        child_tf.kernel_sp = kstack_top; // Use child's own kernel stack
 
         let parent_tf = unsafe { &mut *self.trapframe };
         // 父进程从 fork 返回子进程的 pid
         parent_tf.a0 = child.pid;
-        child.context.sp = (child.kernel_stack) as usize;
+        child.context.sp = kstack_top;
         child.context.ra = trap_user_return as usize;
         child.state = ProcState::Runnable;
         child
@@ -367,15 +369,20 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     vm::mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     // Setup TrapFrame
     // TrapFrame 放在内核物理页区域，避免占用用户物理页池
-    let trapframe_pa = pmem::alloc(true) as PhysAddr; // trapframe 物理地址
+    let trapframe_frame = PhysFrame::alloc().expect("Failed to alloc trapframe");
+    let trapframe_pa = trapframe_frame.addr();
     let trapframe_va = tramp_va - PGSIZE; // trapframe 虚拟地址
     proc.trapframe_va = trapframe_va;
     proc.trapframe = trapframe_pa as *mut TrapFrame;
+    proc.trapframe_frame = Some(trapframe_frame);
     vm::mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     // Load payload
     proc.exec(payload);
     // Setup Kernel Stack
-    proc.kernel_stack = vm::alloc_kstack(proc.pid);
+    let kstack = KernelStack::new(proc.pid);
+    let kstack_top = kstack.top();
+    proc.kstack = Some(kstack);
+
     // Setup initial user stack top (matches service/hello/link.ld)
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code
@@ -386,7 +393,7 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     tf.kernel_epc = proc.entry_va;
     tf.kernel_satp = satp::read().bits();
     tf.kernel_hartid = hart::getid();
-    tf.kernel_sp = proc.kernel_stack;
+    tf.kernel_sp = kstack_top;
     // 记录当前用户页表 SATP
     let satp_bits = proc.root_satp();
     set_current_user_satp(satp_bits);
@@ -402,8 +409,9 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     } else {
         proc.context.ra = trap_user_return as usize;
     }
-    let kstack_va = proc.kernel_stack as *mut u8;
-    proc.context.sp = kstack_va as usize;
+    // Set kernel stack pointer for context switch
+    proc.context.sp = kstack_top;
+
     // 设置进程状态为可运行
     proc.state = ProcState::Runnable;
     proc

@@ -16,7 +16,13 @@ impl PhysFrame {
         Self { addr }
     }
 
-    // TODO: add support for alloc_contiguous
+    pub fn as_ptr<T>(&self) -> *const T {
+        self.addr as *const T
+    }
+
+    pub fn as_mut_ptr<T>(&mut self) -> *mut T {
+        self.addr as *mut T
+    }
 }
 
 impl Drop for PhysFrame {

@@ -16,6 +16,7 @@ use super::{
 };
 use super::{reg_read, reg_write};
 use crate::mem::PGSIZE;
+use crate::mem::frame::PhysFrame;
 use crate::mem::pmem;
 use crate::printk;
 use core::ptr::{read_volatile, write_volatile};
@@ -23,7 +24,7 @@ use riscv::register::sstatus;
 use spin::Mutex;
 
 struct Disk {
-    pub pages: Option<usize>,
+    pub pages: Option<PhysFrame>,
     pub init_done: bool,
 }
 
@@ -72,7 +73,7 @@ pub fn rw(buf: *mut u8, blockno: u32, write: bool) {
     let data_pa = buf as u64;
     let status_pa = &state.status[idx] as *const u8 as u64;
 
-    let page = disk.pages.expect("virtio not initialized");
+    let page = disk.pages.as_ref().expect("virtio not initialized").addr();
 
     let desc_ptr = page as *mut VRingDesc;
 
@@ -186,10 +187,10 @@ pub fn init() {
 
     // Desc (16*8=128) + Avail (6+2*8=22) + Pad -> 4096 -> Used (6+8*8=70)
     // We set alignment to 16, so everything fits in 1 page.
-    let p = pmem::alloc(true);
-    let page = p as usize;
+    let frame = PhysFrame::alloc().expect("VirtIO: failed to alloc page");
+    let page = frame.addr();
 
-    disk.pages = Some(page);
+    disk.pages = Some(frame);
 
     // Setup Legacy Registers
     reg_write(VIRTIO_MMIO_GUEST_PAGE_SIZE, PGSIZE as u32);

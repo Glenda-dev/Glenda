@@ -127,7 +127,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     ctx.kernel_hartid = crate::hart::getid();
     // KSTACK(0) 顶部
     // vm::map_kstack0();
-    ctx.kernel_sp = proc.kernel_stack;
+    ctx.kernel_sp = proc.kstack.as_ref().unwrap().top();
 
     // sscratch 指向 TrapFrame 的虚拟地址
     let user_tf_va = (*current_proc()).trapframe_va as usize;
