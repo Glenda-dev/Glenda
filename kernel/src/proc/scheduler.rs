@@ -49,7 +49,6 @@ pub fn scheduler() {
             }
         }
         if !found {
-            // Enable interrupts to allow timer to fire and wake up processes
             unsafe {
                 sstatus::set_sie();
             }
@@ -98,9 +97,11 @@ pub fn wait() -> Option<(usize, i32)> {
         let mut pid = 0;
         let mut exit_code = 0;
         let mut found_zombie = false;
-        let mut zombie_root_pt_pa: usize = 0;
-        let mut zombie_kernel_stack_top: usize = 0;
-        let mut zombie_trapframe_pa: usize = 0;
+
+        // Disable interrupts to prevent deadlock with ISR using PROC_TABLE
+        let sstatus_val = sstatus::read();
+        let sie_enabled = sstatus_val.sie();
+        unsafe { sstatus::clear_sie(); }
 
         {
             let mut table = PROC_TABLE.lock();
@@ -118,31 +119,55 @@ pub fn wait() -> Option<(usize, i32)> {
                     }
                 }
             }
+
+            if !found_zombie && have_kids {
+                curr_proc.state = ProcState::Sleeping;
+                curr_proc.sleep_chan = curr_proc as *mut _ as usize;
+            }
         }
 
         if found_zombie {
+            if sie_enabled { unsafe { sstatus::set_sie(); } }
             return Some((pid, exit_code));
         }
 
         if !have_kids {
+            if sie_enabled { unsafe { sstatus::set_sie(); } }
             return None;
         }
 
-        sleep(curr_proc as *mut _ as usize);
+        stop();
+
+        if sie_enabled { unsafe { sstatus::set_sie(); } }
     }
 }
 
 pub fn sleep(channel: usize) {
     let hart = crate::hart::get();
     let p = unsafe { &mut *hart.proc };
-    p.state = ProcState::Sleeping;
-    p.sleep_chan = channel;
+
+    let sstatus_val = sstatus::read();
+    let sie_enabled = sstatus_val.sie();
+    unsafe { sstatus::clear_sie(); }
+
+    {
+        let _lock = PROC_TABLE.lock();
+        p.state = ProcState::Sleeping;
+        p.sleep_chan = channel;
+    }
+
     unsafe {
         switch_context(&mut p.context, &mut hart.context);
     }
+
+    if sie_enabled { unsafe { sstatus::set_sie(); } }
 }
 
 pub fn wakeup(channel: usize) {
+    let sstatus_val = sstatus::read();
+    let sie_enabled = sstatus_val.sie();
+    unsafe { sstatus::clear_sie(); }
+
     for i in 0..NPROC {
         let mut table = PROC_TABLE.lock();
         let p = &mut table[i];
@@ -151,4 +176,6 @@ pub fn wakeup(channel: usize) {
             p.sleep_chan = 0;
         }
     }
+
+    if sie_enabled { unsafe { sstatus::set_sie(); } }
 }
