@@ -5,6 +5,7 @@ use crate::hart;
 use crate::irq::TrapFrame;
 use crate::irq::vector;
 use crate::mem::addr::align_down;
+use crate::mem::frame::PhysFrame;
 use crate::mem::mmap::{self, MmapRegion};
 use crate::mem::pmem;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
@@ -26,41 +27,38 @@ unsafe extern "C" {
 pub enum ProcState {
     Unused,
     Zombie,
+    Dying,
     Sleeping,
     Runnable,
     Running,
 }
 
-#[derive(Clone, Copy)]
 pub struct Process {
-    pub name: [u8; 16],             // 进程名称
-    pub state: ProcState,           // 进程状态
-    pub parent: *mut Process,       // 父进程指针
-    pub exit_code: i32,             // 退出码
-    pub sleep_chan: usize,          // 睡眠通道
-    pub pid: usize,                 // 进程ID
-    pub root_pt_pa: PhysAddr,       // 根页表物理地址
-    pub heap_top: VirtAddr,         // 进程堆顶地址
-    pub heap_base: VirtAddr,        // 进程堆底（最小堆顶），用于 brk 下限约束
-    pub stack_pages: usize,         // 进程栈大小
-    pub trapframe: *mut TrapFrame,  // TrapFrame 指针（物理页）
-    pub trapframe_va: VirtAddr,     // TrapFrame 的用户可见虚拟地址
-    pub context: ProcContext,       // 用户态上下文
-    pub kernel_stack: PhysAddr,     // 内核栈地址
-    pub entry_va: VirtAddr,         // 用户入口地址
-    pub user_sp_va: VirtAddr,       // 用户栈顶 VA
-    pub mmap_head: *mut MmapRegion, // mmap 链表头
+    pub name: [u8; 16],                     // 进程名称
+    pub state: ProcState,                   // 进程状态
+    pub parent: *mut Process,               // 父进程指针
+    pub exit_code: i32,                     // 退出码
+    pub sleep_chan: usize,                  // 睡眠通道
+    pub pid: usize,                         // 进程ID
+    pub root_pt_pa: PhysAddr,               // 根页表物理地址
+    pub root_pt_frame: Option<PhysFrame>,   // RAII frame
+    pub heap_top: VirtAddr,                 // 进程堆顶地址
+    pub heap_base: VirtAddr,                // 进程堆底（最小堆顶），用于 brk 下限约束
+    pub stack_pages: usize,                 // 进程栈大小
+    pub trapframe: *mut TrapFrame,          // TrapFrame 指针（物理页）
+    pub trapframe_frame: Option<PhysFrame>, // RAII frame
+    pub trapframe_va: VirtAddr,             // TrapFrame 的用户可见虚拟地址
+    pub context: ProcContext,               // 用户态上下文
+    pub kernel_stack: PhysAddr,             // 内核栈地址
+    pub entry_va: VirtAddr,                 // 用户入口地址
+    pub user_sp_va: VirtAddr,               // 用户栈顶 VA
+    pub mmap_head: *mut MmapRegion,         // mmap 链表头
 }
 
-impl Process {
-    pub fn ustack_grow(&mut self, fault_va: VirtAddr) -> Result<(), ()> {
-        let pt = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
-        match uvm::ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
-    }
+unsafe impl Send for Process {}
+unsafe impl Sync for Process {}
 
+impl Process {
     pub const fn new() -> Self {
         Self {
             name: [0; 16],
@@ -71,10 +69,12 @@ impl Process {
 
             pid: 0,
             root_pt_pa: 0,
+            root_pt_frame: None,
             heap_top: 0,
             heap_base: 0,
             stack_pages: 0,
             trapframe: core::ptr::null_mut(),
+            trapframe_frame: None,
             trapframe_va: 0,
             context: ProcContext::new(),
             kernel_stack: 0,
@@ -83,6 +83,15 @@ impl Process {
             mmap_head: core::ptr::null_mut(),
         }
     }
+
+    pub fn ustack_grow(&mut self, fault_va: VirtAddr) -> Result<(), ()> {
+        let pt = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
+        match uvm::ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
+
     pub fn root_satp(&self) -> usize {
         // 根页表物理页号
         let ppn = (self.root_pt_pa >> 12) & ((1usize << (usize::BITS as usize - 12)) - 1);
@@ -116,10 +125,24 @@ impl Process {
 
     pub fn free(&mut self) {
         let page_table = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
+
+        // Destory page table first (frees TrapFrame and children)
+        page_table.destroy();
+        self.root_pt_frame = None;
+
         // Free mmap regions
         mmap::region_free(self.mmap_head);
-        // Destory page table;
-        page_table.destroy();
+
+        // Free Kernel Stack
+        if self.kernel_stack != 0 {
+            let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
+            let kstack_base = self.kernel_stack - vm::KSTACK_SIZE;
+            for i in 0..kstack_pages {
+                let pa = kstack_base + i * PGSIZE;
+                pmem::free(pa, true);
+            }
+            self.kernel_stack = 0;
+        }
     }
 
     pub fn exit(&mut self) {
@@ -138,13 +161,15 @@ impl Process {
                 }
             }
         }
-        self.state = ProcState::Zombie;
+        self.state = ProcState::Dying;
     }
 
     pub fn launch(&mut self) {
         let hart = hart::get();
         hart.proc = self as *mut Process;
-        unsafe { switch_context(&mut hart.context, &mut self.context); }
+        unsafe {
+            switch_context(&mut hart.context, &mut self.context);
+        }
     }
 
     // TODO: Copy-on-write fork
@@ -159,8 +184,15 @@ impl Process {
 
         // Copy page table
         let parent_pt = unsafe { &*(self.root_pt_pa as *const PageTable) };
-        let child_pt_pa = parent_pt.copy().expect("Failed to copy page table");
-        child.root_pt_pa = child_pt_pa;
+        // Alloc RAII frame for child root pt
+        let child_pt_pa_raw = parent_pt.copy().expect("Failed to copy page table");
+        // We must wrap the raw PA from `copy` into a PhysFrame.
+        // Since `copy` allocated it using `pmem::alloc`, it has ref_count=1.
+        // Wrapping it in PhysFrame is correct ownership transfer.
+        let child_pt_frame = unsafe { PhysFrame::from_raw(child_pt_pa_raw) };
+        child.root_pt_pa = child_pt_pa_raw;
+        child.root_pt_frame = Some(child_pt_frame);
+
         // Copy heap info
         child.heap_base = self.heap_base;
         child.heap_top = self.heap_top;
@@ -172,16 +204,25 @@ impl Process {
         child.trapframe = child_tf_pa as *mut TrapFrame;
 
         // Allocate new Kernel Stack for child
-        let child_kstack_pa = pmem::alloc(true) as PhysAddr;
-        child.kernel_stack = child_kstack_pa + PGSIZE;
+        let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
+        let child_kstack_pa = pmem::alloc_contiguous(kstack_pages, true) as PhysAddr;
+        child.kernel_stack = child_kstack_pa + kstack_pages * PGSIZE;
 
         // Map new TrapFrame in child's page table (overwrite copied mapping)
         let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
         vm::unmappages(child_pt, child.trapframe_va, PGSIZE, false);
-        vm::mappages(child_pt, child.trapframe_va, child_tf_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+        vm::mappages(
+            child_pt,
+            child.trapframe_va,
+            child_tf_pa,
+            PGSIZE,
+            PTE_R | PTE_W | PTE_A | PTE_D,
+        );
 
         // Copy TrapFrame content
-        unsafe { core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1); }
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1);
+        }
 
         // Update child's TrapFrame to return 0 from fork
         let child_tf = unsafe { &mut *child.trapframe };
@@ -245,9 +286,6 @@ impl Process {
     }
 }
 
-unsafe impl Send for Process {}
-unsafe impl Sync for Process {}
-
 #[unsafe(no_mangle)]
 extern "C" fn proc_return() -> ! {
     crate::proc::scheduler::sched();
@@ -299,7 +337,9 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     let proc = alloc().expect("Failed to allocate process");
     // Setup pid
     // 分配一页作为根页表（物理内存）
-    proc.root_pt_pa = pmem::alloc(true) as PhysAddr;
+    let root_pt_frame = PhysFrame::alloc().expect("Failed to alloc root pt");
+    proc.root_pt_pa = root_pt_frame.addr();
+    proc.root_pt_frame = Some(root_pt_frame);
     let page_table = unsafe { &mut *(proc.root_pt_pa as *mut PageTable) };
     unsafe { core::ptr::write_bytes(page_table as *mut PageTable as *mut u8, 0, PGSIZE) };
     // Setup Trampoline
@@ -316,11 +356,12 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     // Load payload
     proc.exec(payload);
     // Setup Kernel Stack
-    let kstack_pa = pmem::alloc(true) as PhysAddr;
+    let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
+    let kstack_pa = pmem::alloc_contiguous(kstack_pages, true) as PhysAddr;
     unsafe {
-        core::ptr::write_bytes(kstack_pa as *mut u8, 0, PGSIZE);
+        core::ptr::write_bytes(kstack_pa as *mut u8, 0, vm::KSTACK_SIZE);
     }
-    proc.kernel_stack = kstack_pa + PGSIZE;
+    proc.kernel_stack = kstack_pa + vm::KSTACK_SIZE;
     // Setup initial user stack top (matches service/hello/link.ld)
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code

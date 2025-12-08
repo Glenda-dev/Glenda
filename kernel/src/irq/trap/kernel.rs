@@ -50,7 +50,9 @@ fn exception_handler(
     if e == 8 {
         user::syscall_handler(ctx);
         // advance sepc to next instruction
-        unsafe { sepc::write(epc.wrapping_add(4)); }
+        unsafe {
+            sepc::write(epc.wrapping_add(4));
+        }
         return;
     }
 
