@@ -10,6 +10,7 @@ pub use addr::{PhysAddr, VirtAddr};
 pub use pagetable::PageTable;
 
 pub mod addr;
+pub mod frame;
 pub mod mmap;
 pub mod pagetable;
 pub mod pmem;

@@ -39,6 +39,13 @@ pub fn scheduler() {
                     switch_context(&mut hart.context, &mut p.context);
                 }
                 hart.proc = core::ptr::null_mut();
+                {
+                    let mut table = PROC_TABLE.lock();
+                    let p = &mut table[i];
+                    if p.state == ProcState::Dying {
+                        p.state = ProcState::Zombie;
+                    }
+                }
             }
         }
         if !found {
@@ -104,26 +111,8 @@ pub fn wait() -> Option<(usize, i32)> {
                     if p.state == ProcState::Zombie {
                         pid = p.pid;
                         exit_code = p.exit_code;
-
-                        zombie_root_pt_pa = p.root_pt_pa;
-                        zombie_kernel_stack_top = p.kernel_stack;
-                        zombie_trapframe_pa = p.trapframe as usize;
-
-                        p.state = ProcState::Unused;
-                        p.parent = core::ptr::null_mut();
-                        p.pid = 0;
-                        p.name = [0; 16];
-                        p.root_pt_pa = 0;
-                        p.heap_top = 0;
-                        p.heap_base = 0;
-                        p.stack_pages = 0;
-                        p.trapframe = core::ptr::null_mut();
-                        p.trapframe_va = 0;
-                        p.context = super::context::ProcContext::new();
-                        p.kernel_stack = 0;
-                        p.entry_va = 0;
-                        p.user_sp_va = 0;
-                        p.mmap_head = core::ptr::null_mut();
+                        p.free();
+                        *p = Process::new();
                         found_zombie = true;
                         break;
                     }
@@ -132,18 +121,6 @@ pub fn wait() -> Option<(usize, i32)> {
         }
 
         if found_zombie {
-            if zombie_root_pt_pa != 0 {
-                unsafe {
-                    let pt = &mut *(zombie_root_pt_pa as *mut crate::mem::PageTable);
-                    pt.destroy();
-                }
-            } else {
-                printk!("wait(): zombie had root_pt_pa=0 (pid={})\n", pid);
-            }
-            if zombie_kernel_stack_top != 0 {
-                let base = zombie_kernel_stack_top.saturating_sub(crate::mem::PGSIZE);
-                crate::mem::pmem::free(base, true);
-            }
             return Some((pid, exit_code));
         }
 

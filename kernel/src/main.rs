@@ -12,6 +12,7 @@ mod printk;
 mod proc;
 mod sbi;
 mod syscall;
+mod fs;
 
 #[cfg(feature = "tests")]
 mod tests;
@@ -39,9 +40,15 @@ include!("../../target/proc_payload.rs");
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
+
     #[cfg(feature = "tests")]
     {
         tests::test(hartid);
+    }
+
+    if hartid == 0 {
+        crate::fs::virtio::init();
+        crate::fs::buffer::init();
     }
 
     if hartid == 0 {
@@ -63,9 +70,46 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     }
 }
 
+#[inline(always)]
+fn fp() -> usize {
+    let ptr: usize;
+    unsafe {
+        core::arch::asm!("mv {}, s0", out(reg) ptr);
+    }
+    ptr
+}
+
+fn backtrace() {
+    printk!("--- GLENDA BACKTRACE START ---");
+    let mut current_fp = fp();
+    let mut depth = 0;
+    while current_fp != 0 && depth < 20 {
+        // 0(fp) -> saved fp
+        // 8(fp) -> saved ra
+        unsafe {
+            let ra_ptr = (current_fp as *const usize).sub(1);
+            let prev_fp_ptr = (current_fp as *const usize).sub(2);
+
+            // TODO: embed more info
+            if ra_ptr as usize >= 0x80000000 && prev_fp_ptr as usize >= 0x80000000 {
+                 let ra = *ra_ptr;
+                 let prev_fp = *prev_fp_ptr;
+                 printk!("{:>2}: fp={:#x} ra={:#x}", depth, current_fp, ra);
+                 current_fp = prev_fp;
+            } else {
+                printk!("Invalid fp/ra ptr at {:#x}", current_fp);
+                break;
+            }
+        }
+        depth += 1;
+    }
+    printk!("--- GLENDA BACKTRACE END ---");
+}
+
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
-    printk!("{}PANIC{}: {}\n", ANSI_RED, ANSI_RESET, info);
+    printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
+    backtrace();
     loop {
         wfi();
     }
