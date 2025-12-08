@@ -266,8 +266,8 @@ int main(void)
   test_bitmap();
   test_buffer();
 
-  //test_sleep();
-  //test_fork_order();
+  test_sleep();
+  test_fork_order();
 
   for (;;) {}
   return 0;

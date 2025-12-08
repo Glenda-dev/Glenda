@@ -145,12 +145,7 @@ impl Process {
 
         // Free Kernel Stack
         if self.kernel_stack != 0 {
-            let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
-            let kstack_base = self.kernel_stack - vm::KSTACK_SIZE;
-            for i in 0..kstack_pages {
-                let pa = kstack_base + i * PGSIZE;
-                pmem::free(pa, true);
-            }
+            vm::free_kstack(self.pid);
             self.kernel_stack = 0;
         }
     }
@@ -221,9 +216,7 @@ impl Process {
         child.trapframe = child_tf_pa as *mut TrapFrame;
 
         // Allocate new Kernel Stack for child
-        let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
-        let child_kstack_pa = pmem::alloc_contiguous(kstack_pages, true) as PhysAddr;
-        child.kernel_stack = child_kstack_pa + kstack_pages * PGSIZE;
+        child.kernel_stack = vm::alloc_kstack(child.pid);
 
         // Map new TrapFrame in child's page table (overwrite copied mapping)
         let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
@@ -382,12 +375,7 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     // Load payload
     proc.exec(payload);
     // Setup Kernel Stack
-    let kstack_pages = vm::KSTACK_SIZE / PGSIZE;
-    let kstack_pa = pmem::alloc_contiguous(kstack_pages, true) as PhysAddr;
-    unsafe {
-        core::ptr::write_bytes(kstack_pa as *mut u8, 0, vm::KSTACK_SIZE);
-    }
-    proc.kernel_stack = kstack_pa + vm::KSTACK_SIZE;
+    proc.kernel_stack = vm::alloc_kstack(proc.pid);
     // Setup initial user stack top (matches service/hello/link.ld)
     proc.user_sp_va = 0x20000 + 24576; // STACK_TOP
     // Ensure I-cache observes freshly written user code

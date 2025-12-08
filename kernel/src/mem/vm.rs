@@ -28,33 +28,48 @@ unsafe extern "C" {
 
 static KERNEL_PAGE_TABLE: Mutex<PageTable> = Mutex::new(PageTable::new());
 
-static KSTACK0_INIT: Once<()> = Once::new();
-static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
-
-pub fn map_kstack0() {
-    KSTACK0_INIT.call_once(|| {
-        let pa = pmem::alloc_contiguous(KSTACK_SIZE / super::PGSIZE, true) as PhysAddr;
-        printk!(
-            "VM: KSTACK(0) assigned PA={:p} (identity-mapped, size={}KB)\n",
-            pa as *const u8,
-            KSTACK_SIZE / 1024
-        );
-        *KSTACK0_PA.lock() = Some(pa);
-    });
-}
-
-#[inline(always)]
-pub fn kstack_base(procid: usize) -> VirtAddr {
-    assert!(procid == 0, "only KSTACK(0) is supported in LAB4");
-    *KSTACK0_PA.lock().as_ref().expect("KSTACK(0) not initialized\n")
-}
+// 256MB region for kernel stacks, below VA_MAX
+pub const KSTACK_REGION_SIZE: usize = 0x1000_0000; 
+pub const KSTACK_VA_BASE: usize = super::VA_MAX - KSTACK_REGION_SIZE;
 
 // Increase kernel stack to 4 pages (16KB)
 pub const KSTACK_SIZE: usize = super::PGSIZE * 4;
 
+pub fn map_kstack0() {
+    let _top = alloc_kstack(0);
+    printk!("VM: KSTACK(0) allocated at VA={:p}\n", kstack_base(0) as *const u8);
+}
+
+#[inline(always)]
+pub fn kstack_base(procid: usize) -> VirtAddr {
+    KSTACK_VA_BASE + procid * KSTACK_SIZE
+}
+
 #[inline(always)]
 pub fn kstack_top(procid: usize) -> VirtAddr {
     kstack_base(procid) + KSTACK_SIZE
+}
+
+pub fn alloc_kstack(pid: usize) -> VirtAddr {
+    let base = kstack_base(pid);
+    let mut kpt = KERNEL_PAGE_TABLE.lock();
+    for i in 0..(KSTACK_SIZE / super::PGSIZE) {
+        let va = base + i * super::PGSIZE;
+        let pa = pmem::alloc(true) as PhysAddr;
+        mappages(&mut kpt, va, pa, super::PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+    }
+    sfence_vma_all();
+    base + KSTACK_SIZE
+}
+
+pub fn free_kstack(pid: usize) {
+    let base = kstack_base(pid);
+    let mut kpt = KERNEL_PAGE_TABLE.lock();
+    for i in 0..(KSTACK_SIZE / super::PGSIZE) {
+        let va = base + i * super::PGSIZE;
+        unmappages(&mut kpt, va, super::PGSIZE, true);
+    }
+    sfence_vma_all();
 }
 
 pub fn getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {

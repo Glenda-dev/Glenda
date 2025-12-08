@@ -12,7 +12,7 @@ use super::{
     VIRTIO_MMIO_INTERRUPT_ACK, VIRTIO_MMIO_INTERRUPT_STATUS, VIRTIO_MMIO_MAGIC_VALUE,
     VIRTIO_MMIO_QUEUE_NOTIFY, VIRTIO_MMIO_QUEUE_NUM, VIRTIO_MMIO_QUEUE_NUM_MAX,
     VIRTIO_MMIO_QUEUE_PFN, VIRTIO_MMIO_QUEUE_SEL, VIRTIO_MMIO_STATUS, VIRTIO_MMIO_VENDOR_ID,
-    VIRTIO_MMIO_VERSION,
+    VIRTIO_MMIO_VERSION, VIRTIO_MMIO_QUEUE_ALIGN,
 };
 use super::{reg_read, reg_write};
 use crate::mem::PGSIZE;
@@ -185,7 +185,8 @@ pub fn init() {
     reg_write(VIRTIO_MMIO_QUEUE_NUM, NUM_DESCS as u32);
 
     // Desc (16*8=128) + Avail (6+2*8=22) + Pad -> 4096 -> Used (6+8*8=70)
-    let p = pmem::alloc_contiguous(2, true);
+    // We set alignment to 16, so everything fits in 1 page.
+    let p = pmem::alloc(true);
     let page = p as usize;
 
     disk.pages = Some(page);
@@ -193,6 +194,8 @@ pub fn init() {
     // Setup Legacy Registers
     reg_write(VIRTIO_MMIO_GUEST_PAGE_SIZE, PGSIZE as u32);
     reg_write(VIRTIO_MMIO_QUEUE_PFN, (page / PGSIZE) as u32);
+    // Set alignment to 16 bytes
+    reg_write(VIRTIO_MMIO_QUEUE_ALIGN, 16);
 
     status |= VIRTIO_CONFIG_S_DRIVER_OK;
     reg_write(VIRTIO_MMIO_STATUS, status);

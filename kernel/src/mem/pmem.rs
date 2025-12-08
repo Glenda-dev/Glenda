@@ -177,90 +177,6 @@ impl AllocRegion {
         Some(p)
     }
 
-    fn allocate_contiguous(&self, npages: usize) -> Option<*mut u8> {
-        let mut inner = self.inner.lock();
-        if inner.allocable < npages {
-            return None;
-        }
-
-        let mut base_ptr = inner.head;
-        while let Some(base_node) = base_ptr {
-            let base_addr = base_node.as_ptr() as usize;
-            if base_addr < 0x8000_0000 || (base_addr & 0x7) != 0 {
-                panic!("pmem corrupted (outer): node={:#x}", base_addr);
-            }
-
-            let mut found_all = true;
-            for i in 1..npages {
-                let target = base_addr + i * PGSIZE;
-                let mut curr = inner.head;
-                let mut prev: Option<NonNull<FreePage>> = None;
-                let mut found_target = false;
-                while let Some(node) = curr {
-                    let node_addr = node.as_ptr() as usize;
-                    if node_addr < 0x8000_0000 || (node_addr & 0xfff) != 0 {
-                        panic!("pmem corrupted (search): node={:#x}, prev={:?}", node_addr, prev);
-                    }
-                    if node_addr == target {
-                        found_target = true;
-                        break;
-                    }
-                    prev = curr;
-                    unsafe {
-                        curr = (*node.as_ptr()).next;
-                    }
-                }
-                if !found_target {
-                    found_all = false;
-                    break;
-                }
-            }
-
-            if found_all {
-                for i in 0..npages {
-                    let target = base_addr + i * PGSIZE;
-                    let mut curr = inner.head;
-                    let mut prev: Option<NonNull<FreePage>> = None;
-                    while let Some(node) = curr {
-                        let node_addr = node.as_ptr() as usize;
-                        if node_addr == target {
-                            if let Some(p) = prev {
-                                unsafe {
-                                    (*p.as_ptr()).next = (*node.as_ptr()).next;
-                                }
-                            } else {
-                                inner.head = unsafe { (*node.as_ptr()).next };
-                            }
-                            inner.allocable -= 1;
-                            // Update ref count
-                            let idx = pa_to_index(target);
-                            if PAGE_REF[idx].fetch_add(1, Ordering::SeqCst) != 0 {
-                                panic!(
-                                    "pmem_alloc_contiguous: ref count corrupted at {:#x}",
-                                    target
-                                );
-                            }
-                            break;
-                        }
-                        prev = curr;
-                        unsafe {
-                            curr = (*node.as_ptr()).next;
-                        }
-                    }
-                }
-                let p = base_addr as *mut u8;
-                unsafe { ptr::write_bytes(p, 0, npages * PGSIZE) };
-                return Some(p);
-            }
-
-            unsafe {
-                base_ptr = (*base_node.as_ptr()).next;
-            }
-        }
-
-        None
-    }
-
     fn free(&self, addr: PhysAddr) {
         let b = *self.bounds.get().expect("region not initialized");
         if addr < b.begin || addr >= b.end || addr % PGSIZE != 0 {
@@ -306,16 +222,6 @@ pub fn alloc(for_kernel: bool) -> *mut u8 {
                 panic!("pmem_alloc: user region exhausted");
             }
         }
-    }
-}
-
-pub fn alloc_contiguous(npages: usize, for_kernel: bool) -> *mut u8 {
-    match region(for_kernel).allocate_contiguous(npages) {
-        Some(ptr) => ptr,
-        None => panic!(
-            "pmem_alloc_contiguous: failed to allocate {} pages (kernel={})",
-            npages, for_kernel
-        ),
     }
 }
 
