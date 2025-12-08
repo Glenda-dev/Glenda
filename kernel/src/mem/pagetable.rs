@@ -5,7 +5,7 @@ use super::uvm::UvmError;
 use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
 use core::ptr;
 
-// align 4096, 防止 sfence.vma 直接 TRAP
+// align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
 #[derive(Clone, Copy)]
 pub struct PageTable {
@@ -16,27 +16,24 @@ impl PageTable {
     pub const fn new() -> Self {
         PageTable { entries: [0; PGNUM] }
     }
-    // walk: 只支持 4KB 页；中间层遇到 leaf(=大页) 视为错误返回 None
+
+    // walk: Returns pointer to PTE for va. If alloc is true, allocates intermediate tables.
     pub fn walk(&mut self, va: VirtAddr, alloc: bool) -> Option<*mut Pte> {
         if va >= VA_MAX {
             return None;
         }
         let mut table: *mut PageTable = self as *mut PageTable;
-        // 访问顺序：L2 -> L1，最后返回 L0 的 PTE 指针
         for level in (1..3).rev() {
             let idx = vpn(va)[level];
             let pte_ref = unsafe { &mut (*table).entries[idx] };
             if pte::is_valid(*pte_ref) {
                 if pte::is_leaf(*pte_ref) {
-                    // 不支持大页
                     return None;
                 }
                 let next_pa = pte_to_pa(*pte_ref);
                 if next_pa == 0 {
-                    crate::printk!("[ERR] walk: PTE={:x} has PA=0 at level {}", *pte_ref, level);
                     return None;
                 }
-                // 进入下一层表
                 table = next_pa as *mut PageTable;
             } else {
                 if !alloc {
@@ -46,13 +43,10 @@ impl PageTable {
                 if new_table.is_null() {
                     return None;
                 }
-                if new_table as usize == 0 {
-                    panic!("pmem::alloc returned 0 but not null?");
-                }
                 unsafe {
                     core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
                     let new_pte = pa_to_pte(new_table as usize, PTE_V);
-                    *pte_ref = new_pte; // 仅 V 置位表示中间层
+                    *pte_ref = new_pte;
                 }
                 table = new_table;
             }
@@ -60,7 +54,6 @@ impl PageTable {
         Some(unsafe { &mut (*table).entries[vpn(va)[0]] as *mut Pte })
     }
 
-    // lookup: 只读查询 PTE；不分配、不修改
     pub fn lookup(&self, va: VirtAddr) -> Option<*mut Pte> {
         if va >= VA_MAX {
             return None;
@@ -75,7 +68,6 @@ impl PageTable {
                 }
                 let next_pa = pte_to_pa(pte);
                 if next_pa == 0 {
-                    crate::printk!("[ERR] lookup: PTE={:x} has PA=0 at level {}", pte, level);
                     return None;
                 }
                 table = next_pa as *const PageTable;
@@ -102,9 +94,9 @@ impl PageTable {
             };
             let cur = unsafe { *pte };
             if pte::is_valid(cur) {
-                // 已存在映射：允许对同一物理页更新权限；若物理页不同则视为冲突
+                // Check if mapping matches. Allow updating permissions for same PA.
                 if !pte::is_leaf(cur) || pte_to_pa(cur) != pa_cur {
-                    return false; // 冲突或结构错误
+                    return false;
                 }
                 unsafe {
                     *pte = pa_to_pte(pa_cur, flags | PTE_V);
@@ -134,14 +126,10 @@ impl PageTable {
         while a <= last {
             let pte = match self.lookup(a) {
                 Some(p) => p,
-                None => {
-                    crate::printk!("[ERR] unmap: lookup failed for VA={:x}", a);
-                    return false;
-                }
+                None => return false,
             };
             let old = unsafe { *pte };
             if !pte::is_valid(old) || !pte::is_leaf(old) {
-                crate::printk!("[ERR] unmap: invalid/non-leaf PTE for VA={:x} PTE={:x}", a, old);
                 return false;
             }
             let pa = pte_to_pa(old);
@@ -151,7 +139,7 @@ impl PageTable {
                     None => panic!("vm_unmappages: PA {:#x} out of bounds", pa),
                 };
             }
-            unsafe { *pte = 0 }; // 清除映射
+            unsafe { *pte = 0 };
             if a == last {
                 break;
             }
@@ -252,7 +240,7 @@ impl PageTable {
             }
         }
     }
-    // Destroy a 3-level Sv39 page table rooted at `root_pa`.
+
     pub fn destroy(&mut self) {
         fn destroy_level(table_pa: usize) {
             let table = table_pa as *mut PageTable;
@@ -265,27 +253,16 @@ impl PageTable {
                     let pa = pte_to_pa(pte);
                     if let Some(for_kernel) = pmem::get_region(pa) {
                         pmem::free(pa, for_kernel);
-                    } else {
-                        // Mapping to non-pool PA (e.g., trampoline); leave it.
                     }
                     unsafe {
                         (*table).entries[i] = 0;
                     }
                 } else if pte::is_table(pte) {
                     let child_pa = pte_to_pa(pte);
-                    if child_pa == 0 {
-                        crate::printk!(
-                            "[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}",
-                            pte
-                        );
-                        unsafe {
-                            (*table).entries[i] = 0;
-                        }
-                        continue;
+                    if child_pa != 0 {
+                        destroy_level(child_pa);
+                        pmem::free(child_pa, true);
                     }
-                    destroy_level(child_pa);
-                    // free the child page table page (kernel pool)
-                    pmem::free(child_pa, true);
                     unsafe {
                         (*table).entries[i] = 0;
                     }
@@ -302,7 +279,6 @@ impl PageTable {
     /// - For trampoline-like pages: reuse the same PA, do not copy.
     /// TODO: handle copy-on-write pages.
     pub fn copy(&self) -> Result<PhysAddr, UvmError> {
-        // allocate destination root
         let dst_root = pmem::alloc(true) as usize;
         if dst_root == 0 {
             return Err(UvmError::NoMem);
@@ -316,48 +292,27 @@ impl PageTable {
             let l2 = self as *const PageTable;
             for i in 0..super::PGNUM {
                 let pte2 = (*l2).entries[i];
-                if !pte::is_valid(pte2) {
-                    continue;
-                }
-                if !pte::is_table(pte2) {
+                if !pte::is_valid(pte2) || !pte::is_table(pte2) {
                     continue;
                 }
                 let l1_pa = pte_to_pa(pte2);
-                if l1_pa == 0 {
-                    crate::printk!("[ERR] copy: L1 PA is 0 for PTE2={:x} at index {}", pte2, i);
-                    continue;
-                }
+                if l1_pa == 0 { continue; }
                 let l1 = l1_pa as *const PageTable;
                 for j in 0..super::PGNUM {
                     let pte1 = (*l1).entries[j];
-                    if !pte::is_valid(pte1) {
-                        continue;
-                    }
-                    if !pte::is_table(pte1) {
+                    if !pte::is_valid(pte1) || !pte::is_table(pte1) {
                         continue;
                     }
                     let l0_pa = pte_to_pa(pte1);
-                    if l0_pa == 0 {
-                        crate::printk!(
-                            "[ERR] copy: L0 PA is 0 for PTE1={:x} at index {}/{}",
-                            pte1,
-                            i,
-                            j
-                        );
-                        continue;
-                    }
+                    if l0_pa == 0 { continue; }
                     let l0 = l0_pa as *const PageTable;
                     for k in 0..super::PGNUM {
                         let pte0 = (*l0).entries[k];
-                        if !pte::is_valid(pte0) {
-                            continue;
-                        }
-                        if !pte::is_leaf(pte0) {
+                        if !pte::is_valid(pte0) || !pte::is_leaf(pte0) {
                             continue;
                         }
                         let pa = pte_to_pa(pte0);
                         let flags = pte::get_flags(pte0);
-                        // compute canonical VA from indices
                         let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
                         let sign = (va_raw >> 38) & 1;
                         let va = if sign == 1 {
@@ -367,64 +322,37 @@ impl PageTable {
                         };
 
                         if (flags & PTE_U) != 0 {
+                            // User page
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if !for_kernel => {
                                     let new_pa = pmem::alloc(false) as usize;
-                                    if new_pa == 0 {
-                                        return Err(UvmError::NoMem);
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        pa as *const u8,
-                                        new_pa as *mut u8,
-                                        PGSIZE,
-                                    );
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                        return Err(UvmError::MapFailed);
-                                    }
+                                    if new_pa == 0 { return Err(UvmError::NoMem); }
+                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
                                 }
-                                // FIXME: This is nonsense
-                                _ => {}
+                                _ => {
+                                    // Ignore this
+                                }
                             }
                         } else if (flags & PTE_X) != 0 {
-                            // trampoline-like
-                            if !dst_pt.map(va, pa, PGSIZE, flags) {
-                                return Err(UvmError::MapFailed);
-                            }
+                            // Kernel text/trampoline (RX) - Map as is (shared)
+                            if !dst_pt.map(va, pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
                         } else {
-                            // trapframe-like: must be in kernel region
+                            // Trapframe or other Kernel Data (RW)
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if for_kernel => {
                                     let new_pa = pmem::alloc(true) as usize;
-                                    if new_pa == 0 {
-                                        return Err(UvmError::NoMem);
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        pa as *const u8,
-                                        new_pa as *mut u8,
-                                        PGSIZE,
-                                    );
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                        return Err(UvmError::MapFailed);
-                                    }
+                                    if new_pa == 0 { return Err(UvmError::NoMem); }
+                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
                                 }
-                                _ => {
-                                    let reg = pmem::get_region(pa);
-                                    crate::printk!(
-                                        "[WARN] copy: Skipping non-user/non-trampoline page at VA={:x} PA={:x} PTE={:x} Region={:?}",
-                                        va,
-                                        pa,
-                                        pte0,
-                                        reg
-                                    );
-                                    /* skip invalid or user-mapped entries quietly */
-                                }
+                                _ => {}
                             }
                         }
                     }
                 }
             }
         }
-
         Ok(dst_root)
     }
 }
