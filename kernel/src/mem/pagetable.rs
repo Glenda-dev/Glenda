@@ -31,8 +31,13 @@ impl PageTable {
                     // 不支持大页
                     return None;
                 }
+                let next_pa = pte_to_pa(*pte_ref);
+                if next_pa == 0 {
+                    crate::printk!("[ERR] walk: PTE={:x} has PA=0 at level {}", *pte_ref, level);
+                    return None;
+                }
                 // 进入下一层表
-                table = pte_to_pa(*pte_ref) as *mut PageTable;
+                table = next_pa as *mut PageTable;
             } else {
                 if !alloc {
                     return None;
@@ -40,6 +45,9 @@ impl PageTable {
                 let new_table = pmem::alloc(true) as *mut PageTable;
                 if new_table.is_null() {
                     return None;
+                }
+                if new_table as usize == 0 {
+                    panic!("pmem::alloc returned 0 but not null?");
                 }
                 unsafe {
                     core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
@@ -65,7 +73,12 @@ impl PageTable {
                 if pte::is_leaf(pte) {
                     return None;
                 }
-                table = pte_to_pa(pte) as *const PageTable;
+                let next_pa = pte_to_pa(pte);
+                if next_pa == 0 {
+                    crate::printk!("[ERR] lookup: PTE={:x} has PA=0 at level {}", pte, level);
+                    return None;
+                }
+                table = next_pa as *const PageTable;
             } else {
                 return None;
             }
@@ -121,10 +134,14 @@ impl PageTable {
         while a <= last {
             let pte = match self.lookup(a) {
                 Some(p) => p,
-                None => return false,
+                None => {
+                    crate::printk!("[ERR] unmap: lookup failed for VA={:x}", a);
+                    return false;
+                }
             };
             let old = unsafe { *pte };
             if !pte::is_valid(old) || !pte::is_leaf(old) {
+                crate::printk!("[ERR] unmap: invalid/non-leaf PTE for VA={:x} PTE={:x}", a, old);
                 return false;
             }
             let pa = pte_to_pa(old);
@@ -142,6 +159,7 @@ impl PageTable {
         }
         true
     }
+
     #[cfg(debug_assertions)]
     pub fn print(&self) {
         use crate::printk;
@@ -256,9 +274,14 @@ impl PageTable {
                 } else if pte::is_table(pte) {
                     let child_pa = pte_to_pa(pte);
                     if child_pa == 0 {
-                         crate::printk!("[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}", pte);
-                         unsafe { (*table).entries[i] = 0; }
-                         continue;
+                        crate::printk!(
+                            "[WARN] PageTable::destroy: Skipping zero child_pa pte={:x}",
+                            pte
+                        );
+                        unsafe {
+                            (*table).entries[i] = 0;
+                        }
+                        continue;
                     }
                     destroy_level(child_pa);
                     // free the child page table page (kernel pool)
@@ -271,8 +294,6 @@ impl PageTable {
         }
         let root_pa = self as *const PageTable as usize;
         destroy_level(root_pa);
-        // finally free root table page
-        pmem::free(root_pa, true);
     }
 
     /// Deep-copy a Sv39 page table. Returns new root page table PA.
@@ -302,6 +323,10 @@ impl PageTable {
                     continue;
                 }
                 let l1_pa = pte_to_pa(pte2);
+                if l1_pa == 0 {
+                    crate::printk!("[ERR] copy: L1 PA is 0 for PTE2={:x} at index {}", pte2, i);
+                    continue;
+                }
                 let l1 = l1_pa as *const PageTable;
                 for j in 0..super::PGNUM {
                     let pte1 = (*l1).entries[j];
@@ -312,6 +337,15 @@ impl PageTable {
                         continue;
                     }
                     let l0_pa = pte_to_pa(pte1);
+                    if l0_pa == 0 {
+                        crate::printk!(
+                            "[ERR] copy: L0 PA is 0 for PTE1={:x} at index {}/{}",
+                            pte1,
+                            i,
+                            j
+                        );
+                        continue;
+                    }
                     let l0 = l0_pa as *const PageTable;
                     for k in 0..super::PGNUM {
                         let pte0 = (*l0).entries[k];
@@ -336,9 +370,17 @@ impl PageTable {
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if !for_kernel => {
                                     let new_pa = pmem::alloc(false) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
                                 // FIXME: This is nonsense
                                 _ => {}
@@ -353,11 +395,29 @@ impl PageTable {
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if for_kernel => {
                                     let new_pa = pmem::alloc(true) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
-                                _ => { /* skip invalid or user-mapped entries quietly */ }
+                                _ => {
+                                    let reg = pmem::get_region(pa);
+                                    crate::printk!(
+                                        "[WARN] copy: Skipping non-user/non-trampoline page at VA={:x} PA={:x} PTE={:x} Region={:?}",
+                                        va,
+                                        pa,
+                                        pte0,
+                                        reg
+                                    );
+                                    /* skip invalid or user-mapped entries quietly */
+                                }
                             }
                         }
                     }
