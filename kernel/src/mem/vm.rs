@@ -169,6 +169,12 @@ pub fn init_kernel_vm(hartid: usize) {
         printk!("VM: Map UART @ {:p}\n", uart_base as *const u8);
         mappages(kpt, uart_base, uart_base, uart_size, PTE_R | PTE_W | PTE_A | PTE_D);
 
+        // VirtIO Block Device
+        let virtio_base = 0x10001000;
+        let virtio_size = PGSIZE;
+        printk!("VM: Map VirtIO @ {:p}", virtio_base as *const u8);
+        mappages(kpt, virtio_base, virtio_base, virtio_size, PTE_R | PTE_W | PTE_A | PTE_D);
+
         // PLIC 映射
         let plic_base = match dtb::plic_base() {
             Some(b) => b,
