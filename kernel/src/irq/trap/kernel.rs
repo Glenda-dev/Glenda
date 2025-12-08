@@ -115,6 +115,9 @@ pub fn external_handler() {
         plic::UART_IRQ => {
             drivers::uart::irq::handler();
         }
+        plic::VIRTIO0_IRQ => {
+            crate::fs::virtio::virtio_disk_intr();
+        }
         _ => {
             panic!("Unexpected interrupt id {} on hart {}", id, hartid);
         }

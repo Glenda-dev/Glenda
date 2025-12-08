@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use core::ptr::{read_volatile, write_volatile};
 
+pub const VIRTIO0_IRQ: usize = 1;
 pub const UART_IRQ: usize = 10; // UART IRQ number, adjust as needed
 
 #[inline(always)]
@@ -21,9 +22,11 @@ fn ctx_index_m(hartid: usize) -> usize {
 
 pub fn init() {
     set_priority(UART_IRQ, 1); // 设置 UART 的优先级为 1
+    set_priority(VIRTIO0_IRQ, 1); // Set VirtIO priority to 1
 }
 pub fn init_hart(hartid: usize) {
     set_enable_s(hartid, UART_IRQ, true); // 启用 UART 的中断源
+    set_enable_s(hartid, VIRTIO0_IRQ, true); // Enable VirtIO interrupt
     set_threshold_s(hartid, 0); // S-mode 中断阈值设为 0，允许所有优先级 >0 的中断
 }
 pub fn claim(hartid: usize) -> usize {
