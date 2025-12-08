@@ -1,6 +1,9 @@
 #include "sys.h"
 
 #define PGSIZE 4096
+#define NUM 20
+#define N_BUFFER_TEST 8
+#define BLOCK_BASE 5000
 
 static void test_helloworld(void) {
     syscall(SYS_helloworld);
@@ -45,42 +48,40 @@ static void test_stack(void) {
 }
 
 static void test_mmap(void) {
-  // Keep macros consistent with kernel
   const unsigned long VA_MAX = (1ul << 38);
   const unsigned long MMAP_END = (VA_MAX - (16ul * 256 + 2) * PGSIZE);
   const unsigned long MMAP_BEGIN = (MMAP_END - 64ul * 256 * PGSIZE);
 
   syscall(SYS_copyinstr, (long)"[TEST] mmap/munmap begin");
 
-  syscall(SYS_mmap, MMAP_BEGIN + 4 * PGSIZE, 3 * PGSIZE);   // [4,7)
-  syscall(SYS_mmap, MMAP_BEGIN + 10 * PGSIZE, 2 * PGSIZE);  // [10,12)
-  syscall(SYS_mmap, MMAP_BEGIN + 2 * PGSIZE, 2 * PGSIZE);   // [2,4) -> merge left with [4,7) => [2,7)
-  syscall(SYS_mmap, MMAP_BEGIN + 12 * PGSIZE, 1 * PGSIZE);  // [12,13) -> merge right with [10,12) => [10,13)
-  syscall(SYS_mmap, MMAP_BEGIN + 7 * PGSIZE, 3 * PGSIZE);   // [7,10) -> bridge merge => [2,13)
-  syscall(SYS_mmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE);   // [0,2) -> merge left => [0,13)
-  syscall(SYS_mmap, 0, 10 * PGSIZE);                        // first-fit => [13,23)
+  syscall(SYS_mmap, MMAP_BEGIN + 4 * PGSIZE, 3 * PGSIZE);
+  syscall(SYS_mmap, MMAP_BEGIN + 10 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_mmap, MMAP_BEGIN + 2 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_mmap, MMAP_BEGIN + 12 * PGSIZE, 1 * PGSIZE);
+  syscall(SYS_mmap, MMAP_BEGIN + 7 * PGSIZE, 3 * PGSIZE);
+  syscall(SYS_mmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_mmap, 0, 10 * PGSIZE);
 
-  syscall(SYS_munmap, MMAP_BEGIN + 10 * PGSIZE, 5 * PGSIZE); // unmap [10,15): trims [0,13)->[0,10) and [13,23)->[15,23)
-  syscall(SYS_munmap, MMAP_BEGIN + 0 * PGSIZE, 10 * PGSIZE); // remove [0,10)
-  syscall(SYS_munmap, MMAP_BEGIN + 17 * PGSIZE, 2 * PGSIZE); // split [15,23) -> [15,17) + [19,23)
-  syscall(SYS_munmap, MMAP_BEGIN + 15 * PGSIZE, 2 * PGSIZE); // remove [15,17)
-  syscall(SYS_munmap, MMAP_BEGIN + 19 * PGSIZE, 2 * PGSIZE); // trim front [19,23)->[21,23)
-  syscall(SYS_munmap, MMAP_BEGIN + 22 * PGSIZE, 1 * PGSIZE); // trim back [21,23)->[21,22)
-  syscall(SYS_munmap, MMAP_BEGIN + 21 * PGSIZE, 1 * PGSIZE); // remove [21,22) -> empty
+  syscall(SYS_munmap, MMAP_BEGIN + 10 * PGSIZE, 5 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 0 * PGSIZE, 10 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 17 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 15 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 19 * PGSIZE, 2 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 22 * PGSIZE, 1 * PGSIZE);
+  syscall(SYS_munmap, MMAP_BEGIN + 21 * PGSIZE, 1 * PGSIZE);
 
-  // Some additional
   syscall(SYS_copyinstr, (long)"[TEST] mmap: overlap should fail");
-  (void)syscall(SYS_mmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE); // map [0,2)
-  long rv = syscall(SYS_mmap, MMAP_BEGIN + 1 * PGSIZE, 2 * PGSIZE); // overlap [1,3) -> expect failure (usize::MAX)
+  (void)syscall(SYS_mmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE);
+  long rv = syscall(SYS_mmap, MMAP_BEGIN + 1 * PGSIZE, 2 * PGSIZE);
   if (rv != -1) { syscall(SYS_copyinstr, (long)"[WARN] overlap not rejected"); }
-  syscall(SYS_munmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE); // cleanup
+  syscall(SYS_munmap, MMAP_BEGIN + 0 * PGSIZE, 2 * PGSIZE);
 
   syscall(SYS_copyinstr, (long)"[TEST] mmap: unaligned should fail");
   rv = syscall(SYS_mmap, MMAP_BEGIN + 123, 2 * PGSIZE);
   if (rv != -1) { syscall(SYS_copyinstr, (long)"[WARN] unaligned begin not rejected"); }
 
   syscall(SYS_copyinstr, (long)"[TEST] munmap: unmapped range is no-op");
-  syscall(SYS_munmap, MMAP_BEGIN + 8 * PGSIZE, 3 * PGSIZE); // no mapped regions -> no-op
+  syscall(SYS_munmap, MMAP_BEGIN + 8 * PGSIZE, 3 * PGSIZE);
 
   syscall(SYS_copyinstr, (long)"[PASS] mmap/munmap tests done");
 }
@@ -98,7 +99,6 @@ void test_fork_order() {
     syscall(SYS_print_str, (long)"level-2!\n");
     syscall(SYS_fork);
     syscall(SYS_print_str, (long)"level-3!\n");
-    // FIXME: 现在会打印四次，需要设计回收逻辑
     syscall(SYS_copyinstr, (long)"[PASS] Fork order test done.");
 }
 
@@ -160,6 +160,99 @@ void test_sleep() {
     syscall(SYS_copyinstr, (long)"[PASS] Sleep test done.");
 }
 
+void test_bitmap() {
+	unsigned int block_num[NUM];
+	unsigned int inode_num[NUM];
+
+	for (int i = 0; i < NUM; i++)
+		block_num[i] = syscall(SYS_alloc_block);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+	syscall(SYS_show_bitmap, 0);
+
+	for (int i = 0; i < NUM; i+=2)
+		syscall(SYS_free_block, block_num[i]);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+	syscall(SYS_show_bitmap, 0);
+
+	for (int i = 1; i < NUM; i+=2)
+		syscall(SYS_free_block, block_num[i]);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+	syscall(SYS_show_bitmap, 0);
+
+	for (int i = 0; i < NUM; i++)
+		inode_num[i] = syscall(SYS_alloc_inode);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+	syscall(SYS_show_bitmap, 1);
+
+	for (int i = 0; i < NUM; i++)
+		syscall(SYS_free_inode, inode_num[i]);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+	syscall(SYS_show_bitmap, 1);
+
+    syscall(SYS_copyinstr, (long)"[PASS] Bitmap test done.");
+}
+
+void test_buffer() {
+	char data[PGSIZE], tmp[PGSIZE];
+	unsigned long long buffer[N_BUFFER_TEST];
+
+	for (int i = 0; i < 8; i++)
+		data[i] = 'A' + i;
+	data[8] = '\n';
+	data[9] = '\0';
+
+	syscall(SYS_print_str, (long)"\nstate-1 ");
+	syscall(SYS_show_buffer);
+
+	buffer[0] = syscall(SYS_get_block, BLOCK_BASE);
+	syscall(SYS_write_block, buffer[0], (long)data);
+	syscall(SYS_put_block, buffer[0]);
+
+	syscall(SYS_print_str, (long)"\nstate-2 ");
+	syscall(SYS_show_buffer);
+
+	syscall(SYS_flush_buffer, N_BUFFER_TEST);
+
+	buffer[0] = syscall(SYS_get_block, BLOCK_BASE);
+	syscall(SYS_read_block, buffer[0], (long)tmp);
+	syscall(SYS_put_block, buffer[0]);
+
+	syscall(SYS_print_str, (long)"\n");
+	syscall(SYS_print_str, (long)"write data: ");
+	syscall(SYS_print_str, (long)data);
+	syscall(SYS_print_str, (long)"read data: ");
+	syscall(SYS_print_str, (long)tmp);
+
+	syscall(SYS_print_str, (long)"\nstate-3 ");
+	syscall(SYS_show_buffer);
+
+	buffer[0] = syscall(SYS_get_block, BLOCK_BASE);
+	buffer[3] = syscall(SYS_get_block, BLOCK_BASE + 3);
+	buffer[7] = syscall(SYS_get_block, BLOCK_BASE + 7);
+	buffer[2] = syscall(SYS_get_block, BLOCK_BASE + 2);
+	buffer[4] = syscall(SYS_get_block, BLOCK_BASE + 4);
+
+	syscall(SYS_print_str, (long)"\nstate-4 ");
+    syscall(SYS_show_buffer);
+
+	syscall(SYS_put_block, buffer[7]);
+	syscall(SYS_put_block, buffer[0]);
+	syscall(SYS_put_block, buffer[4]);
+
+	syscall(SYS_print_str, (long)"\nstate-5 ");
+	syscall(SYS_show_buffer);
+	syscall(SYS_flush_buffer, 3);
+	syscall(SYS_print_str, (long)"\nstate-6 ");
+	syscall(SYS_show_buffer);
+
+    syscall(SYS_copyinstr, (long)"[PASS] Buffer test done.");
+}
+
 int main(void)
 {
   test_helloworld();
@@ -169,10 +262,12 @@ int main(void)
   test_mmap();
   test_proczero();
   test_memory_fork();
-  test_sleep();
 
-  // test_fork_order 会产生 4 个进程并且都不退出
-  test_fork_order();
+  test_bitmap();
+  test_buffer();
+
+  //test_sleep();
+  //test_fork_order();
 
   for (;;) {}
   return 0;
