@@ -11,9 +11,22 @@
 #define SYS_print_str  8
 #define SYS_print_int  9
 #define SYS_getpid     10
-#define SYS_fork       11
-#define SYS_wait       12
-#define SYS_exit       13
-#define SYS_sleep      14
+
+#define SYS_alloc_block 11
+#define SYS_free_block  12
+#define SYS_alloc_inode 13
+#define SYS_free_inode  14
+#define SYS_show_bitmap 15
+#define SYS_get_block   16
+#define SYS_read_block  17
+#define SYS_write_block 18
+#define SYS_put_block   19
+#define SYS_show_buffer 20
+#define SYS_flush_buffer 21
+
+#define SYS_fork       22
+#define SYS_wait       23
+#define SYS_exit       24
+#define SYS_sleep      25
 
 #endif // GLENDA_SYSCALL_NUM_H
