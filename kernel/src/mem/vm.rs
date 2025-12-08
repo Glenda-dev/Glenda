@@ -33,8 +33,12 @@ static KSTACK0_PA: Mutex<Option<PhysAddr>> = Mutex::new(None);
 
 pub fn map_kstack0() {
     KSTACK0_INIT.call_once(|| {
-        let pa = pmem::alloc(true) as PhysAddr;
-        printk!("VM: KSTACK(0) assigned PA={:p} (identity-mapped)\n", pa as *const u8);
+        let pa = pmem::alloc_contiguous(KSTACK_SIZE / super::PGSIZE, true) as PhysAddr;
+        printk!(
+            "VM: KSTACK(0) assigned PA={:p} (identity-mapped, size={}KB)",
+            pa as *const u8,
+            KSTACK_SIZE / 1024
+        );
         *KSTACK0_PA.lock() = Some(pa);
     });
 }
@@ -45,9 +49,12 @@ pub fn kstack_base(procid: usize) -> VirtAddr {
     *KSTACK0_PA.lock().as_ref().expect("KSTACK(0) not initialized\n")
 }
 
+// Increase kernel stack to 4 pages (16KB)
+pub const KSTACK_SIZE: usize = super::PGSIZE * 4;
+
 #[inline(always)]
 pub fn kstack_top(procid: usize) -> VirtAddr {
-    kstack_base(procid) + super::PGSIZE
+    kstack_base(procid) + KSTACK_SIZE
 }
 
 pub fn getpte(table: &PageTable, va: VirtAddr) -> *mut Pte {
@@ -65,7 +72,8 @@ pub fn mappages(table: &mut PageTable, va: VirtAddr, pa: PhysAddr, size: usize, 
 
 pub fn unmappages(table: &mut PageTable, va: VirtAddr, size: usize, free: bool) {
     if !table.unmap(va, size, free) {
-        panic!("vm_unmappages: failed unmap VA {:#x}\n", va);
+        // table.print();
+        panic!("vm_unmappages: failed unmap VA {:#x}", va);
     }
 }
 
