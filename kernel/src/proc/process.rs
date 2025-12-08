@@ -16,11 +16,21 @@ use crate::printk;
 use crate::proc::scheduler::wakeup;
 use core::sync::atomic::Ordering;
 use riscv::asm::wfi;
-use riscv::register::{satp, sscratch};
+use riscv::register::{satp, sscratch, sstatus};
 
 unsafe extern "C" {
     pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
     fn trap_user_return(ctx: &mut ProcContext) -> !;
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn fs_init_wrapper() -> ! {
+    crate::fs::fs::fs_init();
+    // call trap_user_return
+    unsafe {
+        let f: unsafe extern "C" fn() -> ! = core::mem::transmute(trap_user_return as usize);
+        f();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +156,11 @@ impl Process {
     }
 
     pub fn exit(&mut self) {
+        // Disable interrupts to avoid deadlock with ISR
+        let sstatus_val = sstatus::read();
+        let sie_enabled = sstatus_val.sie();
+        unsafe { sstatus::clear_sie(); }
+
         // Wake up parent if sleeping in wait()
         if !self.parent.is_null() {
             let parent = self.parent as usize;
@@ -162,6 +177,8 @@ impl Process {
             }
         }
         self.state = ProcState::Dying;
+
+        if sie_enabled { unsafe { sstatus::set_sie(); } }
     }
 
     pub fn launch(&mut self) {
@@ -299,6 +316,11 @@ pub fn init() {
 }
 
 pub fn alloc() -> Option<&'static mut Process> {
+    // Disable interrupts
+    let sstatus_val = sstatus::read();
+    let sie_enabled = sstatus_val.sie();
+    unsafe { sstatus::clear_sie(); }
+
     let mut table = PROC_TABLE.lock();
     for i in 0..NPROC {
         if table[i].state == ProcState::Unused {
@@ -315,9 +337,13 @@ pub fn alloc() -> Option<&'static mut Process> {
             p.context.ra = proc_return as usize;
             p.context.sp = 0;
             p.state = ProcState::Runnable;
+
+            if sie_enabled { unsafe { sstatus::set_sie(); } }
             return Some(p);
         }
     }
+
+    if sie_enabled { unsafe { sstatus::set_sie(); } }
     None
 }
 
@@ -383,7 +409,11 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     unsafe { sscratch::write(tf_user_va as usize) };
     tf.a0 = tf_user_va as usize;
     // 设置内核态上下文
-    proc.context.ra = trap_user_return as usize;
+    if proc.pid == 1 {
+        proc.context.ra = fs_init_wrapper as usize;
+    } else {
+        proc.context.ra = trap_user_return as usize;
+    }
     let kstack_va = proc.kernel_stack as *mut u8;
     proc.context.sp = kstack_va as usize;
     // 设置进程状态为可运行
