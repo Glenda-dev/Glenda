@@ -11,6 +11,7 @@ mod printk;
 mod proc;
 mod sbi;
 mod syscall;
+mod fs;
 
 #[cfg(feature = "tests")]
 mod tests;
@@ -71,10 +72,16 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     }
 
     init(hartid, dtb);
+    crate::irq::enable_s();
+
     #[cfg(feature = "tests")]
     {
         tests::test(hartid);
-        crate::irq::enable_s();
+    }
+
+    if hartid == 0 {
+        crate::fs::virtio::init();
+        crate::fs::buffer::init();
     }
 
     if hartid == 0 {
