@@ -206,14 +206,14 @@ void test_buffer() {
 	data[8] = '\n';
 	data[9] = '\0';
 
-	syscall(SYS_print_str, (long)"\nstate-1 ");
+	syscall(SYS_print_str, (long)"\nstate-1\n");
 	syscall(SYS_show_buffer);
 
 	buffer[0] = syscall(SYS_get_block, BLOCK_BASE);
 	syscall(SYS_write_block, buffer[0], (long)data);
 	syscall(SYS_put_block, buffer[0]);
 
-	syscall(SYS_print_str, (long)"\nstate-2 ");
+	syscall(SYS_print_str, (long)"\nstate-2\n");
 	syscall(SYS_show_buffer);
 
 	syscall(SYS_flush_buffer, N_BUFFER_TEST);
@@ -223,12 +223,12 @@ void test_buffer() {
 	syscall(SYS_put_block, buffer[0]);
 
 	syscall(SYS_print_str, (long)"\n");
-	syscall(SYS_print_str, (long)"write data: ");
+	syscall(SYS_print_str, (long)"write data:\n");
 	syscall(SYS_print_str, (long)data);
-	syscall(SYS_print_str, (long)"read data: ");
+	syscall(SYS_print_str, (long)"read data:\n");
 	syscall(SYS_print_str, (long)tmp);
 
-	syscall(SYS_print_str, (long)"\nstate-3 ");
+	syscall(SYS_print_str, (long)"\nstate-3\n");
 	syscall(SYS_show_buffer);
 
 	buffer[0] = syscall(SYS_get_block, BLOCK_BASE);
@@ -237,20 +237,20 @@ void test_buffer() {
 	buffer[2] = syscall(SYS_get_block, BLOCK_BASE + 2);
 	buffer[4] = syscall(SYS_get_block, BLOCK_BASE + 4);
 
-	syscall(SYS_print_str, (long)"\nstate-4 ");
+	syscall(SYS_print_str, (long)"\nstate-4\n");
     syscall(SYS_show_buffer);
 
 	syscall(SYS_put_block, buffer[7]);
 	syscall(SYS_put_block, buffer[0]);
 	syscall(SYS_put_block, buffer[4]);
 
-	syscall(SYS_print_str, (long)"\nstate-5 ");
+	syscall(SYS_print_str, (long)"\nstate-5\n");
 	syscall(SYS_show_buffer);
 	syscall(SYS_flush_buffer, 3);
-	syscall(SYS_print_str, (long)"\nstate-6 ");
+	syscall(SYS_print_str, (long)"\nstate-6\n");
 	syscall(SYS_show_buffer);
 
-    syscall(SYS_copyinstr, (long)"[PASS] Buffer test done.");
+    syscall(SYS_print_str, (long)"\n[PASS] Buffer test done.\n");
 }
 
 int main(void)

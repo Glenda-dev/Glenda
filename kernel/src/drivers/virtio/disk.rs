@@ -17,7 +17,6 @@ use super::{
 use super::{reg_read, reg_write};
 use crate::mem::PGSIZE;
 use crate::mem::frame::PhysFrame;
-use crate::mem::pmem;
 use crate::printk;
 use core::ptr::{read_volatile, write_volatile};
 use riscv::register::sstatus;

@@ -77,7 +77,7 @@ pub fn sys_put_block(ctx: &mut TrapContext) -> usize {
 }
 
 pub fn sys_show_buffer() -> usize {
-    // TODO: Implement buffer cache dump logic if needed for debugging
+    buffer::debug_state();
     0
 }
 
