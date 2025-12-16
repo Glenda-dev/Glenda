@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
 mod drivers;
 mod dtb;
 mod fs;
@@ -17,14 +19,19 @@ mod syscall;
 #[cfg(feature = "tests")]
 mod tests;
 
+use core::alloc::Layout;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 use init::init;
 use logo::LOGO;
+use mem::chain::ChainAllocator;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 
 include!("../../target/proc_payload.rs");
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: ChainAllocator = ChainAllocator::new();
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核

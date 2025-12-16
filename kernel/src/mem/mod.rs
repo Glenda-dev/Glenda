@@ -7,9 +7,11 @@ pub const MMAP_END: usize = VA_MAX - (16 * 256 + 2) * PGSIZE;
 pub const MMAP_BEGIN: usize = MMAP_END - 64 * 256 * PGSIZE;
 
 pub use addr::{PhysAddr, VirtAddr};
+pub use chain::ChainAllocator;
 pub use pagetable::PageTable;
 
 pub mod addr;
+pub mod chain;
 pub mod frame;
 pub mod mmap;
 pub mod pagetable;
