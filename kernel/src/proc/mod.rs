@@ -1,8 +1,10 @@
 pub mod context;
+pub mod payload;
 pub mod process;
 pub mod scheduler;
 pub mod table;
 pub use context::ProcContext;
+pub use payload::ProcPayload;
 pub use process::ProcState;
 pub use process::Process;
 

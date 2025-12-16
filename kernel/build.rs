@@ -5,6 +5,9 @@ fn main() {
     println!("cargo:rerun-if-changed=src/asm/enter.S");
     println!("cargo:rerun-if-changed=src/asm/switch.S");
     println!("cargo:rerun-if-changed=src/asm/trampoline.S");
+    println!("cargo:rerun-if-changed=src/asm/payload.S");
+    // Watch for the generated modules blob in workspace target
+    println!("cargo:rerun-if-changed=../target/modules.bin");
     println!("cargo:rerun-if-changed=src/linker.ld");
     cc::Build::new()
         .file("src/asm/boot.S")
@@ -12,6 +15,7 @@ fn main() {
         .file("src/asm/sbi.S")
         .file("src/asm/enter.S")
         .file("src/asm/switch.S")
+        .file("src/asm/payload.S")
         .file("src/asm/trampoline.S")
         .flag("-march=rv64gc")
         .flag("-mabi=lp64d")

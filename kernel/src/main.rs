@@ -25,8 +25,6 @@ use mem::alloc::Allocator;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 
-include!("../../target/proc_payload.rs");
-
 #[global_allocator]
 static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 
@@ -51,14 +49,7 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     }
 
     if hartid == 0 {
-        if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
-            printk!("Creating init process from payload...\n");
-            proc::process::create(PROC_PAYLOAD);
-        } else {
-            printk!("Creating init process from fallback...\n");
-            // wfi()
-            proc::process::create(&[0x6f, 0x00, 0x00, 0x00]);
-        }
+        proc::process::init();
         printk!("Starting scheduler on hart 0...\n");
         proc::scheduler::scheduler();
     }
@@ -79,7 +70,7 @@ fn fp() -> usize {
 }
 
 fn backtrace() {
-    printk!("--- GLENDA BACKTRACE START ---");
+    printk!("\n--- GLENDA BACKTRACE START ---\n");
     let mut current_fp = fp();
     let mut depth = 0;
     while current_fp != 0 && depth < 20 {
@@ -93,16 +84,16 @@ fn backtrace() {
             if ra_ptr as usize >= 0x80000000 && prev_fp_ptr as usize >= 0x80000000 {
                 let ra = *ra_ptr;
                 let prev_fp = *prev_fp_ptr;
-                printk!("{:>2}: fp={:#x} ra={:#x}", depth, current_fp, ra);
+                printk!("{:>2}: fp={:#x} ra={:#x}\n", depth, current_fp, ra);
                 current_fp = prev_fp;
             } else {
-                printk!("Invalid fp/ra ptr at {:#x}", current_fp);
+                printk!("Invalid fp/ra ptr at {:#x}\n", current_fp);
                 break;
             }
         }
         depth += 1;
     }
-    printk!("--- GLENDA BACKTRACE END ---");
+    printk!("--- GLENDA BACKTRACE END ---\n");
 }
 
 #[panic_handler]

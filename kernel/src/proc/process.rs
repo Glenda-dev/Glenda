@@ -1,4 +1,5 @@
 use super::ProcContext;
+use super::payload;
 use super::set_current_user_satp;
 use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
 use crate::hart;
@@ -151,7 +152,9 @@ impl Process {
         // Disable interrupts to avoid deadlock with ISR
         let sstatus_val = sstatus::read();
         let sie_enabled = sstatus_val.sie();
-        unsafe { sstatus::clear_sie(); }
+        unsafe {
+            sstatus::clear_sie();
+        }
 
         // Wake up parent if sleeping in wait()
         if !self.parent.is_null() {
@@ -170,7 +173,11 @@ impl Process {
         }
         self.state = ProcState::Dying;
 
-        if sie_enabled { unsafe { sstatus::set_sie(); } }
+        if sie_enabled {
+            unsafe {
+                sstatus::set_sie();
+            }
+        }
     }
 
     pub fn launch(&mut self) {
@@ -308,13 +315,20 @@ extern "C" fn proc_return() -> ! {
 
 pub fn init() {
     GLOBAL_PID.store(1, Ordering::SeqCst);
+    payload::init();
+    printk!("proc: Loading root task\n");
+    // Load root task from payload
+    let root_task = payload::get_root_task().expect("No root task in payload");
+    create(&root_task.data);
 }
 
 pub fn alloc() -> Option<&'static mut Process> {
     // Disable interrupts
     let sstatus_val = sstatus::read();
     let sie_enabled = sstatus_val.sie();
-    unsafe { sstatus::clear_sie(); }
+    unsafe {
+        sstatus::clear_sie();
+    }
 
     let mut table = PROC_TABLE.lock();
     for i in 0..NPROC {
@@ -333,12 +347,20 @@ pub fn alloc() -> Option<&'static mut Process> {
             p.context.sp = 0;
             p.state = ProcState::Runnable;
 
-            if sie_enabled { unsafe { sstatus::set_sie(); } }
+            if sie_enabled {
+                unsafe {
+                    sstatus::set_sie();
+                }
+            }
             return Some(p);
         }
     }
 
-    if sie_enabled { unsafe { sstatus::set_sie(); } }
+    if sie_enabled {
+        unsafe {
+            sstatus::set_sie();
+        }
+    }
     None
 }
 

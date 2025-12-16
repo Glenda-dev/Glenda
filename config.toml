@@ -1,0 +1,6 @@
+[[services]]
+name = "hello"
+path = "service/hello"
+build_cmd = "make"
+output_bin = "build/hello.bin"
+kind = "root_task"

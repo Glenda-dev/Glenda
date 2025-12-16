@@ -86,7 +86,7 @@ impl LRUCache {
         while cur != HEAD_ACTIVE {
             let b = &self.bufs[cur];
             crate::printk!(
-                "buffer {}(ref ={}): page(pa = 0x{:x})-> block[{}]\n",
+                "buffer {} (ref = {}): page(pa = 0x{:x})-> block[{}]\n",
                 cur,
                 b.refcnt,
                 b.data.as_ptr() as usize,
@@ -101,7 +101,7 @@ impl LRUCache {
         while cur != HEAD_INACTIVE {
             let b = &self.bufs[cur];
             crate::printk!(
-                "buffer {}(ref ={}): page(pa = 0x{:x})-> block[{}]\n",
+                "buffer {} (ref = {}): page(pa = 0x{:x})-> block[{}]\n",
                 cur,
                 b.refcnt,
                 b.data.as_ptr() as usize,
