@@ -4,7 +4,7 @@ use core::ptr::NonNull;
 
 use spin::Mutex;
 
-use super::PGSIZE;
+use super::super::PGSIZE;
 use crate::mem::pmem;
 
 const HEADER_SIZE: usize = size_of::<AllocHeader>();

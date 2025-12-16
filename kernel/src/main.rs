@@ -19,19 +19,16 @@ mod syscall;
 #[cfg(feature = "tests")]
 mod tests;
 
-use core::alloc::Layout;
 use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, Ordering};
 use init::init;
-use logo::LOGO;
-use mem::chain::ChainAllocator;
+use mem::alloc::Allocator;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 
 include!("../../target/proc_payload.rs");
 
 #[global_allocator]
-static GLOBAL_ALLOCATOR: ChainAllocator = ChainAllocator::new();
+static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -52,8 +49,6 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     {
         tests::test(hartid);
     }
-
-    if hartid == 0 {}
 
     if hartid == 0 {
         if HAS_PROC_PAYLOAD && !PROC_PAYLOAD.is_empty() {
