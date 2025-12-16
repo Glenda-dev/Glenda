@@ -15,6 +15,7 @@ pub fn run_tests(hartid: usize) {
     super::spinlock::run(hartid);
     super::printk::run(hartid);
     super::pmem::run(hartid);
+    super::allocator::run(hartid);
     super::mmaprepo::run(hartid);
     super::trap::run(hartid);
     super::vm::run(hartid);
