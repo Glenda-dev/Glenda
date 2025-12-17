@@ -10,13 +10,13 @@ use super::{PGMASK, PGSIZE};
 
 #[inline(always)]
 pub const fn align_up(value: usize) -> usize {
-    debug_assert!(PGSIZE.is_power_of_two());
+    assert!(PGSIZE.is_power_of_two());
     (value + PGMASK) & !PGMASK
 }
 
 #[inline(always)]
 pub const fn align_down(value: usize) -> usize {
-    debug_assert!(PGSIZE.is_power_of_two());
+    assert!(PGSIZE.is_power_of_two());
     value & !PGMASK
 }
 

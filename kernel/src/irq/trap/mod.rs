@@ -164,22 +164,6 @@ impl TrapFrame {
             t6: 0,
         }
     }
-    #[cfg(debug_assertions)]
-    pub fn print(&self) {
-        use crate::printk;
-        printk!(
-            "TrapFrame:\n  kernel_satp: 0x{:x}\n  kernel_sp: 0x{:x}\n  kernel_trapvector: 0x{:x}\n  kernel_epc: 0x{:x}\n  kernel_hartid: {}\n  ra: 0x{:x}\n  sp: 0x{:x}\n  gp: 0x{:x}\n  tp: 0x{:x}\n",
-            self.kernel_satp,
-            self.kernel_sp,
-            self.kernel_trapvector,
-            self.kernel_epc,
-            self.kernel_hartid,
-            self.ra,
-            self.sp,
-            self.gp,
-            self.tp,
-        );
-    }
 }
 
 const EXCEPTION_INFO: [&str; 16] = [

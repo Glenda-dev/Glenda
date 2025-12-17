@@ -3,7 +3,7 @@ use super::rights;
 
 /// 能力 (Capability)
 /// 包含对象引用、权限和 Badge
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Capability {
     pub object: CapType,
     pub badge: Option<usize>, // Badge 用于服务端识别客户端身份
@@ -41,5 +41,12 @@ impl Capability {
     /// 检查是否允许 Grant (传递)
     pub fn can_grant(&self) -> bool {
         self.has_rights(rights::GRANT)
+    }
+}
+
+impl Drop for Capability {
+    fn drop(&mut self) {
+        // 这里可以添加资源释放逻辑，例如回收未类型化内存等
+        // 目前简化处理，什么都不做
     }
 }

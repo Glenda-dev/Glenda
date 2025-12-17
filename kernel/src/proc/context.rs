@@ -40,25 +40,4 @@ impl ProcContext {
             s11: 0,
         }
     }
-    #[cfg(debug_assertions)]
-    pub fn print(&self) {
-        use crate::printk;
-        printk!(
-            "ProcContext:\n  ra: 0x{:x}\n  sp: 0x{:x}\n  s0: 0x{:x}\n  s1: 0x{:x}\n  s2: 0x{:x}\n  s3: 0x{:x}\n  s4: 0x{:x}\n  s5: 0x{:x}\n  s6: 0x{:x}\n  s7: 0x{:x}\n  s8: 0x{:x}\n  s9: 0x{:x}\n  s10: 0x{:x}\n  s11: 0x{:x}\n",
-            self.ra,
-            self.sp,
-            self.s0,
-            self.s1,
-            self.s2,
-            self.s3,
-            self.s4,
-            self.s5,
-            self.s6,
-            self.s7,
-            self.s8,
-            self.s9,
-            self.s10,
-            self.s11,
-        );
-    }
 }

@@ -29,7 +29,7 @@ pub enum CapType {
         size: usize,
     },
     /// 线程控制块 (Thread Control Block)，这里暂时关联到 PID
-    TCB {
+    Process {
         pid: Pid,
     },
     /// IPC 通信端点

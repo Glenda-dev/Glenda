@@ -1,5 +1,3 @@
-use crate::printk::{ANSI_RESET, ANSI_YELLOW};
-
 use super::addr::{align_down, align_up, vpn};
 use super::pmem::{self, get_region};
 use super::pte::{self, PTE_U, PTE_V, PTE_X, Pte, pa_to_pte, pte_to_pa};
@@ -150,99 +148,6 @@ impl PageTable {
         true
     }
 
-    #[cfg(debug_assertions)]
-    pub fn print(&self) {
-        use crate::printk;
-        #[inline(always)]
-        fn pa_in_any_region(pa: usize) -> bool {
-            let k = super::pmem::kernel_region_info();
-            let u = super::pmem::user_region_info();
-            (pa >= k.begin && pa < k.end) || (pa >= u.begin && pa < u.end)
-        }
-
-        #[inline(always)]
-        fn sv39_canon(va: usize) -> usize {
-            // sign-extend bit 38
-            let sign = (va >> 38) & 1;
-            if sign == 1 { va | (!0usize << 39) } else { va & ((1usize << 39) - 1) }
-        }
-
-        let pgtbl_2 = self as *const PageTable as usize;
-        printk!("L2 PT @ 0x{:x}\n", pgtbl_2);
-
-        for i in 0..PGNUM {
-            let pte2 = unsafe { (*(pgtbl_2 as *const PageTable)).entries[i] };
-            if !pte::is_valid(pte2) {
-                continue;
-            }
-            if !pte::is_table(pte2) {
-                printk!("ASSERT: L2 entry is not table, i={}\n", i);
-                return;
-            }
-
-            let pgtbl_1_pa = pte_to_pa(pte2);
-            if (pgtbl_1_pa & (PGSIZE - 1)) != 0 {
-                printk!("ASSERT: L1 pa not page-aligned: 0x{:x}\n", pgtbl_1_pa);
-                return;
-            }
-            if !pa_in_any_region(pgtbl_1_pa) {
-                printk!("ASSERT: L1 pa out of region: 0x{:x}\n", pgtbl_1_pa);
-                return;
-            }
-
-            printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa);
-
-            let pgtbl_1 = pgtbl_1_pa as *const PageTable;
-            for j in 0..PGNUM {
-                let pte1 = unsafe { (*pgtbl_1).entries[j] };
-                if !pte::is_valid(pte1) {
-                    continue;
-                }
-                if !pte::is_table(pte1) {
-                    printk!("ASSERT: L1 entry is not table, j={}\n", j);
-                    return;
-                }
-
-                let pgtbl_0_pa = pte_to_pa(pte1);
-                if (pgtbl_0_pa & (PGSIZE - 1)) != 0 {
-                    printk!("ASSERT: L0 pa not page-aligned: 0x{:x}\n", pgtbl_0_pa);
-                    return;
-                }
-                if !pa_in_any_region(pgtbl_0_pa) {
-                    printk!("ASSERT: L0 pa out of region: 0x{:x}\n", pgtbl_0_pa);
-                    return;
-                }
-
-                printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa);
-
-                let pgtbl_0 = pgtbl_0_pa as *const PageTable;
-                for k in 0..PGNUM {
-                    let pte0 = unsafe { (*pgtbl_0).entries[k] };
-                    if !pte::is_valid(pte0) {
-                        continue;
-                    }
-                    if !pte::is_leaf(pte0) {
-                        printk!("ASSERT: L0 entry not leaf, k={}\n", k);
-                        return;
-                    }
-
-                    let pa = pte_to_pa(pte0);
-                    let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
-                    let va = sv39_canon(va_raw);
-                    let flags = pte::get_flags(pte0);
-
-                    printk!(
-                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags=0x{:x}\n",
-                        k,
-                        va,
-                        pa,
-                        flags
-                    );
-                }
-            }
-        }
-    }
-
     pub fn destroy(&mut self) {
         fn destroy_level(table_pa: usize) {
             let table = table_pa as *mut PageTable;
@@ -299,7 +204,9 @@ impl PageTable {
                     continue;
                 }
                 let l1_pa = pte_to_pa(pte2);
-                if l1_pa == 0 { continue; }
+                if l1_pa == 0 {
+                    continue;
+                }
                 let l1 = l1_pa as *const PageTable;
                 for j in 0..super::PGNUM {
                     let pte1 = (*l1).entries[j];
@@ -307,7 +214,9 @@ impl PageTable {
                         continue;
                     }
                     let l0_pa = pte_to_pa(pte1);
-                    if l0_pa == 0 { continue; }
+                    if l0_pa == 0 {
+                        continue;
+                    }
                     let l0 = l0_pa as *const PageTable;
                     for k in 0..super::PGNUM {
                         let pte0 = (*l0).entries[k];
@@ -329,9 +238,17 @@ impl PageTable {
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if !for_kernel => {
                                     let new_pa = pmem::alloc(false) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
                                 _ => {
                                     // Ignore this
@@ -339,15 +256,25 @@ impl PageTable {
                             }
                         } else if (flags & PTE_X) != 0 {
                             // Kernel text/trampoline (RX) - Map as is (shared)
-                            if !dst_pt.map(va, pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                            if !dst_pt.map(va, pa, PGSIZE, flags) {
+                                return Err(UvmError::MapFailed);
+                            }
                         } else {
                             // Trapframe or other Kernel Data (RW)
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if for_kernel => {
                                     let new_pa = pmem::alloc(true) as usize;
-                                    if new_pa == 0 { return Err(UvmError::NoMem); }
-                                    ptr::copy_nonoverlapping(pa as *const u8, new_pa as *mut u8, PGSIZE);
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) { return Err(UvmError::MapFailed); }
+                                    if new_pa == 0 {
+                                        return Err(UvmError::NoMem);
+                                    }
+                                    ptr::copy_nonoverlapping(
+                                        pa as *const u8,
+                                        new_pa as *mut u8,
+                                        PGSIZE,
+                                    );
+                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
+                                        return Err(UvmError::MapFailed);
+                                    }
                                 }
                                 _ => {}
                             }

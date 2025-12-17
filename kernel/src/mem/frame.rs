@@ -33,6 +33,10 @@ impl PhysFrame {
     pub fn as_mut_ptr<T>(&mut self) -> *mut T {
         self.addr as *mut T
     }
+
+    pub fn as_slice<T>(&self, len: usize) -> &[T] {
+        unsafe { core::slice::from_raw_parts(self.as_ptr::<T>(), len) }
+    }
 }
 
 impl Drop for PhysFrame {

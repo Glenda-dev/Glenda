@@ -1,9 +1,5 @@
 // A busy-wait 16550A-compatible UART Driver
 
-pub mod irq;
-#[cfg(feature = "uart-unicode")]
-pub mod utf8;
-
 use crate::dtb;
 use core::cmp;
 use core::fmt::{self, Write};

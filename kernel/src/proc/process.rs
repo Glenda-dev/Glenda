@@ -1,3 +1,4 @@
+// TODO: Refactor this
 use super::ProcContext;
 use super::payload;
 use super::set_current_user_satp;
@@ -8,11 +9,9 @@ use crate::irq::TrapFrame;
 use crate::irq::vector;
 use crate::mem::addr::align_down;
 use crate::mem::frame::PhysFrame;
-use crate::mem::mmap::{self, MmapRegion};
 use crate::mem::pmem;
 use crate::mem::pte::{PTE_A, PTE_D, PTE_R, PTE_U, PTE_W, PTE_X};
-use crate::mem::uvm;
-use crate::mem::vm::{self, KernelStack};
+use crate::mem::vm::KernelStack;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VA_MAX, VirtAddr};
 use crate::printk;
 use crate::proc::scheduler::wakeup;
@@ -21,18 +20,8 @@ use riscv::asm::wfi;
 use riscv::register::{satp, sscratch, sstatus};
 
 unsafe extern "C" {
-    pub fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
+    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
     fn trap_user_return(ctx: &mut ProcContext) -> !;
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn fs_init_wrapper() -> ! {
-    crate::fs::fs::fs_init();
-    // call trap_user_return
-    unsafe {
-        let f: unsafe extern "C" fn() -> ! = core::mem::transmute(trap_user_return as usize);
-        f();
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +30,7 @@ pub enum ProcState {
     Zombie,
     Dying,
     Sleeping,
-    Runnable,
+    Ready,
     Running,
     Blocked,
 }
@@ -68,7 +57,6 @@ pub struct Process {
     pub kstack: Option<KernelStack>,        // 内核栈 RAII
     pub entry_va: VirtAddr,                 // 用户入口地址
     pub user_sp_va: VirtAddr,               // 用户栈顶 VA
-    pub mmap_head: *mut MmapRegion,         // mmap 链表头
     pub utcb_va: VirtAddr,                  // UTCB 虚拟地址
     pub cspace: CSpace,                     // capability space
 }
@@ -98,17 +86,8 @@ impl Process {
             kstack: None,
             entry_va: 0,
             user_sp_va: 0,
-            mmap_head: core::ptr::null_mut(),
             utcb_va: 0,
             cspace: CSpace::new(),
-        }
-    }
-
-    pub fn ustack_grow(&mut self, fault_va: VirtAddr) -> Result<(), ()> {
-        let pt = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
-        match uvm::ustack_grow(pt, &mut self.stack_pages, self.trapframe_va, fault_va) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
         }
     }
 
@@ -119,39 +98,12 @@ impl Process {
         ((satp::Mode::Sv39 as usize) << 60) | (self.pid << 44) | ppn
     }
 
-    #[cfg(debug_assertions)]
-    pub fn print(&self) {
-        use crate::printk;
-
-        printk!(
-            "Process:\n  pid: {}\n  root_pt_pa: 0x{:x}\n  heap_top: 0x{:x}\n  heap_base: 0x{:x}\n  stack_pages: {}\n  trapframe: 0x{:x}\n  trapframe_va: 0x{:x}\n  kstack top: 0x{:x}\n  entry_va: 0x{:x}\n  user_sp_va: 0x{:x}\n",
-            self.pid,
-            self.root_pt_pa,
-            self.heap_top,
-            self.heap_base,
-            self.stack_pages,
-            self.trapframe as usize,
-            self.trapframe_va,
-            self.kstack.as_ref().map(|k| k.top()).unwrap_or(0),
-            self.entry_va,
-            self.user_sp_va,
-        );
-        let page_table = unsafe { &*(self.root_pt_pa as *const PageTable) };
-        page_table.print();
-        let tf = unsafe { &*(self.trapframe) };
-        tf.print();
-        self.context.print();
-    }
-
     pub fn free(&mut self) {
         let page_table = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
 
         // Destory page table first (frees TrapFrame and children)
         page_table.destroy();
         self.root_pt_frame = None;
-
-        // Free mmap regions
-        mmap::region_free(self.mmap_head);
 
         // Kernel Stack is freed by Drop of KernelStack in self.kstack
         self.kstack = None;
@@ -197,76 +149,6 @@ impl Process {
         }
     }
 
-    // TODO: Copy-on-write fork
-    pub fn fork(&mut self) -> &'static mut Process {
-        let child = alloc().expect("Failed to allocate process");
-        // quiet fork path in release
-        // Copy process state from parent to child
-        child.parent = self as *mut Process;
-        child.entry_va = self.entry_va;
-        child.user_sp_va = self.user_sp_va;
-        child.trapframe_va = self.trapframe_va;
-
-        // Copy page table
-        let parent_pt = unsafe { &*(self.root_pt_pa as *const PageTable) };
-        // Alloc RAII frame for child root pt
-        let child_pt_pa_raw = parent_pt.copy().expect("Failed to copy page table");
-        // We must wrap the raw PA from `copy` into a PhysFrame.
-        // Since `copy` allocated it using `pmem::alloc`, it has ref_count=1.
-        // Wrapping it in PhysFrame is correct ownership transfer.
-        let child_pt_frame = unsafe { PhysFrame::from_raw(child_pt_pa_raw) };
-        child.root_pt_pa = child_pt_pa_raw;
-        child.root_pt_frame = Some(child_pt_frame);
-
-        // Copy heap info
-        child.heap_base = self.heap_base;
-        child.heap_top = self.heap_top;
-        // Copy stack size
-        child.stack_pages = self.stack_pages;
-
-        // Allocate new TrapFrame page for child
-        let child_tf_frame = PhysFrame::alloc().expect("Failed to alloc trapframe");
-        let child_tf_pa = child_tf_frame.addr();
-        child.trapframe = child_tf_pa as *mut TrapFrame;
-        child.trapframe_frame = Some(child_tf_frame);
-
-        // Allocate new Kernel Stack for child
-        let kstack = KernelStack::new(child.pid);
-        let kstack_top = kstack.top();
-        child.kstack = Some(kstack);
-
-        // Map new TrapFrame in child's page table (overwrite copied mapping)
-        let child_pt = unsafe { &mut *(child.root_pt_pa as *mut PageTable) };
-        // Free the TrapFrame page created by copy() (it was a duplicate of parent's, but we want a fresh one)
-        vm::unmappages(child_pt, child.trapframe_va, PGSIZE, true);
-        vm::mappages(
-            child_pt,
-            child.trapframe_va,
-            child_tf_pa,
-            PGSIZE,
-            PTE_R | PTE_W | PTE_A | PTE_D,
-        );
-
-        // Copy TrapFrame content
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.trapframe, child.trapframe, 1);
-        }
-
-        // Update child's TrapFrame to return 0 from fork
-        let child_tf = unsafe { &mut *child.trapframe };
-        child_tf.a0 = 0; // fork 返回值为0
-        child_tf.kernel_epc = child_tf.kernel_epc.wrapping_add(4); // skip ecall
-        child_tf.kernel_sp = kstack_top; // Use child's own kernel stack
-
-        let parent_tf = unsafe { &mut *self.trapframe };
-        // 父进程从 fork 返回子进程的 pid
-        parent_tf.a0 = child.pid;
-        child.context.sp = kstack_top;
-        child.context.ra = trap_user_return as usize;
-        child.state = ProcState::Runnable;
-        child
-    }
-
     pub fn exec(&mut self, payload: &[u8]) {
         let page_table = unsafe { &mut *(self.root_pt_pa as *mut PageTable) };
         let empty_va = 0usize;
@@ -276,13 +158,7 @@ impl Process {
         if src_len == 0 {
             let code_pa = pmem::alloc(false) as PhysAddr;
             unsafe { core::ptr::write_bytes(code_pa as *mut u8, 0, PGSIZE) };
-            vm::mappages(
-                page_table,
-                code_va,
-                code_pa,
-                PGSIZE,
-                PTE_U | PTE_R | PTE_W | PTE_X | PTE_A,
-            );
+            page_table.map(code_va, code_pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A);
             mapped_len = PGSIZE;
         } else {
             let total = src_len;
@@ -298,13 +174,7 @@ impl Process {
                     );
                 }
                 let va = code_va + mapped_len;
-                vm::mappages(
-                    page_table,
-                    va,
-                    pa,
-                    PGSIZE,
-                    PTE_U | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D,
-                );
+                page_table.map(va, pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_X | PTE_A | PTE_D);
                 mapped_len += this_len;
             }
         }
@@ -331,16 +201,7 @@ pub fn init() {
     create(&root_task.data);
 }
 
-#[cfg(feature = "tests")]
-pub fn init_test() {
-    GLOBAL_PID.store(1, Ordering::SeqCst);
-    payload::init();
-    printk!("proc: Loading test task\n");
-    // Load root task from payload
-    let test_task = payload::get_test_tasks().expect("No test task in payload");
-    create(&test_task.data);
-}
-
+// TODO: Deprecated
 pub fn alloc() -> Option<&'static mut Process> {
     // Disable interrupts
     let sstatus_val = sstatus::read();
@@ -364,7 +225,7 @@ pub fn alloc() -> Option<&'static mut Process> {
             p.context = ProcContext::new();
             p.context.ra = proc_return as usize;
             p.context.sp = 0;
-            p.state = ProcState::Runnable;
+            p.state = ProcState::Ready;
 
             if sie_enabled {
                 unsafe {
@@ -407,7 +268,7 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     // Setup Trampoline
     let tramp_pa = align_down(vector::trampoline as usize) as PhysAddr; // trampoline 物理地址
     let tramp_va = VA_MAX - PGSIZE; // trampoline 虚拟地址（最高页）
-    vm::mappages(page_table, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+    page_table.map(tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     // Setup TrapFrame
     // TrapFrame 放在内核物理页区域，避免占用用户物理页池
     let trapframe_frame = PhysFrame::alloc().expect("Failed to alloc trapframe");
@@ -416,7 +277,7 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     proc.trapframe_va = trapframe_va;
     proc.trapframe = trapframe_pa as *mut TrapFrame;
     proc.trapframe_frame = Some(trapframe_frame);
-    vm::mappages(page_table, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+    page_table.map(trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     // Load payload
     proc.exec(payload);
     // Setup Kernel Stack
@@ -445,15 +306,11 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     unsafe { sscratch::write(tf_user_va as usize) };
     tf.a0 = tf_user_va as usize;
     // 设置内核态上下文
-    if proc.pid == 1 {
-        proc.context.ra = fs_init_wrapper as usize;
-    } else {
-        proc.context.ra = trap_user_return as usize;
-    }
+    proc.context.ra = trap_user_return as usize;
     // Set kernel stack pointer for context switch
     proc.context.sp = kstack_top;
 
     // 设置进程状态为可运行
-    proc.state = ProcState::Runnable;
+    proc.state = ProcState::Ready;
     proc
 }

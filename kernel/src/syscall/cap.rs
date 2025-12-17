@@ -2,7 +2,7 @@ use crate::cap::CapType;
 use crate::ipc;
 use crate::irq::TrapContext;
 use crate::mem::{PageTable, PhysAddr};
-use crate::proc::current_proc;
+use crate::proc;
 use crate::proc::process::ProcState;
 use crate::proc::table::{NPROC, PROC_TABLE};
 use alloc::vec::Vec;
@@ -17,7 +17,7 @@ pub fn sys_invoke(ctx: &mut TrapContext) -> usize {
 }
 
 fn handle_invocation(cptr: usize, msg_info: usize, args: &[usize]) -> usize {
-    let proc = current_proc();
+    let proc = proc::current();
 
     // 1. 查找 Capability
     let cap = match proc.cspace.get(cptr) {
@@ -37,8 +37,8 @@ fn handle_invocation(cptr: usize, msg_info: usize, args: &[usize]) -> usize {
             // 这是一个原子操作：Send + Recv
             ipc_method(id, cap.badge.unwrap_or(0), msg_info, args)
         }
-        CapType::TCB { pid } => {
-            // TCB 操作：如 Suspend, Resume, SetPriority
+        CapType::Process { pid } => {
+            // Process 操作：如 Suspend, Resume, SetPriority
             // args[0] 通常是方法 ID
             tcb_method(pid, args)
         }
@@ -78,9 +78,9 @@ fn tcb_method(pid: usize, args: &[usize]) -> usize {
             let mut table = PROC_TABLE.lock();
             for i in 0..NPROC {
                 if table[i].pid == pid {
-                    // 只有非 Dying/Unused 的情况下设置 Runnable
+                    // 只有非 Dying/Unused 的情况下设置 Ready
                     if table[i].state != ProcState::Unused {
-                        table[i].state = ProcState::Runnable;
+                        table[i].state = ProcState::Ready;
                         return 0;
                     } else {
                         return 2; // invalid state

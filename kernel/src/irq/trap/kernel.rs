@@ -4,7 +4,6 @@ use super::super::plic;
 use super::super::timer;
 use super::user;
 use super::{EXCEPTION_INFO, INTERRUPT_INFO};
-use crate::drivers;
 use crate::hart;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
@@ -56,14 +55,6 @@ fn exception_handler(
         }
         return;
     }
-
-    // 13: Load Page Fault, 15: Store/AMO Page Fault
-    if e == 13 || e == 15 {
-        let p = proc::current_proc();
-        if p.ustack_grow(tval).is_ok() {
-            return;
-        }
-    }
     printk!(
         "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
         ANSI_RED,
@@ -108,23 +99,16 @@ fn interrupt_handler(
 }
 
 // 外设中断处理 (基于PLIC，lab-3只需要识别和处理UART中断)
+// TODO: Move plic handling to userspace
 pub fn external_handler() {
     let hartid = hart::getid();
     let id = plic::claim(hartid);
     match id {
         0 => return,
-        plic::UART_IRQ => {
-            drivers::uart::irq::handler();
-        }
-        plic::VIRTIO0_IRQ => {
-            drivers::virtio::disk::intr();
-        }
         _ => {
             panic!("Unexpected interrupt id {} on hart {}", id, hartid);
         }
     }
-
-    plic::complete(hartid, id);
 }
 
 pub fn timer_handler_ssip(sstatus_bits: usize) {

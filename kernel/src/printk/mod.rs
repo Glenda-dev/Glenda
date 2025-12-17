@@ -1,6 +1,8 @@
-use crate::drivers::uart::_print;
+pub mod uart;
+
 use crate::hart;
 use spin::Mutex;
+use uart::_print;
 
 static PRINTK_LOCK: Mutex<()> = Mutex::new(());
 pub fn _printk(args: core::fmt::Arguments) {

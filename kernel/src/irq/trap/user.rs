@@ -1,7 +1,7 @@
 use super::super::vector;
 use super::super::{TrapContext, TrapFrame};
 use crate::mem::{PGSIZE, VA_MAX};
-use crate::proc::current_proc;
+use crate::proc;
 use crate::syscall;
 use core::mem;
 use riscv::register::{
@@ -95,7 +95,7 @@ pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
 pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // TODO: Refactor this
     // 直接通过当前 hart 的进程状态获取 TrapFrame 的指针
-    let proc = current_proc();
+    let proc = proc::current();
     let ctx: &mut TrapFrame = unsafe { &mut *proc.trapframe };
     unsafe {
         sstatus::clear_sie();
@@ -129,7 +129,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     ctx.kernel_sp = proc.kstack.as_ref().unwrap().top();
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = (*current_proc()).trapframe_va as usize;
+    let user_tf_va = (*proc::current()).trapframe_va as usize;
     unsafe {
         sscratch::write(user_tf_va);
     }

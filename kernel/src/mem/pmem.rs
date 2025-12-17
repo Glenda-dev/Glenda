@@ -44,8 +44,8 @@ pub fn initialize_regions(hartid: usize) {
     }
 
     let alloc_begin = addr_of_mut!(__alloc_start) as PhysAddr;
-    debug_assert!(alloc_begin >= align_up(addr_of_mut!(__bss_end) as PhysAddr));
-    debug_assert_eq!(alloc_begin & (PGSIZE - 1), 0, "__alloc_start must be 4K-aligned");
+    assert!(alloc_begin >= align_up(addr_of_mut!(__bss_end) as PhysAddr));
+    assert_eq!(alloc_begin & (PGSIZE - 1), 0, "__alloc_start must be 4K-aligned");
 
     let alloc_end = mem_end;
     let total_free = alloc_end.saturating_sub(alloc_begin);
@@ -74,10 +74,10 @@ pub fn initialize_regions(hartid: usize) {
 
     let k = KERNEL_REGION.info();
     let u = USER_REGION.info();
-    debug_assert_eq!(k.begin & (PGSIZE - 1), 0);
-    debug_assert_eq!(k.end & (PGSIZE - 1), 0);
-    debug_assert_eq!(u.begin & (PGSIZE - 1), 0);
-    debug_assert_eq!(u.end & (PGSIZE - 1), 0);
+    assert_eq!(k.begin & (PGSIZE - 1), 0);
+    assert_eq!(k.end & (PGSIZE - 1), 0);
+    assert_eq!(u.begin & (PGSIZE - 1), 0);
+    assert_eq!(u.end & (PGSIZE - 1), 0);
 
     printk!(
         "PMEM: Initialized kernel [{:#x}, {:#x}) -> {} pages, user [{:#x}, {:#x}) -> {} pages on hart {}\n",
@@ -223,11 +223,6 @@ pub fn alloc(for_kernel: bool) -> *mut u8 {
             }
         }
     }
-}
-
-#[cfg(debug_assertions)]
-pub fn try_alloc(for_kernel: bool) -> Option<*mut u8> {
-    allocate_page(for_kernel)
 }
 
 pub fn free(addr: PhysAddr, _for_kernel: bool) {

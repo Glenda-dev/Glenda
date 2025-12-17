@@ -4,9 +4,7 @@
 extern crate alloc;
 
 mod cap;
-mod drivers;
 mod dtb;
-mod fs;
 mod hart;
 mod init;
 mod ipc;
@@ -17,9 +15,6 @@ mod printk;
 mod proc;
 mod sbi;
 mod syscall;
-
-#[cfg(feature = "tests")]
-mod tests;
 
 use core::panic::PanicInfo;
 use init::init;
@@ -45,13 +40,8 @@ static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
 
-    #[cfg(feature = "tests")]
-    {
-        tests::test(hartid);
-        tests::test_user(hartid);
-    }
-
     if hartid == 0 {
+        printk!("{}", logo::LOGO);
         proc::process::init();
         printk!("Starting scheduler on hart 0...\n");
         proc::scheduler::scheduler();

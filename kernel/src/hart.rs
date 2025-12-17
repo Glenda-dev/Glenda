@@ -4,10 +4,6 @@ use core::ptr;
 
 pub const MAX_HARTS: usize = 8;
 
-unsafe extern "C" {
-    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct Hart {
     pub proc: *mut Process,
@@ -35,12 +31,6 @@ pub fn getid() -> usize {
 
 pub fn get() -> &'static mut Hart {
     unsafe { &mut HARTS[getid()] }
-}
-
-pub fn switch_process(old: &mut Process, new: &mut Process) {
-    unsafe {
-        switch_context(&mut old.context, &mut new.context);
-    }
 }
 
 pub fn enable_hart(hartid: usize) {

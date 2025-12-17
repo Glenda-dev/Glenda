@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use crate::drivers::uart::Config as UartConfig;
 use crate::printk;
+use crate::printk::uart::Config as UartConfig;
 use core::cell::UnsafeCell;
 use core::cmp;
 use core::hint::spin_loop;

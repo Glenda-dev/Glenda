@@ -1,4 +1,4 @@
-use crate::drivers::uart;
+use crate::printk::uart;
 use spin::Once;
 
 static UART_INIT: Once<()> = Once::new();

@@ -13,5 +13,3 @@ cc = "1.2.38"
 
 [features]
 default = []
-tests = []
-uart-unicode = []

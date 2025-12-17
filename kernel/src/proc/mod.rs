@@ -3,11 +3,13 @@ pub mod payload;
 pub mod process;
 pub mod scheduler;
 pub mod table;
+pub mod tcb;
 pub mod utcb;
 pub use context::ProcContext;
 pub use payload::ProcPayload;
 pub use process::ProcState;
 pub use process::Process;
+pub use tcb::TCB;
 
 use crate::hart;
 use spin::Mutex;
@@ -23,7 +25,7 @@ pub fn current_user_satp() -> Option<usize> {
     *CURRENT_USER_SATP.lock()
 }
 
-pub fn current_proc() -> &'static mut Process {
+pub fn current() -> &'static mut Process {
     let hart = hart::get();
     if hart.proc.is_null() {
         panic!("current_proc: hart.proc is null");

@@ -58,7 +58,7 @@ pub fn send(endpoint_id: usize, badge: usize, data: Args) {
             }
 
             // 唤醒接收者
-            receiver.state = ProcState::Runnable;
+            receiver.state = ProcState::Ready;
             // TODO: 如果支持优先级调度，这里可以检查是否需要抢占
         }
     } else {
@@ -118,7 +118,7 @@ pub fn recv(endpoint_id: usize) {
                     data[7] = tf.a7;
                 }
             }
-            sender.state = ProcState::Runnable;
+            sender.state = ProcState::Ready;
         }
 
         // 写入 Current (Receiver)
@@ -189,7 +189,7 @@ pub fn reply_recv(endpoint_id: usize, badge: usize, data: Args) {
                     tf.t0 = badge;
                 }
             }
-            receiver.state = ProcState::Runnable;
+            receiver.state = ProcState::Ready;
         }
     }
 
