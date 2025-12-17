@@ -4,11 +4,11 @@ use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 
 pub mod brk;
 pub mod copy;
+pub mod fs;
 pub mod helloworld;
 pub mod mmap;
 pub mod proc;
 pub mod util;
-pub mod fs;
 
 // 对齐用户侧 include/kernel/syscall/num.h
 pub const SYS_HELLOWORLD: usize = 1;
@@ -38,6 +38,8 @@ pub const SYS_FORK: usize = 22;
 pub const SYS_WAIT: usize = 23;
 pub const SYS_EXIT: usize = 24;
 pub const SYS_SLEEP: usize = 25;
+
+pub const SYS_INVOKE: usize = 100;
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {

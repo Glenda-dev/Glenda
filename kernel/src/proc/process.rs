@@ -2,6 +2,7 @@ use super::ProcContext;
 use super::payload;
 use super::set_current_user_satp;
 use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
+use crate::cap::CSpace;
 use crate::hart;
 use crate::irq::TrapFrame;
 use crate::irq::vector;
@@ -44,6 +45,7 @@ pub enum ProcState {
     Running,
 }
 
+#[repr(C)]
 pub struct Process {
     pub name: [u8; 16],                     // 进程名称
     pub state: ProcState,                   // 进程状态
@@ -64,6 +66,7 @@ pub struct Process {
     pub entry_va: VirtAddr,                 // 用户入口地址
     pub user_sp_va: VirtAddr,               // 用户栈顶 VA
     pub mmap_head: *mut MmapRegion,         // mmap 链表头
+    pub cspace: CSpace,                     // capability space
 }
 
 unsafe impl Send for Process {}
@@ -92,6 +95,7 @@ impl Process {
             entry_va: 0,
             user_sp_va: 0,
             mmap_head: core::ptr::null_mut(),
+            cspace: CSpace::new(),
         }
     }
 

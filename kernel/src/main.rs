@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+mod cap;
 mod drivers;
 mod dtb;
 mod fs;
