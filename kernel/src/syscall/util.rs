@@ -4,7 +4,8 @@ use crate::mem::uvm;
 use crate::printk;
 use crate::proc::current_proc;
 
-pub fn sys_print_str(ctx: &mut TrapContext) -> usize {
+// TODO: Deprecated
+pub fn sys_print(ctx: &mut TrapContext) -> usize {
     let u_src = ctx.a0;
     let mut buf: [u8; 256] = [0; 256];
     let p = current_proc();
@@ -19,14 +20,4 @@ pub fn sys_print_str(ctx: &mut TrapContext) -> usize {
         }
         Err(_) => usize::MAX,
     }
-}
-
-pub fn sys_print_int(ctx: &mut TrapContext) -> usize {
-    let val = ctx.a0 as i32;
-    printk!("{}", val);
-    0
-}
-
-pub fn sys_print(ctx: &mut TrapContext) -> usize {
-    sys_print_str(ctx)
 }
