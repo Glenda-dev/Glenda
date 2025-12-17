@@ -1,3 +1,6 @@
 [submodule "docs"]
 	path = docs
 	url = https://github.com/Glenda-dev/Glenda-Docs.git
+[submodule "service/9ball"]
+	path = service/9ball
+	url = https://github.com/Glenda-dev/9ball.git
