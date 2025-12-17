@@ -5,8 +5,8 @@ mod pmem;
 mod printk;
 mod run;
 mod spinlock;
-mod syscall;
 mod trap;
+mod user;
 mod vm;
 
 pub fn test(hartid: usize) {

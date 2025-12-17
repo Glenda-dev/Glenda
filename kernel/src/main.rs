@@ -46,6 +46,7 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     #[cfg(feature = "tests")]
     {
         tests::test(hartid);
+        tests::test_user(hartid);
     }
 
     if hartid == 0 {

@@ -38,8 +38,9 @@ pub fn process_services() -> anyhow::Result<()> {
             "root_task" => 0,
             "driver" => 1,
             "server" => 2,
-            "file" => 3,
-            _ => 3,
+            "test" => 3,
+            "file" => 4,
+            _ => 4,
         };
         entries.push((t, c.name.clone(), data));
     }

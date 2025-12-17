@@ -7,6 +7,8 @@ use crate::mem::vm;
 use crate::printk;
 use crate::printk::{ANSI_GREEN, ANSI_RESET};
 
+use riscv::asm::wfi;
+
 // 标志最终 PASS 已打印
 static FINAL_DONE: AtomicBool = AtomicBool::new(false);
 
@@ -42,5 +44,8 @@ pub fn run_tests(hartid: usize) {
 }
 
 pub fn run_tests_user(hartid: usize) {
-    super::syscall::run(hartid);
+    super::user::run(hartid);
+    loop {
+        wfi();
+    }
 }

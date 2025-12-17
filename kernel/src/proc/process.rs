@@ -322,6 +322,16 @@ pub fn init() {
     create(&root_task.data);
 }
 
+#[cfg(feature = "tests")]
+pub fn init_test() {
+    GLOBAL_PID.store(1, Ordering::SeqCst);
+    payload::init();
+    printk!("proc: Loading test task\n");
+    // Load root task from payload
+    let test_task = payload::get_test_tasks().expect("No test task in payload");
+    create(&test_task.data);
+}
+
 pub fn alloc() -> Option<&'static mut Process> {
     // Disable interrupts
     let sstatus_val = sstatus::read();

@@ -27,7 +27,8 @@ enum PayloadType {
     RootTask = 0,
     Driver = 1,
     Server = 2,
-    File = 3,
+    Test = 3,
+    File = 4,
 }
 
 #[repr(C)]
@@ -148,7 +149,8 @@ pub fn init() {
                 0 => PayloadType::RootTask,
                 1 => PayloadType::Driver,
                 2 => PayloadType::Server,
-                3 => PayloadType::File,
+                3 => PayloadType::Test,
+                4 => PayloadType::File,
                 _ => PayloadType::File,
             },
             offset,
@@ -168,6 +170,17 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
     let payload = PAYLOAD.get().expect("Payload not initialized");
     for entry in &payload.entries {
         if let PayloadType::RootTask = entry.metadata.info {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+#[cfg(feature = "tests")]
+pub fn get_test_tasks() -> Option<&'static ProcPayload> {
+    let payload = PAYLOAD.get().expect("Payload not initialized");
+    for entry in &payload.entries {
+        if let PayloadType::Test = entry.metadata.info {
             return Some(entry);
         }
     }
