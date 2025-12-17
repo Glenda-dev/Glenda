@@ -26,3 +26,7 @@ pub fn sys_print_int(ctx: &mut TrapContext) -> usize {
     printk!("{}", val);
     0
 }
+
+pub fn sys_print(ctx: &mut TrapContext) -> usize {
+    sys_print_str(ctx)
+}

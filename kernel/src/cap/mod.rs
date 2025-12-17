@@ -6,7 +6,7 @@ pub mod cspace;
 pub use capability::Capability;
 pub use cspace::CSpace;
 
-use crate::mem::PhysAddr;
+use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::process::Pid;
 
 pub type CapPtr = usize;
@@ -38,11 +38,11 @@ pub enum CapType {
     },
     /// 物理页帧，可映射到地址空间
     Frame {
-        start: PhysAddr,
+        addr: PhysAddr,
     },
     /// 页表
     PageTable {
-        start: PhysAddr,
+        addr: PhysAddr,
     },
     /// 中断处理权限
     IrqHandler {

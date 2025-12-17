@@ -3,9 +3,11 @@ use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 
 pub mod brk;
+pub mod cap;
 pub mod copy;
 pub mod fs;
 pub mod helloworld;
+pub mod ipc;
 pub mod mmap;
 pub mod proc;
 pub mod util;
@@ -40,6 +42,11 @@ pub const SYS_EXIT: usize = 24;
 pub const SYS_SLEEP: usize = 25;
 
 pub const SYS_INVOKE: usize = 100;
+pub const SYS_REPLY_RECV: usize = 101;
+pub const SYS_SEND: usize = 102;
+pub const SYS_RECV: usize = 103;
+pub const SYS_YIELD: usize = 104;
+pub const SYS_PRINT: usize = 105;
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {
@@ -71,6 +78,14 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_WAIT => proc::sys_wait(ctx),
         n if n == SYS_EXIT => proc::sys_exit(ctx),
         n if n == SYS_SLEEP => proc::sys_sleep(ctx),
+
+        n if n == SYS_INVOKE => cap::sys_invoke(ctx),
+
+        n if n == SYS_REPLY_RECV => ipc::sys_reply_recv(ctx),
+        n if n == SYS_SEND => ipc::sys_send(ctx),
+        n if n == SYS_RECV => ipc::sys_recv(ctx),
+        n if n == SYS_YIELD => proc::sys_yield(ctx),
+        n if n == SYS_PRINT => util::sys_print(ctx),
 
         n => {
             printk!("{}[WARN] SYSCALL: unknown number {}{}\n", ANSI_YELLOW, n, ANSI_RESET);

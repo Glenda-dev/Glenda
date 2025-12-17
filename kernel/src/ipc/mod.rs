@@ -6,6 +6,8 @@ use crate::proc::process::{Pid, ProcState, Process};
 use crate::proc::scheduler::scheduler;
 use crate::proc::table::{NPROC, PROC_TABLE};
 
+pub type Args = [usize; 8];
+
 /// 初始化 IPC 子系统
 pub fn init() {
     // 可以在这里预分配一些 Endpoint
@@ -15,7 +17,7 @@ pub fn init() {
 /// endpoint_id: 端点 ID
 /// badge: 发送者的身份标识 (由 Cap 提供)
 /// data: 要发送的数据 (寄存器内容)
-pub fn send(endpoint_id: usize, badge: usize, data: [usize; 8]) {
+pub fn send(endpoint_id: usize, badge: usize, data: Args) {
     let mut endpoints = ENDPOINT_MANAGER.lock();
     let ep = endpoints.entry(endpoint_id).or_insert(endpoint::Endpoint::new());
 
@@ -26,8 +28,8 @@ pub fn send(endpoint_id: usize, badge: usize, data: [usize; 8]) {
         let mut p_table = PROC_TABLE.lock();
 
         // 查找接收者
+        // TODO: 更高效的 PID -> Process 映射
         // 简单起见，这里假设 PID 对应数组索引，或者遍历查找
-        // 实际项目中应该有更高效的 PID -> Process 映射
         let mut receiver_idx = None;
         for i in 0..NPROC {
             if p_table[i].pid == receiver_pid {
@@ -99,7 +101,7 @@ pub fn recv(endpoint_id: usize) {
         }
 
         let mut data = [0usize; 8];
-        // let mut badge = 0; // 需要从 Sender 的 Cap 中获取，这里简化
+        // TODO: badge需要从 Sender 的 Cap 中获取，这里简化
 
         if let Some(idx) = sender_idx {
             let sender = &mut p_table[idx];
@@ -151,4 +153,57 @@ pub fn recv(endpoint_id: usize) {
 
         scheduler();
     }
+}
+
+pub fn reply_recv(endpoint_id: usize, badge: usize, data: Args) {
+    let mut endpoints = ENDPOINT_MANAGER.lock();
+    let ep = endpoints.entry(endpoint_id).or_insert(endpoint::Endpoint::new());
+
+    // 处理 ReplyRecv 操作类似于 Send + Recv 的组合
+    // 1. 发送数据给等待的接收者（如果有）
+    if let Some(receiver_pid) = ep.recv_queue.pop_front() {
+        let mut p_table = PROC_TABLE.lock();
+
+        let mut receiver_idx = None;
+        for i in 0..NPROC {
+            if p_table[i].pid == receiver_pid {
+                receiver_idx = Some(i);
+                break;
+            }
+        }
+
+        if let Some(idx) = receiver_idx {
+            let receiver = &mut p_table[idx];
+            unsafe {
+                if !receiver.trapframe.is_null() {
+                    let tf = &mut *receiver.trapframe;
+                    tf.a0 = data[0];
+                    tf.a1 = data[1];
+                    tf.a2 = data[2];
+                    tf.a3 = data[3];
+                    tf.a4 = data[4];
+                    tf.a5 = data[5];
+                    tf.a6 = data[6];
+                    tf.a7 = data[7];
+
+                    tf.t0 = badge;
+                }
+            }
+            receiver.state = ProcState::Runnable;
+        }
+    }
+
+    // 2. 接收数据（阻塞当前进程）
+    let current_proc_ptr = hart::get().proc;
+    let current_pid = unsafe { (*current_proc_ptr).pid };
+
+    ep.recv_queue.push_back(current_pid);
+
+    unsafe {
+        (*current_proc_ptr).state = ProcState::Blocked;
+    }
+
+    drop(endpoints);
+
+    scheduler();
 }

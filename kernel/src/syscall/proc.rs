@@ -44,3 +44,8 @@ pub fn sys_sleep(ctx: &mut TrapContext) -> usize {
     timer::wait(ticks);
     0
 }
+
+pub fn sys_yield(_ctx: &mut TrapContext) -> usize {
+    scheduler::yield_proc();
+    0
+}
