@@ -9,6 +9,7 @@ mod dtb;
 mod fs;
 mod hart;
 mod init;
+mod ipc;
 mod irq;
 mod logo;
 mod mem;

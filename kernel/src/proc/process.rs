@@ -43,7 +43,10 @@ pub enum ProcState {
     Sleeping,
     Runnable,
     Running,
+    Blocked,
 }
+
+pub type Pid = usize;
 
 #[repr(C)]
 pub struct Process {
@@ -52,7 +55,7 @@ pub struct Process {
     pub parent: *mut Process,               // 父进程指针
     pub exit_code: i32,                     // 退出码
     pub sleep_chan: usize,                  // 睡眠通道
-    pub pid: usize,                         // 进程ID
+    pub pid: Pid,                           // 进程ID
     pub root_pt_pa: PhysAddr,               // 根页表物理地址
     pub root_pt_frame: Option<PhysFrame>,   // RAII frame
     pub heap_top: VirtAddr,                 // 进程堆顶地址
@@ -66,6 +69,7 @@ pub struct Process {
     pub entry_va: VirtAddr,                 // 用户入口地址
     pub user_sp_va: VirtAddr,               // 用户栈顶 VA
     pub mmap_head: *mut MmapRegion,         // mmap 链表头
+    pub utcb_va: VirtAddr,                  // UTCB 虚拟地址
     pub cspace: CSpace,                     // capability space
 }
 
@@ -95,6 +99,7 @@ impl Process {
             entry_va: 0,
             user_sp_va: 0,
             mmap_head: core::ptr::null_mut(),
+            utcb_va: 0,
             cspace: CSpace::new(),
         }
     }

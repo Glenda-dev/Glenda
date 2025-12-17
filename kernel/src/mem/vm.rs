@@ -10,6 +10,7 @@ use crate::dtb;
 use crate::irq::vector;
 use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
+use crate::proc::process::Pid;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::{Mutex, Once};
@@ -41,12 +42,12 @@ pub fn map_kstack0() {
 }
 
 #[inline(always)]
-pub fn kstack_base(procid: usize) -> VirtAddr {
+pub fn kstack_base(procid: Pid) -> VirtAddr {
     KSTACK_VA_BASE + procid * KSTACK_SIZE
 }
 
 #[inline(always)]
-pub fn kstack_top(procid: usize) -> VirtAddr {
+pub fn kstack_top(procid: Pid) -> VirtAddr {
     kstack_base(procid) + KSTACK_SIZE
 }
 
@@ -73,12 +74,12 @@ pub fn free_kstack(pid: usize) {
 }
 
 pub struct KernelStack {
-    pid: usize,
+    pid: Pid,
     top: VirtAddr,
 }
 
 impl KernelStack {
-    pub fn new(pid: usize) -> Self {
+    pub fn new(pid: Pid) -> Self {
         let top = alloc_kstack(pid);
         Self { pid, top }
     }
