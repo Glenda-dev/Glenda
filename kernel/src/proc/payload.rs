@@ -1,3 +1,5 @@
+use crate::mem::PhysFrame;
+use crate::mem::{PGSIZE, pte};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use alloc::vec::Vec;
@@ -176,13 +178,42 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
     None
 }
 
-#[cfg(feature = "tests")]
-pub fn get_test_tasks() -> Option<&'static ProcPayload> {
-    let payload = PAYLOAD.get().expect("Payload not initialized");
-    for entry in &payload.entries {
-        if let PayloadType::Test = entry.metadata.info {
-            return Some(entry);
-        }
+impl ProcPayload {
+    // TODO: parse ELF to get entry point and stack top
+    pub fn info(&self) -> (usize, usize) {
+        // For simplicity, assume the payload data is an ELF binary
+        // and we can extract entry point and stack top from it.
+        // Here we just return dummy values for illustration.
+        let entry_point = 0x80200000; // Example entry point
+        let stack_top = 0x80400000; // Example stack top
+        (entry_point, stack_top)
     }
-    None
+    // TODO: implement segment mapping
+    pub fn map_segments(&self, vspace: &mut crate::mem::PageTable) {
+        // For simplicity, assume the payload data is an ELF binary
+        // and we can extract segments from it.
+        // Here we just simulate mapping a code and data segment.
+        let code_segment_start = 0x80200000;
+        let code_segment_size = 0x20000; // 128 KB
+        let data_segment_start = 0x80400000;
+        let data_segment_size = 0x10000; // 64 KB
+
+        // Map code segment (RX)
+        let code_frame = PhysFrame::alloc(false).expect("Failed to alloc code segment frame");
+        vspace.map(
+            code_segment_start,
+            code_frame.addr(),
+            code_segment_size,
+            pte::PTE_R | pte::PTE_X,
+        );
+
+        // Map data segment (RW)
+        let data_frame = PhysFrame::alloc(false).expect("Failed to alloc data segment frame");
+        vspace.map(
+            data_segment_start,
+            data_frame.addr(),
+            data_segment_size,
+            pte::PTE_R | pte::PTE_W,
+        );
+    }
 }

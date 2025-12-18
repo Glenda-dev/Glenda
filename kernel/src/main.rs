@@ -42,7 +42,6 @@ pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
 
     if hartid == 0 {
         printk!("{}", logo::LOGO);
-        proc::process::init();
         printk!("Starting scheduler on hart 0...\n");
         proc::scheduler::scheduler();
     }

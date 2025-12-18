@@ -15,6 +15,17 @@ pub const PTE_D: usize = 1 << 7; // Dirty
 pub type Pte = usize;
 pub type PteFlags = usize;
 
+pub mod perms {
+    pub const READ: usize = 1 << 0;
+    pub const WRITE: usize = 1 << 1;
+    pub const EXECUTE: usize = 1 << 2;
+    pub const USER: usize = 1 << 3;
+    pub const GLOBAL: usize = 1 << 4;
+    pub const ACCESSED: usize = 1 << 5;
+    pub const DIRTY: usize = 1 << 6;
+    pub const VALID: usize = 1 << 7;
+}
+
 #[inline(always)]
 pub const fn set_ppn(pte: Pte, ppn: usize) -> Pte {
     (pte & 0x3FF) | (ppn << 10)

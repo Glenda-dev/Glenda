@@ -1,6 +1,7 @@
+use super::PhysFrame;
 use super::addr::{align_down, align_up, vpn};
 use super::pmem::{self, get_region};
-use super::pte::{self, PTE_U, PTE_V, PTE_X, Pte, pa_to_pte, pte_to_pa};
+use super::pte::{self, Pte, pa_to_pte, pte_to_pa};
 use super::uvm::UvmError;
 use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
 use core::ptr;
@@ -15,6 +16,25 @@ pub struct PageTable {
 impl PageTable {
     pub const fn new() -> Self {
         PageTable { entries: [0; PGNUM] }
+    }
+
+    pub fn from_frame(frame: &PhysFrame) -> &'static mut Self {
+        unsafe { &mut *(frame.addr() as *mut PageTable) }
+    }
+
+    pub fn map_kernel(&mut self) {
+        // Map kernel space - identity map
+        let kernel_region = pmem::kernel_region_info();
+        let kernel_start = align_down(kernel_region.begin);
+        let kernel_end = align_up(kernel_region.end);
+        let mut addr = kernel_start;
+        while addr < kernel_end {
+            let va = addr;
+            let pa = addr;
+            let flags = pte::PTE_R | pte::PTE_W | pte::PTE_X | pte::PTE_A | pte::PTE_D;
+            self.map(va, pa, PGSIZE, flags);
+            addr += PGSIZE;
+        }
     }
 
     // walk: Returns pointer to PTE for va. If alloc is true, allocates intermediate tables.
@@ -45,7 +65,7 @@ impl PageTable {
                 }
                 unsafe {
                     core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
-                    let new_pte = pa_to_pte(new_table as usize, PTE_V);
+                    let new_pte = pa_to_pte(new_table as usize, pte::PTE_V);
                     *pte_ref = new_pte;
                 }
                 table = new_table;
@@ -99,11 +119,11 @@ impl PageTable {
                     return false;
                 }
                 unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | PTE_V);
+                    *pte = pa_to_pte(pa_cur, flags | pte::PTE_V);
                 }
             } else {
                 unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | PTE_V);
+                    *pte = pa_to_pte(pa_cur, flags | pte::PTE_V);
                 }
             }
             if a == last {
@@ -233,7 +253,7 @@ impl PageTable {
                             va_raw & ((1usize << 39) - 1)
                         };
 
-                        if (flags & PTE_U) != 0 {
+                        if (flags & pte::PTE_U) != 0 {
                             // User page
                             match pmem::get_region(pa) {
                                 Some(for_kernel) if !for_kernel => {
@@ -254,7 +274,7 @@ impl PageTable {
                                     // Ignore this
                                 }
                             }
-                        } else if (flags & PTE_X) != 0 {
+                        } else if (flags & pte::PTE_X) != 0 {
                             // Kernel text/trampoline (RX) - Map as is (shared)
                             if !dst_pt.map(va, pa, PGSIZE, flags) {
                                 return Err(UvmError::MapFailed);

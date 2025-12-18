@@ -8,7 +8,6 @@ use crate::irq::vector;
 use crate::printk;
 use crate::printk::uart;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
-use crate::proc::process::Pid;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::{Mutex, Once};
@@ -25,74 +24,8 @@ unsafe extern "C" {
     static __bss_end: u8;
 }
 
-static KERNEL_PAGE_TABLE: Mutex<PageTable> = Mutex::new(PageTable::new());
+pub static KERNEL_PAGE_TABLE: Mutex<PageTable> = Mutex::new(PageTable::new());
 static KPT_INIT_ONCE: Once<()> = Once::new();
-
-// 256MB region for kernel stacks, below VA_MAX
-pub const KSTACK_REGION_SIZE: usize = 0x1000_0000;
-pub const KSTACK_VA_BASE: usize = super::VA_MAX - KSTACK_REGION_SIZE;
-
-// Increase kernel stack to 4 pages (16KB)
-pub const KSTACK_SIZE: usize = super::PGSIZE * 4;
-
-pub fn map_kstack0() {
-    let _top = alloc_kstack(0);
-    printk!("VM: KSTACK(0) allocated at VA={:p}\n", kstack_base(0) as *const u8);
-}
-
-#[inline(always)]
-pub fn kstack_base(procid: Pid) -> VirtAddr {
-    KSTACK_VA_BASE + procid * KSTACK_SIZE
-}
-
-#[inline(always)]
-pub fn kstack_top(procid: Pid) -> VirtAddr {
-    kstack_base(procid) + KSTACK_SIZE
-}
-
-pub fn alloc_kstack(pid: usize) -> VirtAddr {
-    let base = kstack_base(pid);
-    let mut kpt = KERNEL_PAGE_TABLE.lock();
-    for i in 0..(KSTACK_SIZE / super::PGSIZE) {
-        let va = base + i * super::PGSIZE;
-        let pa = pmem::alloc(true) as PhysAddr;
-        kpt.map(va, pa, super::PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
-    }
-    sfence_vma_all();
-    base + KSTACK_SIZE
-}
-
-pub fn free_kstack(pid: usize) {
-    let base = kstack_base(pid);
-    let mut kpt = KERNEL_PAGE_TABLE.lock();
-    for i in 0..(KSTACK_SIZE / super::PGSIZE) {
-        let va = base + i * super::PGSIZE;
-        kpt.unmap(va, super::PGSIZE, true);
-    }
-    sfence_vma_all();
-}
-
-pub struct KernelStack {
-    pid: Pid,
-    top: VirtAddr,
-}
-
-impl KernelStack {
-    pub fn new(pid: Pid) -> Self {
-        let top = alloc_kstack(pid);
-        Self { pid, top }
-    }
-
-    pub fn top(&self) -> VirtAddr {
-        self.top
-    }
-}
-
-impl Drop for KernelStack {
-    fn drop(&mut self) {
-        free_kstack(self.pid);
-    }
-}
 
 pub fn init_kernel_vm(hartid: usize) {
     KPT_INIT_ONCE.call_once(|| {
@@ -243,7 +176,6 @@ pub fn init_kernel_vm(hartid: usize) {
         }
         printk!("VM: Root page table built by hart {}\n", hartid);
     });
-    map_kstack0();
 }
 
 pub fn switch_to_kernel(hartid: usize) {
@@ -266,4 +198,9 @@ pub fn switch_off(hartid: usize) {
         sfence_vma_all();
     }
     printk!("VM: Hart {} switching off VM\n", hartid);
+}
+
+// TODO: translate address
+pub fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
+    pa
 }

@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+use core::arch::asm;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ProcContext {
@@ -39,5 +39,47 @@ impl ProcContext {
             s10: 0,
             s11: 0,
         }
+    }
+}
+
+pub fn switch(old: &mut ProcContext, new: &ProcContext) {
+    unsafe {
+        asm!(
+            // 保存旧上下文
+            "sd ra, 0({0})",
+            "sd sp, 8({0})",
+            "sd s0, 16({0})",
+            "sd s1, 24({0})",
+            "sd s2, 32({0})",
+            "sd s3, 40({0})",
+            "sd s4, 48({0})",
+            "sd s5, 56({0})",
+            "sd s6, 64({0})",
+            "sd s7, 72({0})",
+            "sd s8, 80({0})",
+            "sd s9, 88({0})",
+            "sd s10, 96({0})",
+            "sd s11, 104({0})",
+            // 加载新上下文
+            "ld ra, 0({1})",
+            "ld sp, 8({1})",
+            "ld s0, 16({1})",
+            "ld s1, 24({1})",
+            "ld s2, 32({1})",
+            "ld s3, 40({1})",
+            "ld s4, 48({1})",
+            "ld s5, 56({1})",
+            "ld s6, 64({1})",
+            "ld s7, 72({1})",
+            "ld s8, 80({1})",
+            "ld s9, 88({1})",
+            "ld s10, 96({1})",
+            "ld s11, 104({1})",
+            // 跳转到新上下文的返回地址
+            "jr ra",
+            in(reg) old,
+            in(reg) new,
+            options(noreturn)
+        );
     }
 }

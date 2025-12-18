@@ -1,15 +1,14 @@
 #![allow(dead_code)]
 
-use core::cell::OnceCell;
-use core::ptr::{self, NonNull, addr_of_mut};
-use core::sync::atomic::{AtomicU8, Ordering};
-
-use spin::Mutex;
-
 use super::addr::{align_down, align_up};
 use super::{KERN_PAGES, PGSIZE, PhysAddr};
 use crate::dtb;
 use crate::printk;
+use alloc::vec::Vec;
+use core::cell::OnceCell;
+use core::ptr::{self, NonNull, addr_of_mut};
+use core::sync::atomic::{AtomicU8, Ordering};
+use spin::Mutex;
 
 const PHY_MEM_START: usize = 0x8000_0000;
 const TOTAL_PAGES: usize = 128 * 1024 * 1024 / PGSIZE; // 32768
@@ -267,4 +266,17 @@ pub fn get_region(pa: PhysAddr) -> Option<bool> {
     } else {
         return None;
     }
+}
+
+pub fn get_free_regions() -> Vec<RegionInfo> {
+    let mut regions = Vec::new();
+    let kinfo = KERNEL_REGION.info();
+    if kinfo.allocable > 0 {
+        regions.push(kinfo);
+    }
+    let uinfo = USER_REGION.info();
+    if uinfo.allocable > 0 {
+        regions.push(uinfo);
+    }
+    regions
 }

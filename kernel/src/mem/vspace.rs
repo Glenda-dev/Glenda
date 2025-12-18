@@ -15,7 +15,7 @@ impl VSpace {
         Self { asid: 0, root_pt: None }
     }
     pub fn init(&mut self) {
-        let frame = PhysFrame::alloc().expect("Failed to allocate root page table frame");
+        let frame = PhysFrame::alloc(true).expect("Failed to allocate root page table frame");
         self.root_pt = Some(frame);
     }
     pub fn pa(&self) -> PhysAddr {

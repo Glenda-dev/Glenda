@@ -1,10 +1,11 @@
 use super::CapPtr;
+use super::CapType;
 use super::Capability;
 use alloc::collections::BTreeMap;
 
 /// 能力空间 (CSpace)
 /// 每个进程拥有一个 CSpace，用于存储它拥有的 Cap
-/// 在完整微内核中通常是 Radix Tree 结构的 CNode 树，这里先用 BTreeMap 模拟扁平结构
+// TDOO: 在完整微内核中通常是 Radix Tree 结构的 CNode 树，这里先用 BTreeMap 模拟扁平结构
 #[derive(Default)]
 pub struct CSpace {
     slots: BTreeMap<usize, Capability>,

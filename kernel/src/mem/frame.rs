@@ -1,21 +1,13 @@
-extern crate alloc;
-use super::PGSIZE;
-use alloc::alloc::{Layout, alloc, dealloc};
+use super::pmem;
 
 pub struct PhysFrame {
     addr: usize,
 }
 
 impl PhysFrame {
-    pub fn alloc() -> Option<Self> {
-        let layout = Layout::from_size_align(PGSIZE, PGSIZE).ok()?;
-        let ptr = unsafe { alloc(layout) };
-        if ptr.is_null() {
-            None
-        } else {
-            unsafe { core::ptr::write_bytes(ptr, 0, PGSIZE) };
-            Some(Self { addr: ptr as usize })
-        }
+    pub fn alloc(for_kernel: bool) -> Option<Self> {
+        let pa = pmem::alloc(for_kernel) as usize;
+        if pa == 0 { None } else { Some(Self { addr: pa }) }
     }
     pub fn addr(&self) -> usize {
         self.addr
@@ -33,15 +25,10 @@ impl PhysFrame {
     pub fn as_mut_ptr<T>(&mut self) -> *mut T {
         self.addr as *mut T
     }
-
-    pub fn as_slice<T>(&self, len: usize) -> &[T] {
-        unsafe { core::slice::from_raw_parts(self.as_ptr::<T>(), len) }
-    }
 }
 
 impl Drop for PhysFrame {
     fn drop(&mut self) {
-        let layout = Layout::from_size_align(PGSIZE, PGSIZE).unwrap();
-        unsafe { dealloc(self.addr as *mut u8, layout) };
+        pmem::free(self.addr, true);
     }
 }

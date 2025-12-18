@@ -6,13 +6,15 @@ pub const KERN_PAGES: usize = 8192;
 
 pub use addr::{PhysAddr, VirtAddr};
 pub use frame::PhysFrame;
+pub use kstack::KernelStack;
 pub use pagetable::PageTable;
-pub use vm::KernelStack;
+pub use pte::Pte;
 pub use vspace::VSpace;
 
 pub mod addr;
 pub mod alloc;
 pub mod frame;
+pub mod kstack;
 pub mod pagetable;
 pub mod pmem;
 pub mod pte;

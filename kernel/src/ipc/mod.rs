@@ -1,209 +1,98 @@
 pub mod endpoint;
 
-use crate::hart;
-use crate::ipc::endpoint::ENDPOINT_MANAGER;
-use crate::proc::process::{Pid, ProcState, Process};
-use crate::proc::scheduler::scheduler;
-use crate::proc::table::{NPROC, PROC_TABLE};
+use crate::mem::vm;
+use crate::proc::scheduler;
+use crate::proc::thread::{TCB, ThreadState, UTCB};
 
-pub type Args = [usize; 8];
+pub use endpoint::Endpoint;
 
-/// 初始化 IPC 子系统
-pub fn init() {
-    // 可以在这里预分配一些 Endpoint
+/// 获取 TCB 对应的 UTCB 内核指针
+/// 这是一个辅助函数，用于在内核态访问用户的 UTCB
+unsafe fn get_utcb(tcb: &TCB) -> &mut UTCB {
+    let frame = tcb.utcb_frame.as_ref().expect("Thread has no UTCB");
+    // 将物理地址转换为内核虚拟地址 (HHDM)
+    let vaddr = vm::phys_to_virt(frame.addr());
+    &mut *(vaddr as *mut UTCB)
 }
 
-/// 发送消息
-/// endpoint_id: 端点 ID
-/// badge: 发送者的身份标识 (由 Cap 提供)
-/// data: 要发送的数据 (寄存器内容)
-pub fn send(endpoint_id: usize, badge: usize, data: Args) {
-    let mut endpoints = ENDPOINT_MANAGER.lock();
-    let ep = endpoints.entry(endpoint_id).or_insert(endpoint::Endpoint::new());
+/// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
+/// 同时传递 Badge 到接收者的上下文
+unsafe fn copy_msg(sender: &TCB, receiver: &mut TCB, badge: usize) {
+    let src = get_utcb(sender);
+    let dst = get_utcb(receiver);
 
-    // 1. 检查是否有接收者在等待
-    if let Some(receiver_pid) = ep.recv_queue.pop_front() {
-        // --- 快速路径 (Fastpath) ---
-        // 找到接收者，直接拷贝数据并唤醒它
-        let mut p_table = PROC_TABLE.lock();
+    // 1. 拷贝消息头和寄存器
+    dst.msg_tag = src.msg_tag;
+    dst.mrs_regs = src.mrs_regs;
+    dst.mrs = src.mrs; // 拷贝扩展消息寄存器
 
-        // 查找接收者
-        // TODO: 更高效的 PID -> Process 映射
-        // 简单起见，这里假设 PID 对应数组索引，或者遍历查找
-        let mut receiver_idx = None;
-        for i in 0..NPROC {
-            if p_table[i].pid == receiver_pid {
-                receiver_idx = Some(i);
-                break;
-            }
-        }
+    // 2. 传递 Badge
+    // 根据微内核 ABI，Badge 通常放入接收者的 t0 寄存器，或者 UTCB 的特定字段
+    // 这里我们将其放入接收者的上下文寄存器 t0 中
+    receiver.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+}
 
-        if let Some(idx) = receiver_idx {
-            let receiver = &mut p_table[idx];
-            // 获取接收者的 TrapFrame
-            unsafe {
-                if !receiver.trapframe.is_null() {
-                    let tf = &mut *receiver.trapframe;
-                    tf.a0 = data[0]; // MR0: Tag
-                    tf.a1 = data[1]; // MR1
-                    tf.a2 = data[2];
-                    tf.a3 = data[3];
-                    tf.a4 = data[4];
-                    tf.a5 = data[5];
-                    tf.a6 = data[6];
-                    tf.a7 = data[7];
+/// 发送操作 (sys_send)
+///
+/// * `current`: 当前正在执行的线程 (发送者)
+/// * `ep`: 目标 Endpoint 对象
+/// * `badge`: 发送 Capability 携带的身份标识
+pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize) {
+    // 1. 检查是否有接收者在等待 (Rendezvous)
+    if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
+        let receiver = unsafe { &mut *receiver_ptr };
 
-                    tf.t0 = badge; // 传递 Badge
-                }
-            }
+        // --- 快速路径: 匹配成功 ---
+        // 既然接收者在等，直接拷贝数据
+        unsafe { copy_msg(current, receiver, badge) };
 
-            // 唤醒接收者
-            receiver.state = ProcState::Ready;
-            // TODO: 如果支持优先级调度，这里可以检查是否需要抢占
-        }
+        // 唤醒接收者
+        // 接收者将从 BlockedRecv 变为 Ready，并进入调度队列
+        scheduler::wake_up(receiver);
+
+        // 发送者继续运行 (Non-blocking send if partner ready)
+        // 注意：如果是 Call 操作，发送者这里应该转为 BlockedRecv 等待回复
+        // 但在简化的 Send/Recv 模型中，发送完成即返回
     } else {
-        // --- 慢速路径 (Slowpath) ---
-        // 没有接收者，当前进程阻塞
-        let current_proc_ptr = hart::get().proc;
-        let current_pid = unsafe { (*current_proc_ptr).pid };
+        // --- 慢速路径: 阻塞 ---
+        // 没有接收者，发送者必须阻塞等待
+        current.state = ThreadState::BlockedSend;
 
-        ep.send_queue.push_back(current_pid);
+        // 将自己加入 Endpoint 的发送队列，同时保存 Badge
+        ep.send_queue.push_back((current as *mut _, badge));
 
-        // 将当前进程设为阻塞并让出 CPU
-        unsafe {
-            (*current_proc_ptr).state = ProcState::Blocked;
-        }
-
-        // 释放锁，避免死锁
-        drop(endpoints);
-
-        scheduler();
+        // 让出 CPU，触发调度
+        scheduler::block_current_thread();
     }
 }
 
-/// 接收消息
-pub fn recv(endpoint_id: usize) {
-    let mut endpoints = ENDPOINT_MANAGER.lock();
-    let ep = endpoints.entry(endpoint_id).or_insert(endpoint::Endpoint::new());
-
+/// 接收操作 (sys_recv)
+///
+/// * `current`: 当前正在执行的线程 (接收者)
+/// * `ep`: 目标 Endpoint 对象
+pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
     // 1. 检查是否有发送者在等待
-    if let Some(sender_pid) = ep.send_queue.pop_front() {
-        // --- 快速路径 ---
-        // 找到发送者，从发送者拷贝数据到当前进程
-        let mut p_table = PROC_TABLE.lock();
+    if let Some((sender_ptr, badge)) = ep.send_queue.pop_front() {
+        let sender = unsafe { &mut *sender_ptr };
 
-        let mut sender_idx = None;
-        for i in 0..NPROC {
-            if p_table[i].pid == sender_pid {
-                sender_idx = Some(i);
-                break;
-            }
-        }
+        // --- 快速路径: 匹配成功 ---
+        // 从等待的发送者那里拷贝数据
+        unsafe { copy_msg(sender, current, badge) };
 
-        let mut data = [0usize; 8];
-        // TODO: badge需要从 Sender 的 Cap 中获取，这里简化
+        // 唤醒发送者
+        // 发送者将从 BlockedSend 变为 Ready
+        scheduler::wake_up(sender);
 
-        if let Some(idx) = sender_idx {
-            let sender = &mut p_table[idx];
-            unsafe {
-                if !sender.trapframe.is_null() {
-                    let tf = &*sender.trapframe;
-                    data[0] = tf.a0;
-                    data[1] = tf.a1;
-                    data[2] = tf.a2;
-                    data[3] = tf.a3;
-                    data[4] = tf.a4;
-                    data[5] = tf.a5;
-                    data[6] = tf.a6;
-                    data[7] = tf.a7;
-                }
-            }
-            sender.state = ProcState::Ready;
-        }
-
-        // 写入 Current (Receiver)
-        let current_proc_ptr = hart::get().proc;
-        unsafe {
-            if !(*current_proc_ptr).trapframe.is_null() {
-                let tf = &mut *(*current_proc_ptr).trapframe;
-                tf.a0 = data[0];
-                tf.a1 = data[1];
-                tf.a2 = data[2];
-                tf.a3 = data[3];
-                tf.a4 = data[4];
-                tf.a5 = data[5];
-                tf.a6 = data[6];
-                tf.a7 = data[7];
-                // tf.t0 = badge;
-            }
-        }
+        // 接收者收到数据，继续运行 (不阻塞)
     } else {
-        // --- 慢速路径 ---
-        // 没有发送者，阻塞当前进程
-        let current_proc_ptr = hart::get().proc;
-        let current_pid = unsafe { (*current_proc_ptr).pid };
+        // --- 慢速路径: 阻塞 ---
+        // 没有发送者，接收者阻塞等待
+        current.state = ThreadState::BlockedRecv;
 
-        ep.recv_queue.push_back(current_pid);
+        // 将自己加入 Endpoint 的接收队列
+        ep.recv_queue.push_back(current as *mut _);
 
-        unsafe {
-            (*current_proc_ptr).state = ProcState::Blocked;
-        }
-
-        drop(endpoints);
-
-        scheduler();
+        // 让出 CPU，触发调度
+        scheduler::block_current_thread();
     }
-}
-
-pub fn reply_recv(endpoint_id: usize, badge: usize, data: Args) {
-    let mut endpoints = ENDPOINT_MANAGER.lock();
-    let ep = endpoints.entry(endpoint_id).or_insert(endpoint::Endpoint::new());
-
-    // 处理 ReplyRecv 操作类似于 Send + Recv 的组合
-    // 1. 发送数据给等待的接收者（如果有）
-    if let Some(receiver_pid) = ep.recv_queue.pop_front() {
-        let mut p_table = PROC_TABLE.lock();
-
-        let mut receiver_idx = None;
-        for i in 0..NPROC {
-            if p_table[i].pid == receiver_pid {
-                receiver_idx = Some(i);
-                break;
-            }
-        }
-
-        if let Some(idx) = receiver_idx {
-            let receiver = &mut p_table[idx];
-            unsafe {
-                if !receiver.trapframe.is_null() {
-                    let tf = &mut *receiver.trapframe;
-                    tf.a0 = data[0];
-                    tf.a1 = data[1];
-                    tf.a2 = data[2];
-                    tf.a3 = data[3];
-                    tf.a4 = data[4];
-                    tf.a5 = data[5];
-                    tf.a6 = data[6];
-                    tf.a7 = data[7];
-
-                    tf.t0 = badge;
-                }
-            }
-            receiver.state = ProcState::Ready;
-        }
-    }
-
-    // 2. 接收数据（阻塞当前进程）
-    let current_proc_ptr = hart::get().proc;
-    let current_pid = unsafe { (*current_proc_ptr).pid };
-
-    ep.recv_queue.push_back(current_pid);
-
-    unsafe {
-        (*current_proc_ptr).state = ProcState::Blocked;
-    }
-
-    drop(endpoints);
-
-    scheduler();
 }

@@ -1,4 +1,4 @@
-use crate::proc::{ProcContext, Process};
+use crate::proc::{ProcContext, TCB};
 use core::arch::asm;
 use core::ptr;
 
@@ -6,7 +6,7 @@ pub const MAX_HARTS: usize = 8;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Hart {
-    pub proc: *mut Process,
+    pub proc: *mut TCB,
     pub context: ProcContext,
     pub nest_count: usize,
     pub enabled: bool,
