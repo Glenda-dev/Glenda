@@ -18,6 +18,5 @@ pub mod kstack;
 pub mod pagetable;
 pub mod pmem;
 pub mod pte;
-pub mod uvm;
 pub mod vm;
 pub mod vspace;

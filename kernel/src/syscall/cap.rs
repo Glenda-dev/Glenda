@@ -3,6 +3,8 @@ use crate::cap::{CapType, Capability, rights};
 use crate::ipc;
 use crate::ipc::endpoint::Endpoint;
 use crate::irq::{TrapContext, TrapFrame};
+use crate::mem::PGSIZE;
+use crate::mem::addr;
 use crate::mem::{self, PageTable, PhysAddr, VirtAddr, vm};
 use crate::proc::{self, TCB, ThreadState, scheduler};
 use alloc::vec::Vec;
@@ -54,7 +56,7 @@ pub fn sys_invoke(ctx: &mut TrapContext) -> usize {
         }
         CapType::PageTable { paddr, .. } => {
             // PageTable 需要物理地址转虚拟地址才能操作
-            let pt_ptr = vm::phys_to_virt(paddr);
+            let pt_ptr = addr::phys_to_virt(paddr);
             let pt = unsafe { &mut *(pt_ptr as *mut PageTable) };
             invoke_pagetable(pt, method, &args)
         }
@@ -128,13 +130,18 @@ fn invoke_pagetable(pt: &mut PageTable, method: usize, args: &[usize]) -> usize 
 
             // 执行映射
             // pt.map(vaddr, paddr, flags)
-            unimplemented!();
+            match pt.map(vaddr, paddr, mem::PGSIZE, flags) {
+                Ok(()) => 0,
+                Err(_) => 5, // Error: Mapping Failed
+            }
         }
         // Unmap: (vaddr)
         2 => {
             let vaddr = VirtAddr::from(args[0]);
-            // pt.unmap(vaddr)
-            unimplemented!();
+            match pt.unmap(vaddr, PGSIZE) {
+                Ok(()) => 0,
+                Err(_) => 6, // Error: Unmapping Failed
+            }
         }
         _ => 4,
     }

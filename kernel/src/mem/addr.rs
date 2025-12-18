@@ -34,3 +34,14 @@ pub const fn page_offset(addr: VirtAddr) -> usize {
 pub const fn vpn(addr: VirtAddr) -> [VPN; 3] {
     [(addr >> 12) & 0x1FF, (addr >> 21) & 0x1FF, (addr >> 30) & 0x1FF]
 }
+
+/// 物理地址转虚拟地址
+/// 不使用 HHDM 时，内核采用恒等映射，因此 PA == VA
+pub fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
+    VirtAddr::from(pa)
+}
+
+/// 虚拟地址转物理地址
+pub fn virt_to_phys(va: VirtAddr) -> PhysAddr {
+    PhysAddr::from(va)
+}

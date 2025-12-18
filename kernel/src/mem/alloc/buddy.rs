@@ -100,7 +100,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             }
         }
 
-        let page = pmem::alloc(true);
+        let page = pmem::alloc();
         if page.is_null() {
             return ptr::null_mut();
         }
@@ -141,7 +141,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
         }
 
         if order == MAX_ORDER {
-            pmem::free(current_ptr, true);
+            pmem::free(current_ptr);
         } else {
             unsafe { self.push_block(current_ptr as *mut u8, order) };
         }

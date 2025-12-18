@@ -1,11 +1,9 @@
 use super::ProcContext;
-use super::context;
 use crate::cap::Capability;
-use crate::hart;
 use crate::irq::TrapFrame;
-use crate::mem::{KernelStack, PhysFrame, VirtAddr};
+use crate::mem::PGSIZE;
+use crate::mem::{KernelStack, PhysFrame, VSpace, VirtAddr};
 use alloc::collections::VecDeque;
-use riscv::register::sscratch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -34,6 +32,9 @@ pub struct TCB {
     pub cspace_root: Capability, // Root CNode (CSpace)
     pub vspace_root: Capability, // Root PageTable (VSpace)
 
+    // 地址空间
+    pub vspace: Option<VSpace>,
+
     // --- IPC State ---
     pub fault_handler: Option<Capability>, // 异常处理 Endpoint
     pub ipc_buffer: VirtAddr,              // IPC 消息缓冲区 (UTCB的一部分)
@@ -47,7 +48,7 @@ pub struct TCB {
 
     // --- UTCB (User Thread Control Block) ---
     pub utcb_frame: Option<PhysFrame>, // UTCB 所在的物理帧
-    pub utcb_base: VirtAddr,           // UTCB 在用户空间的虚拟地址
+    pub utcb_base: VirtAddr,           // UTCB 在用户地址空间中的基址
 }
 
 impl TCB {
@@ -61,6 +62,7 @@ impl TCB {
             kstack: None,
             cspace_root: Capability::empty(),
             vspace_root: Capability::empty(),
+            vspace: None,
             fault_handler: None,
             ipc_buffer: 0,
             send_queue: VecDeque::new(),
@@ -88,18 +90,17 @@ impl TCB {
         &mut self,
         cspace: Capability,
         vspace: Capability,
-        utcb_base: VirtAddr,
         utcb_frame: PhysFrame,
+        utcb_vaddr: VirtAddr,
         fault_ep: Option<Capability>,
     ) {
         self.cspace_root = cspace;
         self.vspace_root = vspace;
-        self.utcb_base = utcb_base;
         self.utcb_frame = Some(utcb_frame);
         self.fault_handler = fault_ep;
-
+        self.utcb_base = utcb_vaddr;
         // UTCB 通常包含 IPC Buffer
-        self.ipc_buffer = utcb_base;
+        self.ipc_buffer = utcb_vaddr + UTCB_SIZE;
     }
 
     pub fn set_priority(&mut self, prio: u8) {
@@ -145,6 +146,15 @@ impl TCB {
         }
     }
 
+    pub fn get_utcb(&self) -> Option<&mut UTCB> {
+        if let Some(utcb_frame) = &self.utcb_frame {
+            let vaddr = self.utcb_base;
+            unsafe { Some(&mut *(vaddr as *mut UTCB)) }
+        } else {
+            None
+        }
+    }
+
     pub fn get_satp(&self) -> VirtAddr {
         // 假设 Capability 中存储了页表的物理地址
         // 这里需要转换为虚拟地址
@@ -171,8 +181,6 @@ pub struct UTCB {
     pub msg_tag: usize,
     /// 消息寄存器 (MR1-MR7) - 对应 CPU 寄存器
     pub mrs_regs: [usize; 7],
-    /// 扩展消息寄存器 (MR8-MR63) - 内存缓冲
-    pub mrs: [usize; 56],
 
     /// Capability 传递描述符 (CPTR)
     pub cap_transfer: usize,
@@ -181,10 +189,23 @@ pub struct UTCB {
 
     /// 线程本地存储指针
     pub tls: VirtAddr,
+
+    /// ipc缓冲区大小
+    pub ipc_buffer_size: usize,
 }
 
-impl UTCB {
-    pub const fn new() -> Self {
-        Self { msg_tag: 0, mrs_regs: [0; 7], mrs: [0; 56], cap_transfer: 0, recv_window: 0, tls: 0 }
+pub const UTCB_SIZE: usize = core::mem::size_of::<UTCB>();
+
+pub const IPC_BUFFER_SIZE: usize = PGSIZE - UTCB_SIZE;
+
+#[repr(C)]
+pub struct IPCBuffer {
+    pub data: [u8; IPC_BUFFER_SIZE],
+}
+
+impl IPCBuffer {
+    pub fn from_utcb(utcb: &UTCB) -> &mut Self {
+        let buf_addr = (utcb as *const UTCB as usize) + UTCB_SIZE;
+        unsafe { &mut *(buf_addr as *mut IPCBuffer) }
     }
 }

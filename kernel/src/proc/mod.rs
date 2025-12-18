@@ -4,15 +4,15 @@ pub mod scheduler;
 pub mod thread;
 
 pub use context::ProcContext;
-pub use thread::{TCB, ThreadState};
+pub use thread::{TCB, ThreadState, UTCB_VA};
 
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
 use crate::hart;
+use crate::mem::addr;
 use crate::mem::pmem;
 use crate::mem::pte;
-use crate::mem::vm;
 use crate::mem::{PGSIZE, PageTable, PhysFrame, VirtAddr};
 use crate::printk;
 
@@ -24,19 +24,21 @@ pub fn init() {
 
     // 2. 手动分配 Root Task 的核心对象
     // 注意：这里直接调用内存分配器，因为此时还没有 Capability 限制
-    let root_vspace_frame = PhysFrame::alloc(true).expect("Failed to alloc root VSpace");
-    let root_cspace_frame = PhysFrame::alloc(true).expect("Failed to alloc root CSpace");
-    let root_tcb_frame = PhysFrame::alloc(true).expect("Failed to alloc root TCB");
-    let root_utcb_frame = PhysFrame::alloc(false).expect("Failed to alloc root UTCB");
+    let root_vspace_frame = PhysFrame::alloc().expect("Failed to alloc root VSpace");
+    let root_cspace_frame = PhysFrame::alloc().expect("Failed to alloc root CSpace");
+    let root_tcb_frame = PhysFrame::alloc().expect("Failed to alloc root TCB");
+    let root_utcb_frame = PhysFrame::alloc().expect("Failed to alloc root UTCB");
 
     // 3. 构建 Root VSpace (页表)
     // 必须映射内核空间和 Root Task 自身的代码/数据段
     let mut vspace = PageTable::from_frame(&root_vspace_frame);
     vspace.map_kernel();
     root_task.map_segments(&mut vspace);
+    let utcb_base = UTCB_VA;
     // 映射 UTCB 到固定位置
-    let utcb_vaddr = 0x8000_0000; // 示例地址
-    vspace.map(utcb_vaddr, root_utcb_frame.addr(), PGSIZE, pte::PTE_R | pte::PTE_W);
+    vspace
+        .map(utcb_base, root_utcb_frame.addr(), PGSIZE, pte::PTE_R | pte::PTE_W)
+        .expect("Failed to map UTCB");
 
     // 4. 构建 Root CSpace (CNode)
     // 这是 Root Task 权力的来源。我们需要把所有剩余的物理内存
@@ -46,19 +48,24 @@ pub fn init() {
 
     // 5. 初始化 TCB
     // 这里我们将物理帧转换为内核对象引用
-    let tcb = unsafe { &mut *(vm::phys_to_virt(root_tcb_frame.addr()) as *mut TCB) };
+    let tcb = unsafe { &mut *(addr::phys_to_virt(root_tcb_frame.addr()) as *mut TCB) };
     *tcb = TCB::new();
 
     // 6. 配置 TCB (绑定资源)
     // 创建指向刚才分配的 CNode 和 PageTable 的 Capability
     let cap_cspace = Capability::create_cnode(root_cspace_frame.addr(), 12, rights::ALL);
-    let cap_vspace = Capability::create_pagetable(root_vspace_frame.addr(), 2, rights::ALL);
+    let cap_vspace = Capability::create_pagetable(
+        root_vspace_frame.addr(),
+        addr::phys_to_virt(root_vspace_frame.addr()),
+        2,
+        rights::ALL,
+    );
 
     tcb.configure(
         cap_cspace,
         cap_vspace,
-        utcb_vaddr,
         root_utcb_frame,
+        utcb_base,
         None, // Root Task 暂时没有 Fault Handler，或者指向内核默认处理
     );
 
@@ -75,11 +82,11 @@ pub fn init() {
 /// 填充 Root CNode
 /// 将所有空闲物理内存作为 Untyped Capability 授予 Root Task
 fn populate_root_cnode(cnode: &mut CNode) {
-    let free_regions = pmem::get_free_regions();
+    let free_regions = pmem::get_untyped_regions();
     let mut slot = 1; // Slot 0 通常保留
 
     for region in free_regions {
-        let cap = Capability::create_untyped(region.begin, region.end - region.begin, rights::ALL);
+        let cap = Capability::create_untyped(region.start, region.end - region.start, rights::ALL);
         cnode.insert(slot, cap);
         slot += 1;
     }

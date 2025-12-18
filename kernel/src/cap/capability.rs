@@ -78,8 +78,13 @@ impl Capability {
         Self::new(CapType::Frame { paddr }, rights)
     }
 
-    pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: u8) -> Self {
-        Self::new(CapType::PageTable { paddr, level }, rights)
+    pub fn create_pagetable(
+        paddr: PhysAddr,
+        mapped_vaddr: VirtAddr,
+        level: usize,
+        rights: u8,
+    ) -> Self {
+        Self::new(CapType::PageTable { paddr, mapped_vaddr, level }, rights)
     }
 
     pub fn create_cnode(paddr: PhysAddr, bits: u8, rights: u8) -> Self {

@@ -192,30 +192,5 @@ impl ProcPayload {
     // TODO: implement segment mapping
     pub fn map_segments(&self, vspace: &mut crate::mem::PageTable) {
         unimplemented!();
-        // For simplicity, assume the payload data is an ELF binary
-        // and we can extract segments from it.
-        // Here we just simulate mapping a code and data segment.
-        let code_segment_start = 0x80200000;
-        let code_segment_size = 0x20000; // 128 KB
-        let data_segment_start = 0x80400000;
-        let data_segment_size = 0x10000; // 64 KB
-
-        // Map code segment (RX)
-        let code_frame = PhysFrame::alloc(false).expect("Failed to alloc code segment frame");
-        vspace.map(
-            code_segment_start,
-            code_frame.addr(),
-            code_segment_size,
-            pte::PTE_R | pte::PTE_X,
-        );
-
-        // Map data segment (RW)
-        let data_frame = PhysFrame::alloc(false).expect("Failed to alloc data segment frame");
-        vspace.map(
-            data_segment_start,
-            data_frame.addr(),
-            data_segment_size,
-            pte::PTE_R | pte::PTE_W,
-        );
     }
 }

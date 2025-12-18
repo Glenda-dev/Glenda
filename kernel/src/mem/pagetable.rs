@@ -1,10 +1,8 @@
 use super::PhysFrame;
+use super::addr;
 use super::addr::{align_down, align_up, vpn};
-use super::pmem::{self, get_region};
 use super::pte::{self, Pte, pa_to_pte, pte_to_pa};
-use super::uvm::UvmError;
 use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
-use core::ptr;
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
@@ -14,295 +12,157 @@ pub struct PageTable {
 }
 
 impl PageTable {
+    /// 创建一个新的空页表 (仅用于初始化)
     pub const fn new() -> Self {
         PageTable { entries: [0; PGNUM] }
     }
 
+    /// 从物理帧获取页表的可变引用
     pub fn from_frame(frame: &PhysFrame) -> &'static mut Self {
-        unsafe { &mut *(frame.addr() as *mut PageTable) }
+        let vaddr = frame.va();
+        unsafe { &mut *(vaddr as *mut PageTable) }
+    }
+
+    /// 查找虚拟地址对应的 PTE 指针
+    ///
+    /// * `va`: 虚拟地址
+    /// * `alloc`: 必须为 false。微内核中，缺页必须由用户处理，内核不自动分配中间页表。
+    ///
+    /// 返回：
+    /// * `Some(pte)`: 找到对应的 PTE (可能是叶子节点，也可能是中间节点)
+    /// * `None`: 遍历过程中断 (中间页表不存在)
+    pub fn walk(&mut self, va: VirtAddr) -> Option<*mut Pte> {
+        if va >= VA_MAX {
+            return None;
+        }
+
+        let mut table = self;
+
+        // 遍历 3 级页表 (Level 2 -> Level 1 -> Level 0)
+        // 最后一级 (Level 0) 的 PTE 将被返回
+        for level in (1..3).rev() {
+            let idx = vpn(va)[level];
+            let pte_val = table.entries[idx];
+
+            if !pte::is_valid(pte_val) {
+                // 中间页表不存在，直接返回 None
+                // 在微内核中，这意味着用户必须先 Map 一个 PageTable 到这个位置
+                return None;
+            }
+
+            if pte::is_leaf(pte_val) {
+                // 遇到大页 (Huge Page)，直接返回该 PTE
+                // 注意：调用者需要知道这是一个大页 PTE
+                return Some(&mut table.entries[idx] as *mut Pte);
+            }
+
+            // 进入下一级页表
+            let next_pa = pte_to_pa(pte_val);
+            let next_va = addr::phys_to_virt(next_pa);
+            table = unsafe { &mut *(next_va as *mut PageTable) };
+        }
+
+        // 返回 Level 0 的 PTE
+        Some(&mut table.entries[vpn(va)[0]] as *mut Pte)
+    }
+
+    /// 映射内存区域 (机制)
+    ///
+    /// * `va`: 虚拟起始地址
+    /// * `pa`: 物理起始地址
+    /// * `size`: 映射大小 (字节)
+    /// * `flags`: 权限标志
+    ///
+    /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
+    /// 用户必须先调用 map_table 来建立中间层级。
+    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: usize) -> Result<(), ()> {
+        let start_va = align_down(va);
+        let end_va = align_up(va + size);
+
+        let mut current_va = start_va;
+        let mut current_pa = align_down(pa);
+
+        while current_va < end_va {
+            let pte_ptr = self.walk(current_va).ok_or(())?;
+
+            unsafe {
+                let old_pte = *pte_ptr;
+                // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
+                if pte::is_valid(old_pte) && (pte_to_pa(old_pte) != current_pa) {
+                    return Err(());
+                }
+
+                // 写入新的 PTE
+                *pte_ptr = pa_to_pte(current_pa, flags | pte::PTE_V);
+            }
+
+            current_va += PGSIZE;
+            current_pa += PGSIZE;
+        }
+        Ok(())
+    }
+
+    /// 解除映射
+    ///
+    /// * `va`: 虚拟地址
+    /// * `size`: 大小
+    ///
+    /// 注意：不负责释放物理内存。物理内存由 Capability 系统管理。
+    pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), ()> {
+        let start_va = align_down(va);
+        let end_va = align_up(va + size);
+        let mut current_va = start_va;
+
+        while current_va < end_va {
+            // 如果 walk 返回 None，说明中间页表都不存在，自然也不存在映射，忽略即可
+            if let Some(pte_ptr) = self.walk(current_va) {
+                unsafe {
+                    // 无论之前是否有效，直接清零
+                    *pte_ptr = 0;
+                }
+            }
+            current_va += PGSIZE;
+        }
+        Ok(())
+    }
+
+    /// 映射中间页表 (Map PageTable)
+    ///
+    /// * `va`: 目标虚拟地址范围的起始
+    /// * `table_pa`: 中间页表的物理地址
+    /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
+    pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
+        if level == 0 || level > 2 {
+            return Err(()); // 无效层级
+        }
+
+        // 遍历到目标层级的上一级
+        let mut table = self;
+        for l in ((level + 1)..3).rev() {
+            let idx = vpn(va)[l];
+            let pte_val = table.entries[idx];
+            if !pte::is_valid(pte_val) || pte::is_leaf(pte_val) {
+                return Err(()); // 父级页表不存在或已被大页占用
+            }
+            let next_pa = pte_to_pa(pte_val);
+            let next_va = addr::phys_to_virt(next_pa);
+            table = unsafe { &mut *(next_va as *mut PageTable) };
+        }
+
+        // 在目标层级写入 PTE，指向新的页表
+        let idx = vpn(va)[level];
+        let pte_ptr = &mut table.entries[idx];
+
+        if pte::is_valid(*pte_ptr) {
+            return Err(()); // 槽位已被占用
+        }
+        // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
+        *pte_ptr = pa_to_pte(table_pa, pte::PTE_V);
+
+        Ok(())
     }
 
     pub fn map_kernel(&mut self) {
-        // Map kernel space - identity map
-        let kernel_region = pmem::kernel_region_info();
-        let kernel_start = align_down(kernel_region.begin);
-        let kernel_end = align_up(kernel_region.end);
-        let mut addr = kernel_start;
-        while addr < kernel_end {
-            let va = addr;
-            let pa = addr;
-            let flags = pte::PTE_R | pte::PTE_W | pte::PTE_X | pte::PTE_A | pte::PTE_D;
-            self.map(va, pa, PGSIZE, flags);
-            addr += PGSIZE;
-        }
-    }
-
-    // walk: Returns pointer to PTE for va. If alloc is true, allocates intermediate tables.
-    pub fn walk(&mut self, va: VirtAddr, alloc: bool) -> Option<*mut Pte> {
-        if va >= VA_MAX {
-            return None;
-        }
-        let mut table: *mut PageTable = self as *mut PageTable;
-        for level in (1..3).rev() {
-            let idx = vpn(va)[level];
-            let pte_ref = unsafe { &mut (*table).entries[idx] };
-            if pte::is_valid(*pte_ref) {
-                if pte::is_leaf(*pte_ref) {
-                    return None;
-                }
-                let next_pa = pte_to_pa(*pte_ref);
-                if next_pa == 0 {
-                    return None;
-                }
-                table = next_pa as *mut PageTable;
-            } else {
-                if !alloc {
-                    return None;
-                }
-                let new_table = pmem::alloc(true) as *mut PageTable;
-                if new_table.is_null() {
-                    return None;
-                }
-                unsafe {
-                    core::ptr::write_bytes(new_table as *mut u8, 0, PGSIZE);
-                    let new_pte = pa_to_pte(new_table as usize, pte::PTE_V);
-                    *pte_ref = new_pte;
-                }
-                table = new_table;
-            }
-        }
-        Some(unsafe { &mut (*table).entries[vpn(va)[0]] as *mut Pte })
-    }
-
-    pub fn lookup(&self, va: VirtAddr) -> Option<*mut Pte> {
-        if va >= VA_MAX {
-            return None;
-        }
-        let mut table: *const PageTable = self as *const PageTable;
-        for level in (1..3).rev() {
-            let idx = vpn(va)[level];
-            let pte = unsafe { (*table).entries[idx] };
-            if pte::is_valid(pte) {
-                if pte::is_leaf(pte) {
-                    return None;
-                }
-                let next_pa = pte_to_pa(pte);
-                if next_pa == 0 {
-                    return None;
-                }
-                table = next_pa as *const PageTable;
-            } else {
-                return None;
-            }
-        }
-        Some(unsafe { &((*table).entries[vpn(va)[0]]) as *const Pte as *mut Pte })
-    }
-
-    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, len: usize, flags: usize) -> bool {
-        if len == 0 {
-            return false;
-        }
-        let start = align_down(va);
-        let end = align_up(va + len);
-        let mut a = start;
-        let mut pa_cur = align_down(pa);
-        let last = end - PGSIZE;
-        while a <= last {
-            let pte = match self.walk(a, true) {
-                Some(p) => p,
-                None => return false,
-            };
-            let cur = unsafe { *pte };
-            if pte::is_valid(cur) {
-                // Check if mapping matches. Allow updating permissions for same PA.
-                if !pte::is_leaf(cur) || pte_to_pa(cur) != pa_cur {
-                    return false;
-                }
-                unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | pte::PTE_V);
-                }
-            } else {
-                unsafe {
-                    *pte = pa_to_pte(pa_cur, flags | pte::PTE_V);
-                }
-            }
-            if a == last {
-                break;
-            }
-            a += PGSIZE;
-            pa_cur += PGSIZE;
-        }
-        true
-    }
-
-    pub fn unmap(&mut self, va: VirtAddr, len: usize, free: bool) -> bool {
-        if len == 0 {
-            return false;
-        }
-        let start = align_down(va);
-        let end = align_up(va + len);
-        let mut a = start;
-        let last = end - PGSIZE;
-        while a <= last {
-            let pte = match self.lookup(a) {
-                Some(p) => p,
-                None => return false,
-            };
-            let old = unsafe { *pte };
-            if !pte::is_valid(old) || !pte::is_leaf(old) {
-                return false;
-            }
-            let pa = pte_to_pa(old);
-            if free {
-                match get_region(pa) {
-                    Some(for_kernel) => pmem::free(pa, for_kernel),
-                    None => panic!("vm_unmappages: PA {:#x} out of bounds", pa),
-                };
-            }
-            unsafe { *pte = 0 };
-            if a == last {
-                break;
-            }
-            a += PGSIZE;
-        }
-        true
-    }
-
-    pub fn destroy(&mut self) {
-        fn destroy_level(table_pa: usize) {
-            let table = table_pa as *mut PageTable;
-            for i in 0..super::PGNUM {
-                let pte = unsafe { (*table).entries[i] };
-                if !pte::is_valid(pte) {
-                    continue;
-                }
-                if pte::is_leaf(pte) {
-                    let pa = pte_to_pa(pte);
-                    if let Some(false) = pmem::get_region(pa) {
-                        pmem::free(pa, false);
-                    }
-                    unsafe {
-                        (*table).entries[i] = 0;
-                    }
-                } else if pte::is_table(pte) {
-                    let child_pa = pte_to_pa(pte);
-
-                    if child_pa != 0 {
-                        destroy_level(child_pa);
-                        pmem::free(child_pa, true);
-                    }
-                    unsafe {
-                        (*table).entries[i] = 0;
-                    }
-                }
-            }
-        }
-        let root_pa = self as *const PageTable as usize;
-        destroy_level(root_pa);
-    }
-
-    /// Deep-copy a Sv39 page table. Returns new root page table PA.
-    /// - For user pages: allocate new user page and copy data.
-    /// - For trapframe-like pages: allocate new kernel page and copy data.
-    /// - For trampoline-like pages: reuse the same PA, do not copy.
-    /// TODO: handle copy-on-write pages.
-    pub fn copy(&self) -> Result<PhysAddr, UvmError> {
-        let dst_root = pmem::alloc(true) as usize;
-        if dst_root == 0 {
-            return Err(UvmError::NoMem);
-        }
-        unsafe {
-            core::ptr::write_bytes(dst_root as *mut u8, 0, PGSIZE);
-        }
-        let dst_pt = unsafe { &mut *(dst_root as *mut PageTable) };
-
-        unsafe {
-            let l2 = self as *const PageTable;
-            for i in 0..super::PGNUM {
-                let pte2 = (*l2).entries[i];
-                if !pte::is_valid(pte2) || !pte::is_table(pte2) {
-                    continue;
-                }
-                let l1_pa = pte_to_pa(pte2);
-                if l1_pa == 0 {
-                    continue;
-                }
-                let l1 = l1_pa as *const PageTable;
-                for j in 0..super::PGNUM {
-                    let pte1 = (*l1).entries[j];
-                    if !pte::is_valid(pte1) || !pte::is_table(pte1) {
-                        continue;
-                    }
-                    let l0_pa = pte_to_pa(pte1);
-                    if l0_pa == 0 {
-                        continue;
-                    }
-                    let l0 = l0_pa as *const PageTable;
-                    for k in 0..super::PGNUM {
-                        let pte0 = (*l0).entries[k];
-                        if !pte::is_valid(pte0) || !pte::is_leaf(pte0) {
-                            continue;
-                        }
-                        let pa = pte_to_pa(pte0);
-                        let flags = pte::get_flags(pte0);
-                        let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
-                        let sign = (va_raw >> 38) & 1;
-                        let va = if sign == 1 {
-                            va_raw | (!0usize << 39)
-                        } else {
-                            va_raw & ((1usize << 39) - 1)
-                        };
-
-                        if (flags & pte::PTE_U) != 0 {
-                            // User page
-                            match pmem::get_region(pa) {
-                                Some(for_kernel) if !for_kernel => {
-                                    let new_pa = pmem::alloc(false) as usize;
-                                    if new_pa == 0 {
-                                        return Err(UvmError::NoMem);
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        pa as *const u8,
-                                        new_pa as *mut u8,
-                                        PGSIZE,
-                                    );
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                        return Err(UvmError::MapFailed);
-                                    }
-                                }
-                                _ => {
-                                    // Ignore this
-                                }
-                            }
-                        } else if (flags & pte::PTE_X) != 0 {
-                            // Kernel text/trampoline (RX) - Map as is (shared)
-                            if !dst_pt.map(va, pa, PGSIZE, flags) {
-                                return Err(UvmError::MapFailed);
-                            }
-                        } else {
-                            // Trapframe or other Kernel Data (RW)
-                            match pmem::get_region(pa) {
-                                Some(for_kernel) if for_kernel => {
-                                    let new_pa = pmem::alloc(true) as usize;
-                                    if new_pa == 0 {
-                                        return Err(UvmError::NoMem);
-                                    }
-                                    ptr::copy_nonoverlapping(
-                                        pa as *const u8,
-                                        new_pa as *mut u8,
-                                        PGSIZE,
-                                    );
-                                    if !dst_pt.map(va, new_pa, PGSIZE, flags) {
-                                        return Err(UvmError::MapFailed);
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Ok(dst_root)
+        unimplemented!()
     }
 }

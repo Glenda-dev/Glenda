@@ -189,7 +189,7 @@ unsafe impl GlobalAlloc for ChainAllocator {
                 return ptr;
             }
 
-            let region_pa = pmem::alloc(true) as usize;
+            let region_pa = pmem::alloc() as usize;
             if region_pa == 0 {
                 return core::ptr::null_mut();
             }

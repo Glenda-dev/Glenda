@@ -1,44 +1,83 @@
-use super::PhysAddr;
-use super::PhysFrame;
-use crate::mem::PageTable;
-use riscv::register::satp;
+use crate::mem::{PhysAddr, PhysFrame};
+use riscv::asm::sfence_vma_all;
+use riscv::register::satp::{self, Satp};
+use spin::Mutex;
 
-// TODO: Add RAII
-#[repr(C)]
+/// ASID 管理器 (单例)
+static ASID_MANAGER: Mutex<AsidManager> = Mutex::new(AsidManager::new());
+
+struct AsidManager {
+    /// 当前生成的 ASID (0..MAX_ASID)
+    current_asid: u16,
+    /// 全局代际计数器
+    generation: u64,
+}
+
+impl AsidManager {
+    const MAX_ASID: u16 = 0xFFFF; // RISC-V SV39/48 通常支持 16位 ASID
+
+    const fn new() -> Self {
+        Self {
+            current_asid: 0,
+            generation: 1, // 从 1 开始，0 表示未初始化
+        }
+    }
+
+    /// 分配一个新的 ASID
+    /// 如果这一代用完了，会触发 flush 并进入下一代
+    fn alloc(&mut self) -> (u16, u64) {
+        if self.current_asid < Self::MAX_ASID {
+            self.current_asid += 1;
+            (self.current_asid, self.generation)
+        } else {
+            // ASID 耗尽，进入下一代
+            self.generation += 1;
+            self.current_asid = 1;
+
+            // 关键：刷新所有 TLB，因为我们即将复用 ASID 1
+            // 在 RISC-V 中，这会使所有旧的 ASID 条目失效
+            sfence_vma_all();
+
+            (self.current_asid, self.generation)
+        }
+    }
+}
+
+/// 虚拟地址空间
+/// 在微内核中，它主要代表根页表 + ASID
+#[derive(Debug)]
 pub struct VSpace {
-    pub asid: usize,                // 地址空间标识符 (ASID)
-    pub root_pt: Option<PhysFrame>, // RAII frame
+    /// 根页表的物理地址 (用于写入 satp.ppn)
+    root_paddr: PhysAddr,
+
+    /// 缓存的 ASID
+    asid: u16,
+    /// 该 ASID 所属的代际
+    asid_generation: u64,
 }
 
 impl VSpace {
-    pub const fn new() -> Self {
-        Self { asid: 0, root_pt: None }
+    /// 创建一个新的 VSpace (通常由 Retype 调用)
+    pub fn new(root_frame: PhysFrame) -> Self {
+        Self {
+            root_paddr: root_frame.addr(),
+            asid: 0,
+            asid_generation: 0, // 0 表示无效/未分配
+        }
     }
-    pub fn init(&mut self) {
-        let frame = PhysFrame::alloc(true).expect("Failed to allocate root page table frame");
-        self.root_pt = Some(frame);
-    }
-    pub fn pa(&self) -> PhysAddr {
-        self.root_pt.as_ref().expect("VSpace::pa: root_pt is None").addr()
-    }
-    pub fn satp(&self) -> usize {
-        // 根页表物理页号
-        let ppn = (self.pa() >> 12) & ((1usize << (usize::BITS as usize - 12)) - 1);
-        // Compose SATP value for Sv39: MODE in bits [63:60], ASID=pid, PPN in [43:0]
-        ((satp::Mode::Sv39 as usize) << 60) | (self.asid << 44) | ppn
-    }
-    pub fn get_pt_mut(&self) -> *mut PageTable {
-        let pa = self.pa();
-        pa as *mut PageTable
-    }
-    pub fn get_pt(&self) -> *const PageTable {
-        let pa = self.pa();
-        pa as *const PageTable
-    }
-    pub fn free(&mut self) {
-        let page_table = unsafe { &mut *(self.pa() as *mut PageTable) };
 
-        // Destory page table first (frees TrapFrame and children)
-        page_table.destroy();
+    /// 激活此地址空间 (上下文切换时调用)
+    /// 返回需要写入 satp 的值 (包含 ASID)
+    pub unsafe fn activate(&self) {
+        satp::set(satp::Mode::Sv39, self.asid as usize, self.root_paddr >> 12);
+    }
+
+    /// 获取根页表物理地址
+    pub fn root_paddr(&self) -> PhysAddr {
+        self.root_paddr
+    }
+
+    pub fn asid(&self) -> u16 {
+        self.asid
     }
 }

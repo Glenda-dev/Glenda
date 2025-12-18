@@ -1,6 +1,6 @@
 pub mod endpoint;
 
-use crate::mem::vm;
+use crate::mem::addr;
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState, UTCB};
 
@@ -11,20 +11,27 @@ pub use endpoint::Endpoint;
 unsafe fn get_utcb(tcb: &TCB) -> &mut UTCB {
     let frame = tcb.utcb_frame.as_ref().expect("Thread has no UTCB");
     // 将物理地址转换为内核虚拟地址 (HHDM)
-    let vaddr = vm::phys_to_virt(frame.addr());
+    let vaddr = addr::phys_to_virt(frame.addr());
     &mut *(vaddr as *mut UTCB)
 }
 
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文
 unsafe fn copy_msg(sender: &TCB, receiver: &mut TCB, badge: usize) {
-    let src = get_utcb(sender);
-    let dst = get_utcb(receiver);
+    let src = sender.get_utcb().expect("ipc: Sender has no UTCB");
+    let dst = receiver.get_utcb().expect("ipc: Receiver has no UTCB");
 
     // 1. 拷贝消息头和寄存器
     dst.msg_tag = src.msg_tag;
     dst.mrs_regs = src.mrs_regs;
-    dst.mrs = src.mrs; // 拷贝扩展消息寄存器
+    dst.ipc_buffer_size = src.ipc_buffer_size;
+
+    // 拷贝 IPC 缓冲区内容
+    if dst.ipc_buffer_size > 0 {
+        let src_buf_ptr = (sender.ipc_buffer) as *const u8;
+        let dst_buf_ptr = (receiver.ipc_buffer) as *mut u8;
+        core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
+    }
 
     // 2. 传递 Badge
     // 根据微内核 ABI，Badge 通常放入接收者的 t0 寄存器，或者 UTCB 的特定字段
