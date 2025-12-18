@@ -39,7 +39,7 @@ static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
-
+    unimplemented!();
     if hartid == 0 {
         printk!("{}", logo::LOGO);
         printk!("Starting scheduler on hart 0...\n");
@@ -95,4 +95,21 @@ pub fn panic(info: &PanicInfo) -> ! {
     loop {
         wfi();
     }
+}
+
+#[macro_export]
+macro_rules! unimplemented {
+    () => {
+        panic!("{}UNIMPLEMENTED{} at {}:{}", ANSI_RED, ANSI_RESET, core::file!(), core::line!());
+    };
+    ($msg:expr) => {
+        panic!(
+            "{}UNIMPLEMENTED{} at {}:{}: {}",
+            ANSI_RED,
+            ANSI_RESET,
+            core::file!(),
+            core::line!(),
+            $msg
+        );
+    };
 }

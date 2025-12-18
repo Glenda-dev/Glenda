@@ -1,10 +1,8 @@
 pub mod capability;
 pub mod cnode;
-pub mod cspace;
 
 pub use capability::Capability;
 pub use cnode::CNode;
-pub use cspace::CSpace;
 
 use crate::mem::{PhysAddr, VirtAddr};
 

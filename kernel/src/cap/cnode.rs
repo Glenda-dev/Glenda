@@ -5,12 +5,15 @@ pub struct CNode {}
 
 impl CNode {
     pub fn new() -> Self {
-        CNode {}
+        unimplemented!()
     }
     pub fn insert(&mut self, _slot: usize, _cap: Capability) -> Option<usize> {
-        None
+        unimplemented!()
     }
     pub fn from_frame(_frame: &PhysFrame) -> Self {
-        CNode {}
+        unimplemented!()
+    }
+    pub fn lookup_cap(&self, _slot: usize) -> Option<Capability> {
+        unimplemented!()
     }
 }

@@ -141,5 +141,6 @@ pub fn wake_up(tcb: &mut TCB) {
         add_thread(tcb);
 
         // TODO: 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
+        unimplemented!()
     }
 }

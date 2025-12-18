@@ -4,7 +4,7 @@ use crate::ipc;
 use crate::ipc::endpoint::Endpoint;
 use crate::irq::{TrapContext, TrapFrame};
 use crate::mem::{self, PageTable, PhysAddr, VirtAddr, vm};
-use crate::proc::{self, TCB, ThreadState};
+use crate::proc::{self, TCB, ThreadState, scheduler};
 use alloc::vec::Vec;
 
 /// 系统调用入口：sys_invoke
@@ -19,12 +19,11 @@ pub fn sys_invoke(ctx: &mut TrapContext) -> usize {
 
     // 获取当前线程
     let current_tcb = proc::current();
-
     // 1. 查找 Capability
     // 注意：这里需要从当前线程的 CSpace 中查找
     // 假设 TCB 中有 helper 方法 get_cnode() 或直接访问 cspace_root
     // 这里简化为假设 current_tcb 有个方法 lookup_cap
-    let cap = match capability::lookup(current_tcb, cptr) {
+    let cap = match current_tcb.cap_lookup(cptr) {
         Some(c) => c,
         None => return 1, // Error: Invalid Capability
     };
@@ -79,7 +78,7 @@ fn invoke_tcb(tcb: &mut TCB, method: usize, args: &[usize]) -> usize {
             // 注意：这里传递的是 CPTR，内核需要再次查找这些 Cap 对应的内核对象
             // 这是一个简化的实现，实际需要验证这些 Cap 的有效性
             // tcb.configure(...)
-            0
+            unimplemented!();
         }
         // SetPriority: (prio)
         2 => {
@@ -92,7 +91,7 @@ fn invoke_tcb(tcb: &mut TCB, method: usize, args: &[usize]) -> usize {
         // 参数通常从 UTCB 读取，因为寄存器太多放不下
         3 => {
             // 读取 UTCB 中的寄存器状态并写入 tcb.context
-            0
+            unimplemented!();
         }
         // Resume
         5 => {
@@ -105,6 +104,7 @@ fn invoke_tcb(tcb: &mut TCB, method: usize, args: &[usize]) -> usize {
         6 => {
             tcb.suspend();
             // 如果目标是当前线程，需要触发 yield
+            scheduler::yield_proc();
             0
         }
         _ => 4, // Error: Invalid Method
@@ -128,13 +128,13 @@ fn invoke_pagetable(pt: &mut PageTable, method: usize, args: &[usize]) -> usize 
 
             // 执行映射
             // pt.map(vaddr, paddr, flags)
-            0
+            unimplemented!();
         }
         // Unmap: (vaddr)
         2 => {
             let vaddr = VirtAddr::from(args[0]);
             // pt.unmap(vaddr)
-            0
+            unimplemented!();
         }
         _ => 4,
     }
@@ -144,10 +144,10 @@ fn invoke_pagetable(pt: &mut PageTable, method: usize, args: &[usize]) -> usize 
 
 fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usize {
     // CNode 操作：Copy, Mint, Move, Revoke, Delete
-    0
+    unimplemented!();
 }
 
 fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -> usize {
     // Untyped 操作：Retype, etc.
-    0
+    unimplemented!();
 }

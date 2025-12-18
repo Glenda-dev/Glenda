@@ -1,6 +1,5 @@
 use super::ProcContext;
 use super::context;
-use crate::cap::CSpace;
 use crate::cap::Capability;
 use crate::hart;
 use crate::irq::TrapFrame;
@@ -149,12 +148,12 @@ impl TCB {
     pub fn get_satp(&self) -> VirtAddr {
         // 假设 Capability 中存储了页表的物理地址
         // 这里需要转换为虚拟地址
-        0
+        unimplemented!()
     }
 
     pub fn cap_lookup(&self, _cptr: usize) -> Option<Capability> {
         // TODO: 实现 Capability 查找逻辑
-        None
+        unimplemented!()
     }
 }
 

@@ -202,5 +202,5 @@ pub fn switch_off(hartid: usize) {
 
 // TODO: translate address
 pub fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
-    pa
+    unimplemented!()
 }

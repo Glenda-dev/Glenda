@@ -1,7 +1,6 @@
 use super::CapType;
 use super::rights;
 use crate::mem::{PhysAddr, VirtAddr};
-use crate::proc::TCB;
 
 /// 能力 (Capability)
 /// 包含对象引用、权限和 Badge
@@ -94,17 +93,6 @@ impl Capability {
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        // 这里可以添加资源释放逻辑，例如回收未类型化内存等
-        // 目前简化处理，什么都不做
+        unimplemented!()
     }
-}
-
-// TODO: 辅助函数：在当前线程的 CSpace 中查找 Cap
-pub fn lookup(tcb: &TCB, cptr: usize) -> Option<Capability> {
-    // 实现 CSpace 查找逻辑
-    // 1. 获取 Root CNode
-    // 2. 解析 cptr (通常是 index)
-    // 3. 返回 Capability 副本
-    // 暂时返回 None 占位，需要对接 CSpace 模块
-    None
 }

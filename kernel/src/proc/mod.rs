@@ -86,6 +86,7 @@ fn populate_root_cnode(cnode: &mut CNode) {
 
     // TODO: 还需要插入设备内存 (MMIO) 和 IRQ Capability
     // ...
+    unimplemented!()
 }
 
 pub fn current() -> &'static mut TCB {

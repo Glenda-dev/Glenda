@@ -181,6 +181,7 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
 impl ProcPayload {
     // TODO: parse ELF to get entry point and stack top
     pub fn info(&self) -> (usize, usize) {
+        unimplemented!();
         // For simplicity, assume the payload data is an ELF binary
         // and we can extract entry point and stack top from it.
         // Here we just return dummy values for illustration.
@@ -190,6 +191,7 @@ impl ProcPayload {
     }
     // TODO: implement segment mapping
     pub fn map_segments(&self, vspace: &mut crate::mem::PageTable) {
+        unimplemented!();
         // For simplicity, assume the payload data is an ELF binary
         // and we can extract segments from it.
         // Here we just simulate mapping a code and data segment.

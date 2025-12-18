@@ -31,5 +31,5 @@ pub fn sys_recv(ctx: &mut TrapContext) -> usize {
 
 // TODO: 实现 Capability 查找逻辑
 fn get_ep(cptr: usize) -> Option<&'static mut Endpoint> {
-    None
+    unimplemented!()
 }
