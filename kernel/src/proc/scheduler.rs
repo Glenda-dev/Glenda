@@ -144,3 +144,24 @@ pub fn wake_up(tcb: &mut TCB) {
         unimplemented!()
     }
 }
+
+/// 触发重新调度
+/// 抢占当前线程，进入调度器
+/// 通常在修改线程优先级后调用
+pub fn reschedule() {
+    let hart = hart::get();
+    let tcb_ptr = hart.proc;
+    if tcb_ptr.is_null() {
+        return;
+    }
+    let tcb = unsafe { &mut *tcb_ptr };
+    // 将当前线程状态设置为 Ready 并加入队列
+    if tcb.state == ThreadState::Running {
+        tcb.state = ThreadState::Ready;
+        add_thread(tcb);
+    }
+    // 切换回调度器
+    unsafe {
+        switch_context(&mut tcb.context, &mut hart.context);
+    }
+}

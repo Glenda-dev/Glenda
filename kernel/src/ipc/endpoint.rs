@@ -1,9 +1,13 @@
 use crate::proc::thread::TCB;
 use alloc::collections::VecDeque;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// IPC 通信端点
 /// 用于线程间同步消息传递
 pub struct Endpoint {
+    /// 引用计数
+    pub ref_count: AtomicUsize,
+
     /// 等待发送的线程队列
     /// 存储元组: (线程指针, Badge)
     /// Badge 是发送者使用的 Capability 携带的身份标识
@@ -15,6 +19,10 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub const fn new() -> Self {
-        Self { send_queue: VecDeque::new(), recv_queue: VecDeque::new() }
+        Self {
+            ref_count: AtomicUsize::new(1), // 初始引用计数为 1 (创建者持有)
+            send_queue: VecDeque::new(),
+            recv_queue: VecDeque::new(),
+        }
     }
 }

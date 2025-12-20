@@ -43,7 +43,7 @@ pub fn init() {
     // 4. 构建 Root CSpace (CNode)
     // 这是 Root Task 权力的来源。我们需要把所有剩余的物理内存
     // 转化为 Untyped Capability 并放入这个 CNode。
-    let mut cspace = CNode::from_frame(&root_cspace_frame);
+    let mut cspace = CNode::from_frame(&root_cspace_frame, 12); // 4096 slots
     populate_root_cnode(&mut cspace);
 
     // 5. 初始化 TCB

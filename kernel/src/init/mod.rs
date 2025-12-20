@@ -2,6 +2,7 @@ mod dtb;
 mod hart;
 mod irq;
 mod pmem;
+mod proc;
 mod uart;
 mod vm;
 
@@ -12,4 +13,5 @@ pub fn init(hartid: usize, dtb: *const u8) {
     irq::init(hartid, dtb);
     vm::init(hartid, dtb);
     hart::init(hartid, dtb);
+    proc::init(hartid, dtb);
 }

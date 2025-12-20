@@ -1,21 +1,27 @@
 use super::ProcContext;
-use crate::cap::Capability;
+use crate::cap::{CapType, Capability};
 use crate::irq::TrapFrame;
 use crate::mem::PGSIZE;
-use crate::mem::{KernelStack, PhysFrame, VSpace, VirtAddr};
+use crate::mem::{KernelStack, PhysAddr, PhysFrame, VSpace, VirtAddr};
 use alloc::collections::VecDeque;
+use core::mem::size_of;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Inactive,
     Ready,
     Running,
+    Zombie,
     BlockedSend,
     BlockedRecv,
 }
 
 #[repr(C)]
 pub struct TCB {
+    /// 引用计数
+    pub ref_count: AtomicUsize,
+
     // --- Core Execution State ---
     pub context: ProcContext, // 架构相关寄存器 (IP, SP, etc.)
     pub priority: u8,         // 调度优先级 (0-255)
@@ -54,6 +60,7 @@ pub struct TCB {
 impl TCB {
     pub const fn new() -> Self {
         Self {
+            ref_count: AtomicUsize::new(1),
             context: ProcContext::new(),
             priority: 0,
             timeslice: 0,
@@ -161,9 +168,19 @@ impl TCB {
         unimplemented!()
     }
 
-    pub fn cap_lookup(&self, _cptr: usize) -> Option<Capability> {
-        // TODO: 实现 Capability 查找逻辑
-        unimplemented!()
+    pub fn cap_lookup(&self, cptr: usize) -> Option<Capability> {
+        self.cap_lookup_slot(cptr).map(|(cap, _)| cap)
+    }
+
+    pub fn cap_lookup_slot(&self, cptr: usize) -> Option<(Capability, PhysAddr)> {
+        // 1. 获取 Root CNode
+        if let CapType::CNode { paddr, bits } = self.cspace_root.object {
+            let cnode = crate::cap::CNode::from_addr(paddr, bits);
+            // 2. 在 CNode 中查找
+            cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))
+        } else {
+            None
+        }
     }
 }
 

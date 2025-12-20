@@ -163,6 +163,10 @@ impl PageTable {
     }
 
     pub fn map_kernel(&mut self) {
-        unimplemented!()
+        if let Some(kpt) = crate::mem::vm::KERNEL_PAGE_TABLE.get() {
+            // 拷贝顶级页表的所有条目
+            // 在恒等映射模式下，这包含了内核代码、数据以及所有物理内存的映射
+            self.entries.copy_from_slice(&kpt.entries);
+        }
     }
 }

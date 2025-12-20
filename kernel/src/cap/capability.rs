@@ -1,17 +1,47 @@
 use super::CapType;
 use super::rights;
+use crate::cap::cnode::CNodeHeader;
+use crate::ipc::Endpoint;
 use crate::mem::{PhysAddr, VirtAddr};
+use crate::proc::TCB;
+use core::sync::atomic::Ordering;
 
 /// 能力 (Capability)
 /// 包含对象引用、权限和 Badge
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Capability {
     pub object: CapType,
     pub badge: Option<usize>, // Badge 用于服务端识别客户端身份
     pub rights: u8,
 }
 
+impl Clone for Capability {
+    fn clone(&self) -> Self {
+        self.inc_ref();
+        Self { object: self.object, badge: self.badge, rights: self.rights }
+    }
+}
+
 impl Capability {
+    fn inc_ref(&self) {
+        match self.object {
+            CapType::Thread { tcb_ptr } => unsafe {
+                let tcb = &*(tcb_ptr as *const TCB);
+                tcb.ref_count.fetch_add(1, Ordering::Relaxed);
+            },
+            CapType::Endpoint { ep_ptr } => unsafe {
+                let ep = &*(ep_ptr as *const Endpoint);
+                ep.ref_count.fetch_add(1, Ordering::Relaxed);
+            },
+            CapType::CNode { paddr, .. } => unsafe {
+                let header = &*(paddr as *const CNodeHeader);
+                header.ref_count.fetch_add(1, Ordering::Relaxed);
+            },
+            // 其他类型暂不引用计数
+            _ => {}
+        }
+    }
+
     pub const fn new(object: CapType, rights: u8) -> Self {
         Self { object, badge: None, rights }
     }
@@ -98,6 +128,33 @@ impl Capability {
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        unimplemented!()
+        match self.object {
+            CapType::Thread { tcb_ptr } => unsafe {
+                let tcb = &*(tcb_ptr as *const TCB);
+                if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                    core::sync::atomic::fence(Ordering::Acquire);
+                    // TODO: Destroy TCB
+                    // 由于 TCB 可能在调度队列中，需要将其移除
+                    // 但这里不能直接调用 scheduler::remove，因为可能导致死锁或递归
+                    // 通常做法是将 TCB 标记为 Zombie 或加入垃圾回收队列
+                    // 简单起见，我们假设 TCB 内存由 Untyped 管理，这里只做逻辑销毁
+                }
+            },
+            CapType::Endpoint { ep_ptr } => unsafe {
+                let ep = &*(ep_ptr as *const Endpoint);
+                if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                    core::sync::atomic::fence(Ordering::Acquire);
+                    // TODO: Destroy Endpoint
+                }
+            },
+            CapType::CNode { paddr, .. } => unsafe {
+                let header = &*(paddr as *const CNodeHeader);
+                if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                    core::sync::atomic::fence(Ordering::Acquire);
+                    // TODO: Destroy CNode
+                }
+            },
+            _ => {}
+        }
     }
 }
