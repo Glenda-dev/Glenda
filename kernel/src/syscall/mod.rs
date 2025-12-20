@@ -7,11 +7,8 @@ pub mod ipc;
 pub mod proc;
 
 pub const SYS_INVOKE: usize = 1;
-pub const SYS_REPLY_RECV: usize = 2;
-pub const SYS_SEND: usize = 3;
-pub const SYS_RECV: usize = 4;
-pub const SYS_YIELD: usize = 5;
-pub const SYS_PRINT: usize = 6;
+pub const SYS_SEND: usize = 2;
+pub const SYS_RECV: usize = 3;
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {

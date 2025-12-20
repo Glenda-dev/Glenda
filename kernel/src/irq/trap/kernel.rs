@@ -5,6 +5,7 @@ use super::super::timer;
 use super::user;
 use super::{EXCEPTION_INFO, INTERRUPT_INFO};
 use crate::hart;
+use crate::irq;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc;
@@ -98,8 +99,7 @@ fn interrupt_handler(
     }
 }
 
-// 外设中断处理 (基于PLIC，lab-3只需要识别和处理UART中断)
-// TODO: Move plic handling to userspace
+// 外设中断处理 (基于PLIC)
 pub fn external_handler() {
     let hartid = hart::getid();
     let id = plic::claim(hartid);
@@ -107,7 +107,7 @@ pub fn external_handler() {
         0 => return,
         _ => {
             // Delegate to irq manager to notify bound endpoint and complete
-            crate::irq::handle_claimed(hartid, id);
+            irq::handle_claimed(hartid, id);
         }
     }
 }

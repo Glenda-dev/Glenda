@@ -53,8 +53,7 @@ fn invoke_tcb(tcb_ptr: usize, method: usize, args: &[usize]) -> usize {
         1 => {
             // 注意：这里传递的是 CPTR，内核需要再次查找这些 Cap 对应的内核对象
             // 这是一个简化的实现，实际需要验证这些 Cap 的有效性
-            // tcb.configure(...)
-            unimplemented!();
+            unimplemented!()
         }
         // SetPriority: (prio)
         2 => {
@@ -231,7 +230,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                             // 对象实际大小 = 2^obj_size_bits * 16 bytes (slot size).
                             // 我们忽略 Header 的开销 (假设它很小或者我们偷用第一个 slot?)
                             // 为了正确性，我们使用 CNode::new 初始化 Header
-                            let _ = crate::cap::CNode::new(obj_paddr, obj_size_bits as u8);
+                            let _ = CNode::new(obj_paddr, obj_size_bits as u8);
                             Capability::create_cnode(obj_paddr, obj_size_bits as u8, rights::ALL)
                         }
                         // TCB
@@ -302,6 +301,12 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
         // Clear binding
         3 => {
             irq::clear_notification(irq);
+            0
+        }
+        // SetPriority: args[0] = priority
+        4 => {
+            let priority = args[0];
+            irq::plic::set_priority(irq, priority);
             0
         }
         _ => 4,

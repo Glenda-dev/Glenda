@@ -1,4 +1,3 @@
-use crate::cap;
 use crate::ipc;
 use crate::ipc::Endpoint;
 use crate::irq::TrapContext;
@@ -24,8 +23,9 @@ pub fn sys_recv(ctx: &mut TrapContext) -> usize {
         Some(e) => e,
         None => return 3, // Error: Not an Endpoint
     };
+    let proc = proc::current();
     // 纯接收
-    ipc::recv(proc::current(), ep);
+    ipc::recv(proc, ep);
     0
 }
 

@@ -19,18 +19,6 @@ pub fn disable_s() {
     }
 }
 
-pub fn enable_m() {
-    unsafe {
-        riscv::register::mstatus::set_mie();
-    }
-}
-
-pub fn disable_m() {
-    unsafe {
-        riscv::register::mstatus::clear_mie();
-    }
-}
-
 pub fn enter() {
     let hart = hart::get();
     hart.nest_count += 1;
