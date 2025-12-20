@@ -186,9 +186,9 @@ impl ProcPayload {
         }
         // Entry point at offset 24 (64-bit ELF)
         let entry = u64::from_le_bytes(self.data[24..32].try_into().unwrap()) as usize;
-        
+
         // 默认栈顶 (Sv39 用户空间高地址)
-        let stack_top = 0x4000000000; 
+        let stack_top = 0x4000000000;
         (entry, stack_top)
     }
 
@@ -203,24 +203,35 @@ impl ProcPayload {
 
         for i in 0..phnum {
             let off = phoff + i * phentsize;
-            let p_type = u32::from_le_bytes(self.data[off..off+4].try_into().unwrap());
-            if p_type == 1 { // PT_LOAD
-                let p_offset = u64::from_le_bytes(self.data[off+8..off+16].try_into().unwrap()) as usize;
-                let p_vaddr = u64::from_le_bytes(self.data[off+16..off+24].try_into().unwrap()) as usize;
-                let p_filesz = u64::from_le_bytes(self.data[off+32..off+40].try_into().unwrap()) as usize;
-                let p_memsz = u64::from_le_bytes(self.data[off+40..off+48].try_into().unwrap()) as usize;
-                let p_flags = u32::from_le_bytes(self.data[off+4..off+8].try_into().unwrap());
+            let p_type = u32::from_le_bytes(self.data[off..off + 4].try_into().unwrap());
+            if p_type == 1 {
+                // PT_LOAD
+                let p_offset =
+                    u64::from_le_bytes(self.data[off + 8..off + 16].try_into().unwrap()) as usize;
+                let p_vaddr =
+                    u64::from_le_bytes(self.data[off + 16..off + 24].try_into().unwrap()) as usize;
+                let p_filesz =
+                    u64::from_le_bytes(self.data[off + 32..off + 40].try_into().unwrap()) as usize;
+                let p_memsz =
+                    u64::from_le_bytes(self.data[off + 40..off + 48].try_into().unwrap()) as usize;
+                let p_flags = u32::from_le_bytes(self.data[off + 4..off + 8].try_into().unwrap());
 
                 let mut flags = pte::PTE_U | pte::PTE_V;
-                if p_flags & 1 != 0 { flags |= pte::PTE_X; }
-                if p_flags & 2 != 0 { flags |= pte::PTE_W; }
-                if p_flags & 4 != 0 { flags |= pte::PTE_R; }
+                if p_flags & 1 != 0 {
+                    flags |= pte::PTE_X;
+                }
+                if p_flags & 2 != 0 {
+                    flags |= pte::PTE_W;
+                }
+                if p_flags & 4 != 0 {
+                    flags |= pte::PTE_R;
+                }
 
                 let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;
                 for j in 0..num_pages {
                     let mut frame = PhysFrame::alloc().expect("Failed to alloc frame for segment");
                     frame.zero();
-                    
+
                     let va = p_vaddr + j * PGSIZE;
                     let copy_size = if (j + 1) * PGSIZE <= p_filesz {
                         PGSIZE
@@ -231,9 +242,14 @@ impl ProcPayload {
                     };
 
                     if copy_size > 0 {
-                        let src = &self.data[p_offset + j * PGSIZE .. p_offset + j * PGSIZE + copy_size];
+                        let src =
+                            &self.data[p_offset + j * PGSIZE..p_offset + j * PGSIZE + copy_size];
                         unsafe {
-                            core::ptr::copy_nonoverlapping(src.as_ptr(), frame.va() as *mut u8, copy_size);
+                            core::ptr::copy_nonoverlapping(
+                                src.as_ptr(),
+                                frame.va() as *mut u8,
+                                copy_size,
+                            );
                         }
                     }
 
