@@ -3,7 +3,7 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 pub const VA_MAX: usize = 1 << 38;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub struct PhysAddr(pub usize);
+pub struct PhysAddr(usize);
 
 impl PhysAddr {
     pub const fn from(addr: usize) -> Self {
@@ -77,7 +77,7 @@ impl SubAssign<usize> for PhysAddr {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub struct VirtAddr(pub usize);
+pub struct VirtAddr(usize);
 impl VirtAddr {
     pub const fn from(addr: usize) -> Self {
         assert!(addr < VA_MAX, "VirtAddr out of range");

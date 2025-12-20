@@ -264,7 +264,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                 }
 
                 for i in 0..n_objects {
-                    let obj_paddr = PhysAddr(start.as_usize() + i * obj_size);
+                    let obj_paddr = PhysAddr::from(start.as_usize() + i * obj_size);
                     let obj_vaddr = obj_paddr.to_va();
 
                     // 必须清零内存，防止旧数据残留

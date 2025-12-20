@@ -68,7 +68,7 @@ impl Capability {
             CapType::Frame { paddr } => paddr.to_va(),
             CapType::PageTable { paddr, .. } => paddr.to_va(),
             CapType::CNode { paddr, .. } => paddr.to_va(),
-            _ => VirtAddr(0),
+            _ => VirtAddr::null(),
         }
     }
 

@@ -21,11 +21,11 @@ impl PhysFrame {
     }
 
     pub fn as_ptr<T>(&self) -> *const T {
-        self.addr.0 as *const T
+        self.addr.as_ptr::<T>()
     }
 
     pub fn as_mut_ptr<T>(&mut self) -> *mut T {
-        self.addr.0 as *mut T
+        self.addr.as_mut_ptr::<T>()
     }
 
     pub fn va(&self) -> VirtAddr {

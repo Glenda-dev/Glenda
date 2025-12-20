@@ -1,4 +1,3 @@
-
 use super::{PPN, PhysAddr};
 
 pub const PTE_V: usize = 1 << 0; // Valid
@@ -63,10 +62,10 @@ pub const fn is_table(pte: Pte) -> bool {
 
 #[inline(always)]
 pub const fn pte_to_pa(pte: Pte) -> PhysAddr {
-    PhysAddr(get_ppn(pte).0 << 12)
+    PhysAddr::from(get_ppn(pte).0 << 12)
 }
 
 #[inline(always)]
 pub const fn pa_to_pte(pa: PhysAddr, flags: PteFlags) -> Pte {
-    (((pa.0 >> 12) & 0xFFFFFFFFFFF) << 10) | (flags & 0x3FF)
+    (((pa.as_usize() >> 12) & 0xFFFFFFFFFFF) << 10) | (flags & 0x3FF)
 }
