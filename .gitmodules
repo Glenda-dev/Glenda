@@ -4,3 +4,6 @@
 [submodule "service/9ball"]
 	path = service/9ball
 	url = https://github.com/Glenda-dev/9ball.git
+[submodule "lib/libglenda-rs"]
+	path = lib/libglenda-rs
+	url = https://github.com/Glenda-dev/libglenda-rs.git
