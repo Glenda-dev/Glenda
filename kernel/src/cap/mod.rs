@@ -1,9 +1,8 @@
-
-
 pub mod capability;
 pub mod captype;
 pub mod cnode;
 pub mod invoke;
+pub mod method;
 
 pub use capability::Capability;
 pub use captype::CapType;

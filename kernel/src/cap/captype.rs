@@ -64,6 +64,14 @@ pub enum CapType {
     },
 }
 
+pub mod types {
+    pub const CNODE: usize = 1;
+    pub const TCB: usize = 2;
+    pub const ENDPOINT: usize = 3;
+    pub const FRAME: usize = 4;
+    pub const PAGETABLE: usize = 5;
+}
+
 impl CapType {
     /// 判断 Cap 是否指向有效的内核对象
     pub fn is_valid(&self) -> bool {

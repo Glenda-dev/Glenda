@@ -1,3 +1,5 @@
+use super::method::{cnodemethod, ipcmethod, irqmethod, pagetablemethod, tcbmethod, untypedmethod};
+use crate::cap::captype::types;
 use crate::cap::cnode;
 use crate::cap::{CNode, CapType, Capability, rights};
 use crate::hart;
@@ -7,6 +9,7 @@ use crate::mem;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::proc;
 use crate::proc::{TCB, scheduler};
+use crate::syscall::errcode;
 use core::mem::size_of;
 
 pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
@@ -18,7 +21,7 @@ pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
         CapType::CNode { paddr, bits, .. } => invoke_cnode(paddr, bits, method, &args),
         CapType::Untyped { start_paddr, size } => invoke_untyped(start_paddr, size, method, &args),
         CapType::IrqHandler { irq } => invoke_irq_handler(irq, method, &args),
-        _ => 3, // Error: Invalid Object Type for Invocation
+        _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
     }
 }
 
@@ -28,8 +31,7 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = proc::current();
     match method {
-        // Send
-        1 => {
+        ipcmethod::SEND => {
             let msg_info = args[0];
             // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
             let mut cap_to_send = None;
@@ -44,14 +46,13 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]
                 }
             }
             ipc::send(tcb, ep, msg_info, cap_to_send);
-            0
+            errcode::NO_ERROR
         }
-        // Receive
-        2 => {
+        ipcmethod::RECV => {
             ipc::recv(tcb, ep);
-            0
+            errcode::NO_ERROR
         }
-        _ => 4, // Error: Invalid Method
+        _ => errcode::INVALID_METHOD,
     }
 }
 
@@ -60,9 +61,9 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]
 fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
     let tcb = tcb_ptr.as_mut::<TCB>();
     match method {
-        // Configure: (cspace, vspace, utcb, fault_ep)
-        // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr]
-        1 => {
+        tcbmethod::CONFIGURE => {
+            // Configure: (cspace, vspace, utcb, fault_ep)
+            // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr]
             let cspace_cptr = args[0];
             let vspace_cptr = args[1];
             let utcb_addr = args[2];
@@ -83,59 +84,59 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
                 tcb.vspace_root = vs;
                 tcb.utcb_base = VirtAddr::from(utcb_addr);
                 tcb.fault_handler = fault_cap;
-                0
+                errcode::NO_ERROR
             } else {
-                1 // Error: Invalid Cap
+                errcode::INVALID_CAP
             }
         }
-        // SetFaultHandler: (fault_ep_cptr)
-        4 => {
+        tcbmethod::SET_FAULT_HANDLER => {
+            // SetFaultHandler: (fault_ep_cptr)
             let fault_ep_cptr = args[0];
             let current = proc::current();
             if fault_ep_cptr == 0 {
                 tcb.fault_handler = None;
-                return 0;
+                return errcode::NO_ERROR;
             }
             if let Some(cap) = current.cap_lookup(fault_ep_cptr) {
                 if let CapType::Endpoint { .. } = cap.object {
                     tcb.fault_handler = Some(cap);
-                    0
+                    errcode::NO_ERROR
                 } else {
-                    2 // Error: Not an ipc::Endpoint
+                    errcode::INVALID_OBJ_TYPE
                 }
             } else {
-                1 // Error: Invalid Cap
+                errcode::INVALID_CAP
             }
         }
-        // SetPriority: (prio)
-        2 => {
+        tcbmethod::SET_PRIORITY => {
+            // SetPriority: (prio)
             let prio = args[0] as u8;
             tcb.set_priority(prio);
             // 如果修改了优先级，可能需要触发重新调度
             scheduler::reschedule();
-            0
+            errcode::NO_ERROR
         }
-        // SetRegisters: (flags, arch_flags, ...)
-        // 参数通常从 UTCB 读取，因为寄存器太多放不下
-        3 => {
+        tcbmethod::SET_REGISTERS => {
+            // SetRegisters: (flags, arch_flags, ...)
+            // 参数通常从 UTCB 读取，因为寄存器太多放不下
             // 读取 UTCB 中的寄存器状态并写入 tcb.context
             unimplemented!();
         }
-        // Resume
-        5 => {
+        tcbmethod::RESUME => {
+            // Resume
             tcb.resume();
             // 将线程加入调度队列
             scheduler::add_thread(tcb);
-            0
+            errcode::NO_ERROR
         }
-        // Suspend
-        6 => {
+        tcbmethod::SUSPEND => {
+            // Suspend
             tcb.suspend();
             // 如果目标是当前线程，需要触发 yield
             scheduler::yield_proc();
-            0
+            errcode::NO_ERROR
         }
-        _ => 4, // Error: Invalid Method
+        _ => errcode::INVALID_METHOD,
     }
 }
 
@@ -146,10 +147,8 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
     let pt_ptr = paddr.to_va();
     let pt = pt_ptr.as_mut::<PageTable>();
     match method {
-        // Map: (frame_cap, vaddr, flags)
-        1 => {
-            // args[0] 是 Frame Cap 的 CPTR，需要查找获取物理地址
-            // 假设 args[0] 已经是 paddr (简化)
+        pagetablemethod::MAP => {
+            // Map: (frame_cap, vaddr, flags)
             let paddr = PhysAddr::from(args[0]);
             let vaddr = VirtAddr::from(args[1]);
             let flags = PteFlags::from(args[2]);
@@ -157,19 +156,19 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
             // 执行映射
             // pt.map(vaddr, paddr, flags)
             match pt.map(vaddr, paddr, mem::PGSIZE, flags) {
-                Ok(()) => 0,
-                Err(_) => 5, // Error: Mapping Failed
+                Ok(()) => errcode::NO_ERROR,
+                Err(_) => errcode::MAPPING_FAILED,
             }
         }
-        // Unmap: (vaddr)
-        2 => {
+        pagetablemethod::UNMAP => {
+            // Unmap: (vaddr)
             let vaddr = VirtAddr::from(args[0]);
             match pt.unmap(vaddr, PGSIZE) {
-                Ok(()) => 0,
-                Err(_) => 6, // Error: Unmapping Failed
+                Ok(()) => errcode::NO_ERROR,
+                Err(_) => errcode::MAPPING_FAILED,
             }
         }
-        _ => 4,
+        _ => errcode::INVALID_METHOD,
     }
 }
 
@@ -178,8 +177,8 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
 fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usize {
     let mut cnode = CNode::from_addr(paddr, bits);
     match method {
-        // Mint: (src_cptr, dest_slot, badge, rights)
-        1 => {
+        cnodemethod::MINT => {
+            // Mint: (src_cptr, dest_slot, badge, rights)
             let src_cptr = args[0];
             let dest_slot = args[1];
             let badge = if args[2] != 0 { Some(args[2]) } else { None };
@@ -189,13 +188,17 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
             if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
                 let mut new_cap = src_cap.mint(badge);
                 new_cap.rights &= rights;
-                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) { 0 } else { 7 }
+                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
+                    errcode::NO_ERROR
+                } else {
+                    errcode::INVALID_SLOT
+                }
             } else {
-                1
+                errcode::INVALID_CAP
             }
         }
-        // Copy: (src_cptr, dest_slot, rights)
-        2 => {
+        cnodemethod::COPY => {
+            // Copy: (src_cptr, dest_slot, rights)
             let src_cptr = args[0];
             let dest_slot = args[1];
             let rights = args[2] as u8;
@@ -204,41 +207,45 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
             if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
                 let mut new_cap = src_cap.clone();
                 new_cap.rights &= rights;
-                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) { 0 } else { 7 }
+                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
+                    errcode::NO_ERROR
+                } else {
+                    errcode::INVALID_SLOT
+                }
             } else {
-                1
+                errcode::INVALID_CAP
             }
         }
-        // Delete: (slot)
-        3 => {
+        cnodemethod::DELETE => {
+            // Delete: (slot)
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode::delete_recursive(slot_addr);
-                0
+                errcode::NO_ERROR
             } else {
-                7
+                errcode::INVALID_SLOT
             }
         }
-        // Revoke: (slot)
-        4 => {
+        cnodemethod::REVOKE => {
+            // Revoke: (slot)
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode::revoke_recursive(slot_addr);
-                0
+                errcode::NO_ERROR
             } else {
-                7
+                errcode::INVALID_SLOT
             }
         }
-        _ => 4,
+        _ => errcode::INVALID_METHOD,
     }
 }
 
 fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -> usize {
     match method {
-        // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset)
-        1 => {
+        untypedmethod::RETYPE => {
+            // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset)
             let obj_type = args[0];
             let obj_size_bits = args[1];
             let n_objects = args[2];
@@ -248,7 +255,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
             let current_tcb = proc::current();
             let dest_cnode_cap = match current_tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
-                None => return 1,
+                None => return errcode::INVALID_CAP,
             };
 
             if let CapType::CNode { paddr: cn_paddr, bits: cn_bits } = dest_cnode_cap.object {
@@ -257,7 +264,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                 let obj_size = 1 << obj_size_bits;
                 // 检查总大小
                 if n_objects * obj_size > size {
-                    return 8; // Error: Untyped Out of Memory
+                    return errcode::UNTYPE_OOM;
                 }
 
                 for i in 0..n_objects {
@@ -269,7 +276,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
 
                     let new_cap = match obj_type {
                         // CNode
-                        1 => {
+                        types::CNODE => {
                             // CNode 需要初始化 Header
                             // obj_size_bits 是 CNode 的 slot 数量 log2
                             // 实际上我们需要分配的空间 = Header + slots * sizeof(Cap)
@@ -283,27 +290,27 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                             Capability::create_cnode(obj_paddr, obj_size_bits as u8, rights::ALL)
                         }
                         // TCB
-                        2 => {
+                        types::TCB => {
                             if obj_size < size_of::<TCB>() {
-                                return 9; // Error: Object Size Too Small
+                                return errcode::INVALID_OBJ_TYPE;
                             }
                             let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
                             unsafe { tcb_ptr.write(TCB::new()) };
                             Capability::create_thread(obj_vaddr, rights::ALL)
                         }
                         // ipc::Endpoint
-                        3 => {
+                        types::ENDPOINT => {
                             if obj_size < size_of::<ipc::Endpoint>() {
-                                return 9;
+                                return errcode::INVALID_OBJ_TYPE;
                             }
                             let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
                             unsafe { ep_ptr.write(ipc::Endpoint::new()) };
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
                         // Frame
-                        4 => Capability::create_frame(obj_paddr, rights::ALL),
+                        types::FRAME => Capability::create_frame(obj_paddr, rights::ALL),
                         // PageTable
-                        5 => {
+                        types::PAGETABLE => {
                             // 初始化页表 (清零已在上面完成)
                             Capability::create_pagetable(
                                 obj_paddr,
@@ -312,57 +319,57 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                                 rights::ALL,
                             )
                         }
-                        _ => return 3,
+                        _ => return errcode::INVALID_OBJ_TYPE,
                     };
 
                     if !dest_cnode.insert(dest_slot_offset + i, new_cap) {
-                        return 7;
+                        return errcode::INVALID_SLOT;
                     }
                 }
-                0
+                errcode::NO_ERROR
             } else {
-                3
+                errcode::INVALID_OBJ_TYPE
             }
         }
-        _ => 4,
+        _ => errcode::INVALID_METHOD,
     }
 }
 
 fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
     match method {
-        // SetNotification: args[0] = ep_cptr
-        1 => {
+        irqmethod::SET_NOTIFICATION => {
+            // SetNotification: args[0] = ep_cptr
             let ep_cptr = args[0];
             let current = proc::current();
             if let Some(ep_cap) = current.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
                     irq::bind_notification(irq, ep_cap.clone());
-                    0
+                    errcode::NO_ERROR
                 } else {
-                    2
+                    errcode::INVALID_OBJ_TYPE
                 }
             } else {
-                1
+                errcode::INVALID_CAP
             }
         }
-        // Ack: acknowledge handled IRQ and unmask
-        2 => {
+        irqmethod::ACK => {
+            // Ack: acknowledge handled IRQ and unmask
             let hartid = hart::getid();
             irq::ack_irq(hartid, irq);
-            0
+            errcode::NO_ERROR
         }
-        // Clear binding
-        3 => {
+        irqmethod::CLEAR_BINDING => {
+            // Clear binding
             irq::clear_notification(irq);
-            0
+            errcode::NO_ERROR
         }
-        // SetPriority: args[0] = priority
-        4 => {
+        irqmethod::SET_PRIORITY => {
+            // SetPriority: args[0] = priority
             let priority = args[0];
             irq::plic::set_priority(irq, priority);
-            0
+            errcode::NO_ERROR
         }
-        _ => 4,
+        _ => errcode::INVALID_METHOD,
     }
 }
