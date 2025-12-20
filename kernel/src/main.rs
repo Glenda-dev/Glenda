@@ -15,7 +15,6 @@ mod mem;
 mod printk;
 mod proc;
 mod sbi;
-mod syscall;
 mod trap;
 
 use core::panic::PanicInfo;

@@ -9,10 +9,10 @@ use crate::mem;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::proc;
 use crate::proc::{TCB, scheduler};
-use crate::syscall::errcode;
+use crate::trap::syscall::{Args, errcode};
 use core::mem::size_of;
 
-pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
+pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
     // 4. 根据对象类型分发
     match cap.object {
         CapType::Endpoint { ep_ptr } => invoke_ipc(ep_ptr, &cap, method, &args),
@@ -27,7 +27,7 @@ pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
 
 // --- IPC ipc::Endpoint Methods ---
 
-fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]) -> usize {
+fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &Args) -> usize {
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = proc::current();
     match method {
@@ -58,7 +58,7 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]
 
 // --- TCB Methods ---
 
-fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
+fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
     let tcb = tcb_ptr.as_mut::<TCB>();
     match method {
         tcbmethod::CONFIGURE => {
@@ -85,25 +85,6 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
                 tcb.utcb_base = VirtAddr::from(utcb_addr);
                 tcb.fault_handler = fault_cap;
                 errcode::SUCCESS
-            } else {
-                errcode::INVALID_CAP
-            }
-        }
-        tcbmethod::SET_FAULT_HANDLER => {
-            // SetFaultHandler: (fault_ep_cptr)
-            let fault_ep_cptr = args[0];
-            let current = proc::current();
-            if fault_ep_cptr == 0 {
-                tcb.fault_handler = None;
-                return errcode::SUCCESS;
-            }
-            if let Some(cap) = current.cap_lookup(fault_ep_cptr) {
-                if let CapType::Endpoint { .. } = cap.object {
-                    tcb.fault_handler = Some(cap);
-                    errcode::SUCCESS
-                } else {
-                    errcode::INVALID_OBJ_TYPE
-                }
             } else {
                 errcode::INVALID_CAP
             }
@@ -142,7 +123,7 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
 
 // --- PageTable Methods ---
 
-fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
+fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &Args) -> usize {
     // PageTable 需要物理地址转虚拟地址才能操作
     let pt_ptr = paddr.to_va();
     let pt = pt_ptr.as_mut::<PageTable>();
@@ -174,7 +155,7 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
 
 // --- CNode methods ---
 
-fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usize {
+fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize {
     let mut cnode = CNode::from_addr(paddr, bits);
     match method {
         cnodemethod::MINT => {
@@ -242,7 +223,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
     }
 }
 
-fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -> usize {
+fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> usize {
     match method {
         untypedmethod::RETYPE => {
             // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset)
@@ -335,7 +316,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
     }
 }
 
-fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
+fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
     match method {
         irqmethod::SET_NOTIFICATION => {
             // SetNotification: args[0] = ep_cptr

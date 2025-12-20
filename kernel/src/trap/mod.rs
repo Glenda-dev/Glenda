@@ -1,11 +1,10 @@
-
-
 pub mod context;
 pub mod info;
 pub mod interrupt;
-mod kernel;
+pub mod kernel;
+pub mod syscall;
 pub mod timer;
-mod user;
+pub mod user;
 pub mod vector;
 
 pub use context::{TrapContext, TrapFrame};

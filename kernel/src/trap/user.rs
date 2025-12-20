@@ -1,8 +1,8 @@
+use super::syscall;
 use super::vector;
 use super::{TrapContext, TrapFrame};
 use crate::mem::{PGSIZE, VA_MAX};
 use crate::proc;
-use crate::syscall;
 use core::mem;
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
