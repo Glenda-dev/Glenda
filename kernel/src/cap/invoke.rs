@@ -5,9 +5,9 @@ use crate::ipc;
 use crate::ipc::Endpoint;
 use crate::irq;
 use crate::mem::PGSIZE;
-use crate::mem::addr;
 use crate::mem::{self, PageTable, PhysAddr, VirtAddr};
 use crate::proc::{self, TCB, scheduler};
+use core::mem::size_of;
 
 pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
     // 4. 根据对象类型分发
@@ -24,8 +24,8 @@ pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
 
 // --- IPC Endpoint Methods ---
 
-fn invoke_ipc(ep_ptr: usize, _cap: &Capability, method: usize, args: &[usize]) -> usize {
-    let ep = unsafe { &mut *(ep_ptr as *mut Endpoint) };
+fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]) -> usize {
+    let ep = ep_ptr.as_mut::<Endpoint>();
     let tcb = proc::current();
     match method {
         // Send
@@ -57,8 +57,8 @@ fn invoke_ipc(ep_ptr: usize, _cap: &Capability, method: usize, args: &[usize]) -
 
 // --- TCB Methods ---
 
-fn invoke_tcb(tcb_ptr: usize, method: usize, args: &[usize]) -> usize {
-    let tcb = unsafe { &mut *(tcb_ptr as *mut TCB) };
+fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
+    let tcb = tcb_ptr.as_mut::<TCB>();
     match method {
         // Configure: (cspace, vspace, utcb, fault_ep)
         // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr]
@@ -69,22 +69,19 @@ fn invoke_tcb(tcb_ptr: usize, method: usize, args: &[usize]) -> usize {
             let fault_ep_cptr = args[3];
 
             let current = proc::current();
-            
+
             // 查找并验证能力
             let cspace_cap = current.cap_lookup(cspace_cptr);
             let vspace_cap = current.cap_lookup(vspace_cptr);
-            let fault_cap = if fault_ep_cptr != 0 {
-                current.cap_lookup(fault_ep_cptr)
-            } else {
-                None
-            };
+            let fault_cap =
+                if fault_ep_cptr != 0 { current.cap_lookup(fault_ep_cptr) } else { None };
 
             // 简化的配置逻辑
             if let (Some(cs), Some(vs)) = (cspace_cap, vspace_cap) {
                 // 实际实现中需要更严格的类型检查
                 tcb.cspace_root = cs;
                 tcb.vspace_root = vs;
-                tcb.utcb_base = utcb_addr;
+                tcb.utcb_base = VirtAddr::from(utcb_addr);
                 tcb.fault_handler = fault_cap;
                 0
             } else {
@@ -146,8 +143,8 @@ fn invoke_tcb(tcb_ptr: usize, method: usize, args: &[usize]) -> usize {
 
 fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
     // PageTable 需要物理地址转虚拟地址才能操作
-    let pt_ptr = addr::phys_to_virt(paddr);
-    let pt = unsafe { &mut *(pt_ptr as *mut PageTable) };
+    let pt_ptr = paddr.to_va();
+    let pt = pt_ptr.as_mut::<PageTable>();
     match method {
         // Map: (frame_cap, vaddr, flags)
         1 => {
@@ -219,7 +216,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
         3 => {
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != 0 {
+            if slot_addr != PhysAddr::null() {
                 cnode::delete_recursive(slot_addr);
                 0
             } else {
@@ -230,7 +227,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
         4 => {
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != 0 {
+            if slot_addr != PhysAddr::null() {
                 cnode::revoke_recursive(slot_addr);
                 0
             } else {
@@ -267,11 +264,11 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                 }
 
                 for i in 0..n_objects {
-                    let obj_paddr = start + i * obj_size;
-                    let obj_vaddr = addr::phys_to_virt(obj_paddr);
+                    let obj_paddr = PhysAddr(start.as_usize() + i * obj_size);
+                    let obj_vaddr = obj_paddr.to_va();
 
                     // 必须清零内存，防止旧数据残留
-                    unsafe { core::ptr::write_bytes(obj_vaddr as *mut u8, 0, obj_size) };
+                    unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size) };
 
                     let new_cap = match obj_type {
                         // CNode
@@ -290,19 +287,19 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                         }
                         // TCB
                         2 => {
-                            if obj_size < core::mem::size_of::<TCB>() {
+                            if obj_size < size_of::<TCB>() {
                                 return 9; // Error: Object Size Too Small
                             }
-                            let tcb_ptr = obj_vaddr as *mut TCB;
+                            let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
                             unsafe { tcb_ptr.write(TCB::new()) };
                             Capability::create_thread(obj_vaddr, rights::ALL)
                         }
                         // Endpoint
                         3 => {
-                            if obj_size < core::mem::size_of::<Endpoint>() {
+                            if obj_size < size_of::<Endpoint>() {
                                 return 9;
                             }
-                            let ep_ptr = obj_vaddr as *mut Endpoint;
+                            let ep_ptr = obj_vaddr.as_mut_ptr::<Endpoint>();
                             unsafe { ep_ptr.write(Endpoint::new()) };
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
@@ -311,7 +308,12 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                         // PageTable
                         5 => {
                             // 初始化页表 (清零已在上面完成)
-                            Capability::create_pagetable(obj_paddr, 0, 0, rights::ALL)
+                            Capability::create_pagetable(
+                                obj_paddr,
+                                VirtAddr::null(),
+                                0,
+                                rights::ALL,
+                            )
                         }
                         _ => return 3,
                     };

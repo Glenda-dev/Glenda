@@ -3,9 +3,9 @@ pub mod message;
 pub mod utcb;
 
 pub use message::{MsgTag, label};
-pub use utcb::{IPCBuffer, UTCB, UTCB_SIZE, UTCB_VA};
+pub use utcb::{UTCB, UTCB_SIZE, UTCB_VA};
 
-use crate::mem::addr;
+use crate::cap::{Capability, Slot};
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
@@ -29,8 +29,8 @@ unsafe fn copy_msg(
 
     // 拷贝 IPC 缓冲区内容
     if dst.ipc_buffer_size > 0 {
-        let src_buf_ptr = (sender.ipc_buffer) as *const u8;
-        let dst_buf_ptr = (receiver.ipc_buffer) as *mut u8;
+        let src_buf_ptr = sender.ipc_buffer.as_ptr::<u8>();
+        let dst_buf_ptr = receiver.ipc_buffer.as_mut::<u8>();
         unsafe {
             core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
         }
@@ -44,7 +44,8 @@ unsafe fn copy_msg(
         let recv_window = dst.recv_window;
         if recv_window != 0 {
             if let Some((_, slot_addr)) = receiver.cap_lookup_slot(recv_window) {
-                let slot = unsafe { &mut *(slot_addr as *mut crate::cap::cnode::Slot) };
+                let slot = slot_addr.as_mut::<Slot>();
+
                 slot.cap = c;
             }
         }
@@ -57,12 +58,7 @@ unsafe fn copy_msg(
 /// * `ep`: 目标 Endpoint 对象
 /// * `badge`: 发送 Capability 携带的身份标识
 /// * `cap`: 可选的要传递的能力
-pub fn send(
-    current: &mut TCB,
-    ep: &mut Endpoint,
-    badge: usize,
-    cap: Option<crate::cap::Capability>,
-) {
+pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
         let receiver = unsafe { &mut *receiver_ptr };

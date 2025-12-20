@@ -1,5 +1,6 @@
+
 use super::frame::PhysFrame;
-use super::{PGSIZE, PhysAddr, VirtAddr};
+use super::{PGSIZE, VirtAddr};
 use alloc::vec::Vec;
 use riscv::asm::sfence_vma_all;
 use spin::Mutex;
@@ -55,11 +56,11 @@ impl KernelStack {
 
         // 计算虚拟地址基址 (包含 1 页 Guard Page)
         let slot_size = KSTACK_SIZE + PGSIZE;
-        let base = KSTACK_VA_BASE + slot * slot_size + PGSIZE;
+        let base = VirtAddr::from(KSTACK_VA_BASE + slot * slot_size + PGSIZE);
 
         let mut frames = Vec::new();
 
-        for i in 0..(KSTACK_SIZE / PGSIZE) {
+        for _ in 0..(KSTACK_SIZE / PGSIZE) {
             // 2. 分配物理帧
             let mut frame = match PhysFrame::alloc() {
                 Some(f) => f,

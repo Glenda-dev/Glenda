@@ -1,12 +1,7 @@
-#![allow(dead_code)]
-
-use super::addr::{align_down, align_up};
 use super::{KERN_PAGES, PGSIZE, PhysAddr};
 use crate::dtb;
 use crate::printk;
-use alloc::vec::Vec;
 use core::ptr::{self, NonNull, addr_of_mut};
-use core::sync::atomic::Ordering;
 use spin::Mutex;
 use spin::Once;
 
@@ -66,15 +61,15 @@ impl BootAllocRegion {
 
     unsafe fn init(&self, begin: PhysAddr, end: PhysAddr) {
         // ... 初始化链表逻辑保持不变 ...
-        let begin_aligned = align_up(begin);
-        let end_aligned = align_down(end);
+        let begin_aligned = begin.align_up(PGSIZE);
+        let end_aligned = end.align_down(PGSIZE);
 
         let mut head: Option<NonNull<FreePage>> = None;
         let mut count = 0usize;
         let mut current = begin_aligned;
 
         while current + PGSIZE <= end_aligned {
-            let page = current as *mut FreePage;
+            let page = current.as_mut::<FreePage>();
             (*page).next = head;
             head = NonNull::new(page);
             count += 1;
@@ -109,10 +104,8 @@ impl BootAllocRegion {
         }
 
         let mut inner = self.inner.lock();
-        let page = pa as *mut FreePage;
-        unsafe {
-            (*page).next = inner.head;
-        }
+        let page = pa.as_mut::<FreePage>();
+        (*page).next = inner.head;
         inner.head = NonNull::new(page);
         inner.allocable += 1;
         Ok(())
@@ -132,12 +125,13 @@ static USER_REGION: Once<UntypedRegion> = Once::new();
 
 pub fn initialize_regions(hartid: usize) {
     let mem_range = dtb::memory_range().expect("Memory range not found in DTB");
-    let mem_end = mem_range.start + mem_range.size;
-    let alloc_begin = addr_of_mut!(__alloc_start) as PhysAddr;
-    printk!("pmem: Physical Memory Range: [{:#x}, {:#x})\n", mem_range.start, mem_end);
+    let mem_end = PhysAddr::from(mem_range.start + mem_range.size);
+    let alloc_begin = PhysAddr::from(addr_of_mut!(__alloc_start) as usize);
+    printk!("pmem: Physical Memory Range: [{:#x}, {:#x})\n", mem_range.start, mem_end.as_usize());
 
     // 划分内核保留区和用户 Untyped 区
-    let mut kernel_split = align_up(alloc_begin + KERN_PAGES * PGSIZE);
+    let mut kernel_split = alloc_begin + KERN_PAGES * PGSIZE;
+    kernel_split = kernel_split.align_up(PGSIZE);
     if kernel_split > mem_end {
         kernel_split = mem_end;
     }
@@ -154,18 +148,18 @@ pub fn initialize_regions(hartid: usize) {
         pmem: Kernel: [{:#x}, {:#x}) (allocable pages: {})\n\
         pmem: Untyped: [{:#x}, {:#x}) (size: {} MiB)\n",
         hartid,
-        alloc_begin,
-        kernel_split,
+        alloc_begin.as_usize(),
+        kernel_split.as_usize(),
         KERNEL_REGION.info().allocable,
-        kernel_split,
-        mem_end,
-        (mem_end - kernel_split) / (1024 * 1024)
+        kernel_split.as_usize(),
+        mem_end.as_usize(),
+        (mem_end - kernel_split).as_usize() / (1024 * 1024)
     );
 }
 
 /// 分配一个物理页，仅供 PhysFrame 使用
 pub(super) fn alloc_frame() -> Option<PhysAddr> {
-    KERNEL_REGION.allocate().map(|p| p as PhysAddr)
+    KERNEL_REGION.allocate().map(|p| PhysAddr::from(p as usize))
 }
 
 /// 释放一个物理页，仅供 PhysFrame 使用

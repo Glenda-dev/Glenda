@@ -45,9 +45,9 @@ pub enum CapType {
     /// 页表 (PageTable)
     /// 代表一个页表节点，可以作为 VSpace 的根或中间节点
     PageTable {
-        paddr: PhysAddr,     // 页表的物理基地址 (用于写入 satp 或 PTE)
-        mapped_vaddr: usize, // 如果已映射，记录虚拟地址 (用于 Unmap)
-        level: usize,        // 页表层级 (例如 RISC-V 的 0, 1, 2)
+        paddr: PhysAddr,        // 页表的物理基地址 (用于写入 satp 或 PTE)
+        mapped_vaddr: VirtAddr, // 如果已映射，记录虚拟地址 (用于 Unmap)
+        level: usize,           // 页表层级 (例如 RISC-V 的 0, 1, 2)
     },
 
     /// 能力节点 (CNode)

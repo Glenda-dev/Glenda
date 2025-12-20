@@ -25,18 +25,18 @@ impl Clone for Capability {
 impl Capability {
     fn inc_ref(&self) {
         match self.object {
-            CapType::Thread { tcb_ptr } => unsafe {
-                let tcb = &*(tcb_ptr as *const TCB);
+            CapType::Thread { tcb_ptr } => {
+                let tcb = tcb_ptr.as_ref::<TCB>();
                 tcb.ref_count.fetch_add(1, Ordering::Relaxed);
-            },
-            CapType::Endpoint { ep_ptr } => unsafe {
-                let ep = &*(ep_ptr as *const Endpoint);
+            }
+            CapType::Endpoint { ep_ptr } => {
+                let ep = ep_ptr.as_ref::<Endpoint>();
                 ep.ref_count.fetch_add(1, Ordering::Relaxed);
-            },
-            CapType::CNode { paddr, .. } => unsafe {
-                let header = &*(paddr as *const CNodeHeader);
+            }
+            CapType::CNode { paddr, .. } => {
+                let header = paddr.as_ref::<CNodeHeader>();
                 header.ref_count.fetch_add(1, Ordering::Relaxed);
-            },
+            }
             // 其他类型暂不引用计数
             _ => {}
         }
@@ -61,15 +61,14 @@ impl Capability {
 
     pub fn obj_ptr(&self) -> VirtAddr {
         match self.object {
-            CapType::Untyped { start_paddr, .. } => start_paddr,
+            CapType::Untyped { start_paddr, .. } => start_paddr.to_va(),
             CapType::Thread { tcb_ptr } => tcb_ptr,
             CapType::Endpoint { ep_ptr } => ep_ptr,
             CapType::Reply { tcb_ptr } => tcb_ptr,
-            CapType::Frame { paddr } => paddr,
-            CapType::PageTable { paddr, .. } => paddr,
-            CapType::CNode { paddr, .. } => paddr,
-            CapType::IrqHandler { irq } => irq,
-            CapType::Empty => 0,
+            CapType::Frame { paddr } => paddr.to_va(),
+            CapType::PageTable { paddr, .. } => paddr.to_va(),
+            CapType::CNode { paddr, .. } => paddr.to_va(),
+            _ => VirtAddr(0),
         }
     }
 
@@ -88,23 +87,23 @@ impl Capability {
         self.has_rights(rights::GRANT)
     }
 
-    pub fn create_untyped(start_paddr: usize, size: usize, rights: u8) -> Self {
+    pub fn create_untyped(start_paddr: PhysAddr, size: usize, rights: u8) -> Self {
         Self::new(CapType::Untyped { start_paddr, size }, rights)
     }
 
-    pub fn create_thread(tcb_ptr: usize, rights: u8) -> Self {
+    pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
         Self::new(CapType::Thread { tcb_ptr }, rights)
     }
 
-    pub fn create_endpoint(ep_ptr: usize, rights: u8) -> Self {
+    pub fn create_endpoint(ep_ptr: VirtAddr, rights: u8) -> Self {
         Self::new(CapType::Endpoint { ep_ptr }, rights)
     }
 
-    pub fn create_reply(ro_ptr: usize, rights: u8) -> Self {
+    pub fn create_reply(ro_ptr: VirtAddr, rights: u8) -> Self {
         Self::new(CapType::Reply { tcb_ptr: ro_ptr }, rights)
     }
 
-    pub fn create_frame(paddr: usize, rights: u8) -> Self {
+    pub fn create_frame(paddr: PhysAddr, rights: u8) -> Self {
         Self::new(CapType::Frame { paddr }, rights)
     }
 
@@ -129,8 +128,8 @@ impl Capability {
 impl Drop for Capability {
     fn drop(&mut self) {
         match self.object {
-            CapType::Thread { tcb_ptr } => unsafe {
-                let tcb = &*(tcb_ptr as *const TCB);
+            CapType::Thread { tcb_ptr } => {
+                let tcb = tcb_ptr.as_ref::<TCB>();
                 if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy TCB
@@ -139,21 +138,21 @@ impl Drop for Capability {
                     // 通常做法是将 TCB 标记为 Zombie 或加入垃圾回收队列
                     // 简单起见，我们假设 TCB 内存由 Untyped 管理，这里只做逻辑销毁
                 }
-            },
-            CapType::Endpoint { ep_ptr } => unsafe {
-                let ep = &*(ep_ptr as *const Endpoint);
+            }
+            CapType::Endpoint { ep_ptr } => {
+                let ep = ep_ptr.as_ref::<Endpoint>();
                 if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy Endpoint
                 }
-            },
-            CapType::CNode { paddr, .. } => unsafe {
-                let header = &*(paddr as *const CNodeHeader);
+            }
+            CapType::CNode { paddr, .. } => {
+                let header = paddr.as_ref::<CNodeHeader>();
                 if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode
                 }
-            },
+            }
             _ => {}
         }
     }

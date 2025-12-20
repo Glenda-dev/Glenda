@@ -1,5 +1,5 @@
-use crate::mem::PhysFrame;
-use crate::mem::{PGSIZE, pte};
+use crate::mem::pte;
+use crate::mem::{PGSIZE, PhysFrame, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use alloc::vec::Vec;
@@ -34,7 +34,7 @@ enum PayloadType {
 }
 
 #[repr(C)]
-struct Entry {
+pub struct Entry {
     info: PayloadType,
     offset: u32,
     size: u32,
@@ -232,7 +232,7 @@ impl ProcPayload {
                     let mut frame = PhysFrame::alloc().expect("Failed to alloc frame for segment");
                     frame.zero();
 
-                    let va = p_vaddr + j * PGSIZE;
+                    let va = VirtAddr::from(p_vaddr) + j * PGSIZE;
                     let copy_size = if (j + 1) * PGSIZE <= p_filesz {
                         PGSIZE
                     } else if j * PGSIZE < p_filesz {
@@ -247,7 +247,7 @@ impl ProcPayload {
                         unsafe {
                             core::ptr::copy_nonoverlapping(
                                 src.as_ptr(),
-                                frame.va() as *mut u8,
+                                frame.va().as_mut_ptr::<u8>(),
                                 copy_size,
                             );
                         }
@@ -259,7 +259,13 @@ impl ProcPayload {
                     // 或者我们应该在 map 内部自动处理 (但微内核原则是不自动处理)
                     // 为了 Root Task 启动，我们在这里手动处理一下
                     for level in (1..3).rev() {
-                        let _ = vspace.map_table(va, PhysFrame::alloc().unwrap().leak(), level);
+                        let _ = vspace.map_table(
+                            va,
+                            PhysFrame::alloc()
+                                .expect("Failed to alloc frame for page table")
+                                .leak(),
+                            level,
+                        );
                     }
 
                     vspace.map(va, frame.addr(), PGSIZE, flags).expect("Failed to map segment");

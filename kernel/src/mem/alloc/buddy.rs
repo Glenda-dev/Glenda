@@ -1,4 +1,4 @@
-use crate::mem::PhysFrame;
+use crate::mem::{PhysAddr, PhysFrame};
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::{max, min};
 use core::mem::size_of;
@@ -44,8 +44,10 @@ impl BuddyAllocator {
         let idx = Self::list_index(order);
         let mut list = self.free_lists[idx].lock();
         let block = ptr as *mut FreeBlock;
-        (*block).next = *list;
-        *list = Some(NonNull::new_unchecked(block));
+        unsafe {
+            (*block).next = *list;
+            *list = Some(NonNull::new_unchecked(block));
+        }
     }
 
     unsafe fn pop_block(&self, order: usize) -> Option<*mut u8> {
@@ -53,7 +55,9 @@ impl BuddyAllocator {
         let mut list = self.free_lists[idx].lock();
         if let Some(ptr) = *list {
             let block = ptr.as_ptr();
-            *list = (*block).next;
+            unsafe {
+                *list = (*block).next;
+            }
             Some(block as *mut u8)
         } else {
             None
@@ -67,10 +71,14 @@ impl BuddyAllocator {
 
         while let Some(mut node_ptr) = *cursor {
             if node_ptr.as_ptr() as *mut u8 == ptr {
-                *cursor = node_ptr.as_ref().next;
+                unsafe {
+                    *cursor = node_ptr.as_mut().next;
+                }
                 return true;
             }
-            cursor = &mut node_ptr.as_mut().next;
+            unsafe {
+                cursor = &mut node_ptr.as_mut().next;
+            }
         }
         false
     }
@@ -100,7 +108,8 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             }
         }
 
-        let page = PhysFrame::alloc().map(|f| f.leak() as *mut u8).unwrap_or(ptr::null_mut());
+        let page =
+            PhysFrame::alloc().map(|f| f.leak().as_mut_ptr::<u8>()).unwrap_or(ptr::null_mut());
         if page.is_null() {
             return ptr::null_mut();
         }
@@ -141,7 +150,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
         }
 
         if order == MAX_ORDER {
-            unsafe { PhysFrame::from_raw(current_ptr) };
+            unsafe { PhysFrame::from(PhysAddr::from(current_ptr)) };
         } else {
             unsafe { self.push_block(current_ptr as *mut u8, order) };
         }

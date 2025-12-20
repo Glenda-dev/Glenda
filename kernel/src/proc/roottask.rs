@@ -5,7 +5,6 @@ use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
 use crate::ipc::UTCB_VA;
-use crate::mem::addr;
 use crate::mem::pmem;
 use crate::mem::pte;
 use crate::mem::{PGSIZE, PageTable, PhysFrame};
@@ -43,7 +42,7 @@ pub fn init() {
 
     // 5. 初始化 TCB
     // 这里我们将物理帧转换为内核对象引用
-    let tcb = unsafe { &mut *(addr::phys_to_virt(root_tcb_frame.addr()) as *mut TCB) };
+    let tcb = root_tcb_frame.va().as_mut::<TCB>();
     *tcb = TCB::new();
 
     // 6. 配置 TCB (绑定资源)
@@ -51,7 +50,7 @@ pub fn init() {
     let cap_cspace = Capability::create_cnode(root_cspace_frame.addr(), 12, rights::ALL);
     let cap_vspace = Capability::create_pagetable(
         root_vspace_frame.addr(),
-        addr::phys_to_virt(root_vspace_frame.addr()),
+        root_vspace_frame.va(),
         2,
         rights::ALL,
     );
@@ -82,7 +81,7 @@ fn populate_root_cnode(cnode: &mut CNode) {
 
     let cap = Capability::create_untyped(
         free_regions.start,
-        free_regions.end - free_regions.start,
+        (free_regions.end - free_regions.start).as_usize(),
         rights::ALL,
     );
     cnode.insert(slot, cap);

@@ -1,6 +1,6 @@
 use super::{CapType, Capability};
-use crate::mem::{PGSIZE, PhysAddr, PhysFrame};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use crate::mem::{PhysAddr, PhysFrame};
+use core::sync::atomic::AtomicUsize;
 
 /// CNode 在物理内存中的布局头
 #[repr(C)]
@@ -21,7 +21,12 @@ pub struct CDTNode {
 
 impl CDTNode {
     pub const fn new() -> Self {
-        Self { parent: 0, first_child: 0, next_sibling: 0, prev_sibling: 0 }
+        Self {
+            parent: PhysAddr::null(),
+            first_child: PhysAddr::null(),
+            next_sibling: PhysAddr::null(),
+            prev_sibling: PhysAddr::null(),
+        }
     }
 }
 
@@ -42,12 +47,12 @@ pub struct CNode {
 impl CNode {
     pub fn new(paddr: PhysAddr, bits: u8) -> Self {
         // 初始化 Header
-        let header_ptr = paddr as *mut CNodeHeader;
+        let header_ptr = paddr.as_mut::<CNodeHeader>();
         unsafe {
             (*header_ptr).ref_count = AtomicUsize::new(1);
             // 初始化所有 Slot 为 Empty
             let slots_ptr =
-                (paddr as *mut u8).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
+                (paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
             for i in 0..(1 << bits) {
                 core::ptr::write(
                     slots_ptr.add(i),
@@ -71,19 +76,21 @@ impl CNode {
     }
 
     fn get_header(&self) -> *mut CNodeHeader {
-        self.paddr as *mut CNodeHeader
+        self.paddr.as_mut::<CNodeHeader>()
     }
 
     fn get_slots_ptr(&self) -> *mut Slot {
         // Slots 紧跟在 Header 之后
-        unsafe { (self.paddr as *mut u8).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot }
+        unsafe {
+            (self.paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot
+        }
     }
 
     pub fn get_slot_addr(&self, slot: usize) -> PhysAddr {
         if slot >= self.size() {
-            return 0;
+            return PhysAddr::null();
         }
-        unsafe { self.get_slots_ptr().add(slot) as PhysAddr }
+        unsafe { PhysAddr::from(self.get_slots_ptr().add(slot) as usize) }
     }
 
     pub fn lookup_cap(&self, slot: usize) -> Option<Capability> {
@@ -113,7 +120,7 @@ impl CNode {
             return false;
         }
         let slot_ptr = unsafe { self.get_slots_ptr().add(slot) };
-        let slot_addr = slot_ptr as PhysAddr;
+        let slot_addr = PhysAddr::from(slot_ptr as usize);
 
         unsafe {
             // 1. 插入能力
@@ -123,13 +130,13 @@ impl CNode {
             let mut cdt = CDTNode::new();
             cdt.parent = parent_addr;
 
-            if parent_addr != 0 {
-                let parent_slot = &mut *(parent_addr as *mut Slot);
+            if parent_addr != PhysAddr::null() {
+                let parent_slot = &mut *(parent_addr.as_mut::<Slot>());
                 let old_first_child = parent_slot.cdt.first_child;
 
                 cdt.next_sibling = old_first_child;
-                if old_first_child != 0 {
-                    let next_sib_slot = &mut *(old_first_child as *mut Slot);
+                if old_first_child != PhysAddr::null() {
+                    let next_sib_slot = &mut *(old_first_child.as_mut::<Slot>());
                     next_sib_slot.cdt.prev_sibling = slot_addr;
                 }
                 parent_slot.cdt.first_child = slot_addr;
@@ -157,14 +164,14 @@ impl CNode {
 }
 
 pub fn revoke_recursive(slot_addr: PhysAddr) {
-    let slot = unsafe { &mut *(slot_addr as *mut Slot) };
+    let slot = slot_addr.as_mut::<Slot>();
     let mut child_addr = slot.cdt.first_child;
-    while child_addr != 0 {
-        let next_sibling = unsafe { (*(child_addr as *mut Slot)).cdt.next_sibling };
+    while child_addr != PhysAddr::null() {
+        let next_sibling = (*(child_addr.as_mut::<Slot>())).cdt.next_sibling;
         delete_recursive(child_addr);
         child_addr = next_sibling;
     }
-    slot.cdt.first_child = 0;
+    slot.cdt.first_child = PhysAddr::null();
 }
 
 pub fn delete_recursive(slot_addr: PhysAddr) {
@@ -172,24 +179,22 @@ pub fn delete_recursive(slot_addr: PhysAddr) {
     revoke_recursive(slot_addr);
 
     // 2. 从 CDT 兄弟链表中移除
-    unsafe {
-        let slot = &mut *(slot_addr as *mut Slot);
-        let prev = slot.cdt.prev_sibling;
-        let next = slot.cdt.next_sibling;
-        let parent = slot.cdt.parent;
+    let slot = slot_addr.as_mut::<Slot>();
+    let prev = slot.cdt.prev_sibling;
+    let next = slot.cdt.next_sibling;
+    let parent = slot.cdt.parent;
 
-        if prev != 0 {
-            (*(prev as *mut Slot)).cdt.next_sibling = next;
-        } else if parent != 0 {
-            (*(parent as *mut Slot)).cdt.first_child = next;
-        }
-
-        if next != 0 {
-            (*(next as *mut Slot)).cdt.prev_sibling = prev;
-        }
-
-        // 3. 清空槽位 (触发 Capability::drop)
-        slot.cap = Capability::empty();
-        slot.cdt = CDTNode::new();
+    if prev != PhysAddr::null() {
+        (*(prev.as_mut::<Slot>())).cdt.next_sibling = next;
+    } else if parent != PhysAddr::null() {
+        (*(parent.as_mut::<Slot>())).cdt.first_child = next;
     }
+
+    if next != PhysAddr::null() {
+        (*(next.as_mut::<Slot>())).cdt.prev_sibling = prev;
+    }
+
+    // 3. 清空槽位 (触发 Capability::drop)
+    slot.cap = Capability::empty();
+    slot.cdt = CDTNode::new();
 }

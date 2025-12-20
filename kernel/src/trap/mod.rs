@@ -1,3 +1,5 @@
+
+
 pub mod context;
 pub mod info;
 pub mod interrupt;
@@ -8,11 +10,7 @@ pub mod vector;
 
 pub use context::{TrapContext, TrapFrame};
 
-use crate::cap::CapType;
-use crate::ipc;
 use crate::printk;
-use crate::proc;
-use riscv::register::scause;
 
 pub fn init() {
     // 初始化定时器

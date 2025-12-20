@@ -1,4 +1,3 @@
-
 /// 陷阱处理时的寄存器上下文结构
 /// 对应汇编代码中栈上的布局
 #[repr(C)]
@@ -37,45 +36,6 @@ pub struct TrapContext {
     pub t4: usize,  // x29
     pub t5: usize,  // x30
     pub t6: usize,  // x31
-}
-
-impl TrapContext {
-    /// 创建一个空的陷阱上下文
-    pub const fn new() -> Self {
-        Self {
-            ra: 0,
-            sp: 0,
-            gp: 0,
-            tp: 0,
-            t0: 0,
-            t1: 0,
-            t2: 0,
-            s0: 0,
-            s1: 0,
-            a0: 0,
-            a1: 0,
-            a2: 0,
-            a3: 0,
-            a4: 0,
-            a5: 0,
-            a6: 0,
-            a7: 0,
-            s2: 0,
-            s3: 0,
-            s4: 0,
-            s5: 0,
-            s6: 0,
-            s7: 0,
-            s8: 0,
-            s9: 0,
-            s10: 0,
-            s11: 0,
-            t3: 0,
-            t4: 0,
-            t5: 0,
-            t6: 0,
-        }
-    }
 }
 
 #[repr(C)]
@@ -119,47 +79,4 @@ pub struct TrapFrame {
     pub t4: usize,
     pub t5: usize,
     pub t6: usize,
-}
-
-impl TrapFrame {
-    pub const fn new() -> Self {
-        Self {
-            kernel_satp: 0,
-            kernel_sp: 0,
-            kernel_trapvector: 0,
-            kernel_epc: 0,
-            kernel_hartid: 0,
-            ra: 0,
-            sp: 0,
-            gp: 0,
-            tp: 0,
-            t0: 0,
-            t1: 0,
-            t2: 0,
-            s0: 0,
-            s1: 0,
-            a0: 0,
-            a1: 0,
-            a2: 0,
-            a3: 0,
-            a4: 0,
-            a5: 0,
-            a6: 0,
-            a7: 0,
-            s2: 0,
-            s3: 0,
-            s4: 0,
-            s5: 0,
-            s6: 0,
-            s7: 0,
-            s8: 0,
-            s9: 0,
-            s10: 0,
-            s11: 0,
-            t3: 0,
-            t4: 0,
-            t5: 0,
-            t6: 0,
-        }
-    }
 }

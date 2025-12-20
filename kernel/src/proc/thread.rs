@@ -1,7 +1,6 @@
 use super::ProcContext;
 use crate::cap::{CapType, Capability};
 use crate::ipc::{UTCB, UTCB_SIZE};
-use crate::mem::addr;
 use crate::mem::{KernelStack, PhysAddr, PhysFrame, VSpace, VirtAddr};
 use crate::trap::TrapFrame;
 use alloc::collections::VecDeque;
@@ -71,11 +70,11 @@ impl TCB {
             vspace_root: Capability::empty(),
             vspace: None,
             fault_handler: None,
-            ipc_buffer: 0,
+            ipc_buffer: VirtAddr::null(),
             send_queue: VecDeque::new(),
             ipc_partner: None,
             utcb_frame: None,
-            utcb_base: 0,
+            utcb_base: VirtAddr::null(),
         }
     }
 
@@ -124,7 +123,7 @@ impl TCB {
             let top = kstack.top();
             // TrapFrame 位于栈顶下方
             let tf_addr = top - size_of::<TrapFrame>();
-            unsafe { Some(&mut *(tf_addr as *mut TrapFrame)) }
+            Some(tf_addr.as_mut::<TrapFrame>())
         } else {
             None
         }
@@ -143,17 +142,21 @@ impl TCB {
 
     pub fn get_utcb(&self) -> Option<&mut UTCB> {
         if let Some(utcb_frame) = &self.utcb_frame {
-            let vaddr = addr::phys_to_virt(utcb_frame.addr());
-            unsafe { Some(&mut *(vaddr as *mut UTCB)) }
+            let vaddr = utcb_frame.va();
+            Some(vaddr.as_mut::<UTCB>())
         } else {
             None
         }
     }
 
-    pub fn get_satp(&self) -> VirtAddr {
+    pub fn get_satp(&self) -> Option<VirtAddr> {
         // 假设 Capability 中存储了页表的物理地址
         // 这里需要转换为虚拟地址
-        unimplemented!()
+        if let CapType::PageTable { paddr, .. } = self.vspace_root.object {
+            Some(paddr.to_va())
+        } else {
+            None
+        }
     }
 
     pub fn cap_lookup(&self, cptr: usize) -> Option<Capability> {

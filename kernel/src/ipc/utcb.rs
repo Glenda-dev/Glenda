@@ -1,7 +1,8 @@
+
 use super::MsgTag;
 use crate::mem::{PGSIZE, VirtAddr};
 
-pub const UTCB_VA: VirtAddr = 0x8000_0000;
+pub const UTCB_VA: VirtAddr = VirtAddr::from(0x8000_0000);
 
 /// 用户线程控制块 (UTCB)
 /// 映射到用户地址空间，用于内核与用户态之间的高效数据交换

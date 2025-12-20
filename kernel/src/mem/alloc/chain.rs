@@ -1,3 +1,4 @@
+
 use core::alloc::{GlobalAlloc, Layout};
 use core::mem::{align_of, size_of};
 use core::ptr::NonNull;
@@ -5,7 +6,7 @@ use core::ptr::NonNull;
 use spin::Mutex;
 
 use super::super::PGSIZE;
-use crate::mem::PhysFrame;
+use crate::mem::{PhysAddr, PhysFrame};
 
 const HEADER_SIZE: usize = size_of::<AllocHeader>();
 const MIN_NODE_SIZE: usize = size_of::<ListNode>();
@@ -189,11 +190,11 @@ unsafe impl GlobalAlloc for ChainAllocator {
                 return ptr;
             }
 
-            let region_pa = PhysFrame::alloc().map(|f| f.leak()).unwrap_or(0);
-            if region_pa == 0 {
+            let region_pa = PhysFrame::alloc().map(|f| f.leak()).unwrap_or(PhysAddr::null());
+            if region_pa == PhysAddr::null() {
                 return core::ptr::null_mut();
             }
-            self.insert_region(&mut head, region_pa, PGSIZE);
+            self.insert_region(&mut head, region_pa.as_usize(), PGSIZE);
         }
     }
 

@@ -155,7 +155,7 @@ fn is_ns16550_compatible(node: &FdtNode<'_, '_>) -> bool {
         .unwrap_or(false)
 }
 
-pub fn initialize_from_dtb(dtb: *const u8) {
+pub fn initialize_from_dtb(_dtb: *const u8) {
     if let Some(cfg) = dtb::uart_config() {
         init(cfg);
     } else {

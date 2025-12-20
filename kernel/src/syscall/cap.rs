@@ -10,7 +10,7 @@ use crate::trap::TrapContext;
 /// a2-a7: args (Method ID + Params)
 pub fn sys_invoke(ctx: &mut TrapContext) -> usize {
     let cptr = ctx.a0;
-    let msg_info = ctx.a1;
+    // let msg_info = ctx.a1;
 
     // 获取当前线程
     let current_tcb = proc::current();

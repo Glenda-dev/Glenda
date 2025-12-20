@@ -86,7 +86,7 @@ pub fn handle_claimed(hartid: usize, id: usize) {
         // 如果绑定了 Endpoint，直接通知（使用 badge，如果没有则 0）
         if let cap::CapType::Endpoint { ep_ptr } = cap.object {
             let badge = cap.badge.unwrap_or(0usize);
-            let ep = unsafe { &mut *(ep_ptr as *mut ipc::Endpoint) };
+            let ep = ep_ptr.as_mut::<ipc::Endpoint>();
             ipc::notify(ep, badge);
         }
     }

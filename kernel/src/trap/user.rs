@@ -96,7 +96,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // TODO: Refactor this
     // 直接通过当前 hart 的进程状态获取 TrapFrame 的指针
     let proc = proc::current();
-    let ctx: &mut TrapFrame = unsafe { &mut *proc.get_trapframe().expect("No TrapFrame found") };
+    let ctx: &mut TrapFrame = &mut *proc.get_trapframe().expect("No TrapFrame found");
     unsafe {
         sstatus::clear_sie();
     }
@@ -126,21 +126,21 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     ctx.kernel_hartid = crate::hart::getid();
     // KSTACK(0) 顶部
     // vm::map_kstack0();
-    ctx.kernel_sp = proc.kstack.as_ref().unwrap().top();
+    ctx.kernel_sp = proc.kstack.as_ref().unwrap().top().as_usize();
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = (*proc::current()).get_trapframe_va().expect("No TrapFrame VA found") as usize;
+    let user_tf_va = (*proc::current()).get_trapframe_va().expect("No TrapFrame VA found");
     unsafe {
-        sscratch::write(user_tf_va);
+        sscratch::write(user_tf_va.as_usize());
     }
 
-    let user_satp = proc.get_satp() as u64;
+    let user_satp = proc.get_satp().expect("Failed to get satp").as_usize() as u64;
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
     let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);
     let user_ret_addr = tramp_base_va + user_ret_off;
     let user_return_fn: extern "C" fn(u64, u64) -> ! = unsafe { mem::transmute(user_ret_addr) };
-    user_return_fn(user_tf_va as u64, user_satp)
+    user_return_fn(user_tf_va.as_usize() as u64, user_satp)
 }
 
 pub fn syscall_handler(ctx: &mut TrapContext) {

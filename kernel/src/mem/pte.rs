@@ -1,6 +1,5 @@
-#![allow(dead_code)]
 
-use super::PhysAddr;
+use super::{PPN, PhysAddr};
 
 pub const PTE_V: usize = 1 << 0; // Valid
 pub const PTE_R: usize = 1 << 1; // Read
@@ -27,13 +26,13 @@ pub mod perms {
 }
 
 #[inline(always)]
-pub const fn set_ppn(pte: Pte, ppn: usize) -> Pte {
-    (pte & 0x3FF) | (ppn << 10)
+pub const fn set_ppn(pte: Pte, ppn: PPN) -> Pte {
+    (pte & 0x3FF) | (ppn.as_usize() << 10)
 }
 
 #[inline(always)]
-pub const fn get_ppn(pte: Pte) -> usize {
-    (pte >> 10) & 0xFFFFFFFFFFF
+pub const fn get_ppn(pte: Pte) -> PPN {
+    PPN((pte >> 10) & 0xFFFFFFFFFFF)
 }
 
 #[inline(always)]
@@ -64,10 +63,10 @@ pub const fn is_table(pte: Pte) -> bool {
 
 #[inline(always)]
 pub const fn pte_to_pa(pte: Pte) -> PhysAddr {
-    get_ppn(pte) << 12
+    PhysAddr(get_ppn(pte).0 << 12)
 }
 
 #[inline(always)]
 pub const fn pa_to_pte(pa: PhysAddr, flags: PteFlags) -> Pte {
-    (((pa >> 12) & 0xFFFFFFFFFFF) << 10) | (flags & 0x3FF)
+    (((pa.0 >> 12) & 0xFFFFFFFFFFF) << 10) | (flags & 0x3FF)
 }

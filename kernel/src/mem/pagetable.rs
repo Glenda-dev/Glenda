@@ -1,8 +1,6 @@
-use super::PhysFrame;
-use super::addr;
-use super::addr::{align_down, align_up, vpn};
-use super::pte::{self, Pte, pa_to_pte, pte_to_pa};
-use super::{PGNUM, PGSIZE, PhysAddr, VA_MAX, VirtAddr};
+use super::pte::{self, pa_to_pte, pte_to_pa};
+use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
+use super::{PhysFrame, Pte};
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
@@ -20,7 +18,7 @@ impl PageTable {
     /// 从物理帧获取页表的可变引用
     pub fn from_frame(frame: &PhysFrame) -> &'static mut Self {
         let vaddr = frame.va();
-        unsafe { &mut *(vaddr as *mut PageTable) }
+        vaddr.as_mut::<PageTable>()
     }
 
     /// 查找虚拟地址对应的 PTE 指针
@@ -32,16 +30,12 @@ impl PageTable {
     /// * `Some(pte)`: 找到对应的 PTE (可能是叶子节点，也可能是中间节点)
     /// * `None`: 遍历过程中断 (中间页表不存在)
     pub fn walk(&mut self, va: VirtAddr) -> Option<*mut Pte> {
-        if va >= VA_MAX {
-            return None;
-        }
-
         let mut table = self;
 
         // 遍历 3 级页表 (Level 2 -> Level 1 -> Level 0)
         // 最后一级 (Level 0) 的 PTE 将被返回
         for level in (1..3).rev() {
-            let idx = vpn(va)[level];
+            let idx = va.vpn()[level].as_usize();
             let pte_val = table.entries[idx];
 
             if !pte::is_valid(pte_val) {
@@ -58,12 +52,12 @@ impl PageTable {
 
             // 进入下一级页表
             let next_pa = pte_to_pa(pte_val);
-            let next_va = addr::phys_to_virt(next_pa);
-            table = unsafe { &mut *(next_va as *mut PageTable) };
+            let next_va = next_pa.to_va();
+            table = next_va.as_mut::<PageTable>();
         }
 
         // 返回 Level 0 的 PTE
-        Some(&mut table.entries[vpn(va)[0]] as *mut Pte)
+        Some(&mut table.entries[va.vpn()[0].as_usize()] as *mut Pte)
     }
 
     /// 映射内存区域 (机制)
@@ -76,12 +70,11 @@ impl PageTable {
     /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
     /// 用户必须先调用 map_table 来建立中间层级。
     pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: usize) -> Result<(), ()> {
-        let start_va = align_down(va);
-        let end_va = align_up(va + size);
+        let start_va = va.align_down(PGSIZE);
+        let end_va = (va + size).align_up(PGSIZE);
 
         let mut current_va = start_va;
-        let mut current_pa = align_down(pa);
-
+        let mut current_pa = pa.align_down(PGSIZE);
         while current_va < end_va {
             let pte_ptr = self.walk(current_va).ok_or(())?;
 
@@ -109,8 +102,8 @@ impl PageTable {
     ///
     /// 注意：不负责释放物理内存。物理内存由 Capability 系统管理。
     pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), ()> {
-        let start_va = align_down(va);
-        let end_va = align_up(va + size);
+        let start_va = va.align_down(PGSIZE);
+        let end_va = (va + size).align_up(PGSIZE);
         let mut current_va = start_va;
 
         while current_va < end_va {
@@ -139,18 +132,18 @@ impl PageTable {
         // 遍历到目标层级的上一级
         let mut table = self;
         for l in ((level + 1)..3).rev() {
-            let idx = vpn(va)[l];
+            let idx = va.vpn()[l].as_usize();
             let pte_val = table.entries[idx];
             if !pte::is_valid(pte_val) || pte::is_leaf(pte_val) {
                 return Err(()); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_to_pa(pte_val);
-            let next_va = addr::phys_to_virt(next_pa);
-            table = unsafe { &mut *(next_va as *mut PageTable) };
+            let next_va = next_pa.to_va();
+            table = next_va.as_mut::<PageTable>();
         }
 
         // 在目标层级写入 PTE，指向新的页表
-        let idx = vpn(va)[level];
+        let idx = va.vpn()[level].as_usize();
         let pte_ptr = &mut table.entries[idx];
 
         if pte::is_valid(*pte_ptr) {

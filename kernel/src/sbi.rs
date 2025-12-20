@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 // TODO: Refactor this
 
 unsafe extern "C" {

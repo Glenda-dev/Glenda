@@ -47,7 +47,7 @@ pub fn sys_recv(ctx: &mut TrapContext) -> usize {
 fn get_ep(tcb: &TCB, cptr: usize) -> Option<&'static mut Endpoint> {
     if let Some(cap) = tcb.cap_lookup(cptr) {
         if let CapType::Endpoint { ep_ptr } = cap.object {
-            return Some(unsafe { &mut *(ep_ptr as *mut Endpoint) });
+            return Some(ep_ptr.as_mut::<Endpoint>());
         }
     }
     None

@@ -1,6 +1,4 @@
 use super::PGSIZE;
-use super::addr;
-use super::addr::{align_down, align_up, vpn};
 use super::pte;
 use super::pte::{PTE_A, PTE_D, PTE_R, PTE_V, PTE_W, PTE_X, pa_to_pte, pte_to_pa};
 use super::{PageTable, PhysAddr, PhysFrame, VirtAddr};
@@ -34,22 +32,21 @@ pub static KERNEL_PAGE_TABLE: Once<PageTable> = Once::new();
 /// 手动处理页表页的分配。此时使用的是启动分配器。
 unsafe fn boot_map(
     kpt: &mut PageTable,
-    va_start: usize,
-    pa_start: usize,
+    va_start: VirtAddr,
+    pa_start: PhysAddr,
     size: usize,
     flags: usize,
 ) {
-    let start = align_down(va_start);
-    let end = align_up(va_start + size);
+    let start = va_start.align_down(PGSIZE);
+    let end = (va_start + size).align_up(PGSIZE);
 
     let mut va = start;
-    let mut pa = align_down(pa_start);
-
+    let mut pa = pa_start.align_down(PGSIZE);
     while va < end {
         // 手动遍历页表，如果中间层级缺失则分配
         let mut table = kpt as *mut PageTable;
         for level in (1..3).rev() {
-            let idx = vpn(VirtAddr::from(va))[level];
+            let idx = va.vpn()[level].as_usize();
             let entry = unsafe { &mut (*table).entries[idx] };
 
             if !pte::is_valid(*entry) {
@@ -66,17 +63,16 @@ unsafe fn boot_map(
             // 进入下一级
             let next_pa = pte_to_pa(*entry);
             // 在恒等映射模式下，物理地址即为内核虚拟地址
-            let next_va = addr::phys_to_virt(PhysAddr::from(next_pa));
-            table = unsafe { &mut *(next_va as *mut PageTable) };
+            let next_va = next_pa.to_va();
+            table = next_va.as_mut::<PageTable>();
         }
 
         // 设置最后一级 PTE
-        let idx = vpn(VirtAddr::from(va))[0];
+        let idx = va.vpn()[0].as_usize();
 
         let pte_ptr = unsafe { &mut (*table).entries[idx] };
         // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
-        *pte_ptr = pa_to_pte(PhysAddr::from(pa), flags | PTE_V);
-
+        *pte_ptr = pa_to_pte(pa, flags | PTE_V);
         va += PGSIZE;
         pa += PGSIZE;
     }
@@ -90,47 +86,61 @@ pub fn init_kernel_vm(hartid: usize) {
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
     let mem = dtb::memory_range().expect("Memory range not found in DTB");
     printk!("vm: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
+    let mem_start = PhysAddr::from(mem.start);
     unsafe {
-        boot_map(&mut kpt, mem.start, mem.start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
+        boot_map(&mut kpt, mem_start.to_va(), mem_start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
     }
 
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
-    let text_start = unsafe { &__text_start as *const u8 as usize };
-    let text_end = unsafe { &__text_end as *const u8 as usize };
+    let text_start = PhysAddr::from(unsafe { &__text_start as *const u8 as usize });
+    let text_end = PhysAddr::from(unsafe { &__text_end as *const u8 as usize });
     printk!("vm: Remap .text RX\n");
     unsafe {
-        boot_map(&mut kpt, text_start, text_start, text_end - text_start, PTE_R | PTE_X | PTE_A);
+        boot_map(
+            &mut kpt,
+            text_start.to_va(),
+            text_start,
+            (text_end - text_start).as_usize(),
+            PTE_R | PTE_X | PTE_A,
+        );
     }
 
-    let rodata_start = unsafe { &__rodata_start as *const u8 as usize };
-    let rodata_end = unsafe { &__rodata_end as *const u8 as usize };
+    let rodata_start = PhysAddr::from(unsafe { &__rodata_start as *const u8 as usize });
+    let rodata_end = PhysAddr::from(unsafe { &__rodata_end as *const u8 as usize });
     printk!("vm: Remap .rodata R\n");
     unsafe {
-        boot_map(&mut kpt, rodata_start, rodata_start, rodata_end - rodata_start, PTE_R | PTE_A);
+        boot_map(
+            &mut kpt,
+            rodata_start.to_va(),
+            rodata_start,
+            (rodata_end - rodata_start).as_usize(),
+            PTE_R | PTE_A,
+        );
     }
 
     // .data 和 .bss 已经是 RW 了，不需要额外重映射，但为了逻辑完整也可以做
 
     // 3. 映射 Trampoline (高地址)
-    let tramp_pa = align_down(vector::trampoline as usize);
-    let tramp_va = super::VA_MAX - super::PGSIZE;
+    let tramp_pa = PhysAddr::from(vector::trampoline as usize).align_down(PGSIZE);
+    let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
     printk!("vm: Map TRAMPOLINE\n");
     unsafe {
         boot_map(&mut kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     }
 
     // 4. 映射 MMIO (UART, PLIC)
-    let uart_base = dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base;
+    let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
     printk!("vm: Map UART\n");
     unsafe {
-        boot_map(&mut kpt, uart_base, uart_base, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+        boot_map(&mut kpt, uart_base.to_va(), uart_base, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     }
 
     if let Some(plic_base) = dtb::plic_base() {
+        let plic_pa = PhysAddr::from(plic_base);
         printk!("vm: Map PLIC\n");
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
-            boot_map(&mut kpt, plic_base, plic_base, 0x3000, PTE_R | PTE_W | PTE_A | PTE_D);
+            boot_map(&mut kpt, plic_pa.to_va(), plic_pa, 0x3000, PTE_R | PTE_W | PTE_A | PTE_D);
         }
     }
 

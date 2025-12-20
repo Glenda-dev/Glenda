@@ -1,33 +1,35 @@
+use crate::mem::PhysAddr;
+use crate::mem::VirtAddr;
+
 use super::PGSIZE;
-use super::addr;
 use super::pmem;
 pub struct PhysFrame {
-    addr: usize,
+    addr: PhysAddr,
 }
 
 impl PhysFrame {
     pub fn alloc() -> Option<Self> {
-        pmem::alloc_frame().map(|addr| Self { addr })
+        pmem::alloc_frame().map(|addr| Self { addr: addr })
     }
-    pub fn addr(&self) -> usize {
+    pub fn addr(&self) -> PhysAddr {
         self.addr
     }
 
     /// Construct a PhysFrame from a raw physical address.
-    pub unsafe fn from_raw(addr: usize) -> Self {
+    pub unsafe fn from(addr: PhysAddr) -> Self {
         Self { addr }
     }
 
     pub fn as_ptr<T>(&self) -> *const T {
-        self.addr as *const T
+        self.addr.0 as *const T
     }
 
     pub fn as_mut_ptr<T>(&mut self) -> *mut T {
-        self.addr as *mut T
+        self.addr.0 as *mut T
     }
 
-    pub fn va(&self) -> usize {
-        addr::phys_to_virt(self.addr)
+    pub fn va(&self) -> VirtAddr {
+        self.addr.to_va()
     }
 
     pub fn zero(&mut self) {
@@ -37,7 +39,7 @@ impl PhysFrame {
     }
 
     /// 消耗 PhysFrame 并返回其物理地址，不触发 Drop
-    pub fn leak(self) -> usize {
+    pub fn leak(self) -> PhysAddr {
         let addr = self.addr;
         core::mem::forget(self);
         addr

@@ -1,6 +1,6 @@
 use crate::mem::{PhysAddr, PhysFrame};
 use riscv::asm::sfence_vma_all;
-use riscv::register::satp::{self, Satp};
+use riscv::register::satp;
 use spin::Mutex;
 
 /// ASID 管理器 (单例)
@@ -68,8 +68,10 @@ impl VSpace {
 
     /// 激活此地址空间 (上下文切换时调用)
     /// 返回需要写入 satp 的值 (包含 ASID)
-    pub unsafe fn activate(&self) {
-        satp::set(satp::Mode::Sv39, self.asid as usize, self.root_paddr >> 12);
+    pub fn activate(&self) {
+        unsafe {
+            satp::set(satp::Mode::Sv39, self.asid as usize, self.root_paddr.to_ppn().as_usize());
+        }
     }
 
     /// 获取根页表物理地址

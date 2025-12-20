@@ -4,7 +4,6 @@ use crate::trap::TrapContext;
 
 pub mod cap;
 pub mod ipc;
-pub mod proc;
 
 pub const SYS_INVOKE: usize = 1;
 pub const SYS_SEND: usize = 2;

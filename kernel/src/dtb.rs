@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::printk;
 use crate::printk::uart::Config as UartConfig;
 use core::cell::UnsafeCell;

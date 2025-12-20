@@ -64,7 +64,7 @@ fn exception_handler(
 
         // 2. 提取 Endpoint
         if let CapType::Endpoint { ep_ptr } = handler_cap.object {
-            let ep = unsafe { &mut *(ep_ptr as *mut ipc::Endpoint) };
+            let ep = ep_ptr.as_mut::<ipc::Endpoint>();
             let badge = handler_cap.badge.unwrap_or(0);
 
             // 3. 执行发送 (这会阻塞当前线程)

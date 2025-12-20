@@ -1,6 +1,6 @@
 use crate::proc::thread::TCB;
 use alloc::collections::VecDeque;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::AtomicUsize;
 
 /// IPC 通信端点
 /// 用于线程间同步消息传递

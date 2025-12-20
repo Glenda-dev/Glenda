@@ -1,47 +1,174 @@
-#![allow(dead_code)]
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 
-// TODO: change to struct
-pub type PhysAddr = usize;
-pub type VirtAddr = usize;
-pub type PPN = usize;
-pub type VPN = usize;
+pub const VA_MAX: usize = 1 << 38;
 
-use super::{PGMASK, PGSIZE};
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+pub struct PhysAddr(pub usize);
 
-#[inline(always)]
-pub const fn align_up(value: usize) -> usize {
-    assert!(PGSIZE.is_power_of_two());
-    (value + PGMASK) & !PGMASK
+impl PhysAddr {
+    pub const fn from(addr: usize) -> Self {
+        Self(addr as usize)
+    }
+    pub const fn as_usize(&self) -> usize {
+        self.0
+    }
+    pub fn to_va(&self) -> VirtAddr {
+        VirtAddr(self.0)
+    }
+    pub const fn to_ppn(&self) -> PPN {
+        PPN(self.0 >> 12)
+    }
+    pub fn as_mut_ptr<T>(&self) -> *mut T {
+        self.0 as *mut T
+    }
+    pub fn as_ptr<T>(&self) -> *const T {
+        self.0 as *const T
+    }
+    pub fn as_ref<T>(&self) -> &'static T {
+        unsafe { &*(self.as_ptr::<T>()) }
+    }
+    pub fn as_mut<T>(&self) -> &'static mut T {
+        unsafe { &mut *(self.as_mut_ptr::<T>()) }
+    }
+    pub const fn null() -> Self {
+        Self(0)
+    }
+    pub fn align_down(&self, align: usize) -> Self {
+        PhysAddr((self.0 + align - 1) & !(align - 1))
+    }
+    pub fn align_up(&self, align: usize) -> Self {
+        PhysAddr((self.0 + align - 1) & !(align - 1))
+    }
 }
 
-#[inline(always)]
-pub const fn align_down(value: usize) -> usize {
-    assert!(PGSIZE.is_power_of_two());
-    value & !PGMASK
+impl Add for PhysAddr {
+    type Output = PhysAddr;
+    fn add(self, rhs: PhysAddr) -> PhysAddr {
+        PhysAddr(self.0 + rhs.0)
+    }
+}
+impl Add<usize> for PhysAddr {
+    type Output = PhysAddr;
+    fn add(self, rhs: usize) -> PhysAddr {
+        PhysAddr(self.0 + rhs)
+    }
+}
+impl Sub for PhysAddr {
+    type Output = PhysAddr;
+    fn sub(self, rhs: PhysAddr) -> PhysAddr {
+        PhysAddr(self.0 - rhs.0)
+    }
+}
+impl Sub<usize> for PhysAddr {
+    type Output = PhysAddr;
+    fn sub(self, rhs: usize) -> PhysAddr {
+        PhysAddr(self.0 - rhs)
+    }
+}
+impl AddAssign<usize> for PhysAddr {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+impl SubAssign<usize> for PhysAddr {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs;
+    }
 }
 
-#[inline(always)]
-pub const fn ppn(addr: PhysAddr) -> [PPN; 3] {
-    [(addr >> 12) & 0x1FF, (addr >> 21) & 0x1FF, (addr >> 30) & 0x1FF]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+pub struct VirtAddr(pub usize);
+impl VirtAddr {
+    pub const fn from(addr: usize) -> Self {
+        assert!(addr < VA_MAX, "VirtAddr out of range");
+        Self(addr as usize)
+    }
+    pub const fn as_usize(&self) -> usize {
+        self.0
+    }
+    pub fn to_pa(&self) -> PhysAddr {
+        PhysAddr(self.0)
+    }
+    pub const fn vpn(&self) -> [VPN; 3] {
+        [VPN((self.0 >> 12) & 0x1FF), VPN((self.0 >> 21) & 0x1FF), VPN((self.0 >> 30) & 0x1FF)]
+    }
+    pub fn as_mut_ptr<T>(&self) -> *mut T {
+        self.0 as *mut T
+    }
+    pub fn as_ptr<T>(&self) -> *const T {
+        self.0 as *const T
+    }
+    pub fn as_ref<T>(&self) -> &'static T {
+        unsafe { &*(self.as_ptr::<T>()) }
+    }
+    pub fn as_mut<T>(&self) -> &'static mut T {
+        unsafe { &mut *(self.as_mut_ptr::<T>()) }
+    }
+    pub const fn null() -> Self {
+        Self(0)
+    }
+    pub fn align_down(&self, align: usize) -> Self {
+        VirtAddr((self.0 + align - 1) & !(align - 1))
+    }
+    pub fn align_up(&self, align: usize) -> Self {
+        VirtAddr((self.0 + align - 1) & !(align - 1))
+    }
 }
 
-#[inline(always)]
-pub const fn page_offset(addr: VirtAddr) -> usize {
-    addr & PGMASK
+impl Add for VirtAddr {
+    type Output = VirtAddr;
+    fn add(self, rhs: VirtAddr) -> VirtAddr {
+        VirtAddr(self.0 + rhs.0)
+    }
+}
+impl Add<usize> for VirtAddr {
+    type Output = VirtAddr;
+    fn add(self, rhs: usize) -> VirtAddr {
+        VirtAddr(self.0 + rhs)
+    }
+}
+impl Sub for VirtAddr {
+    type Output = VirtAddr;
+    fn sub(self, rhs: VirtAddr) -> VirtAddr {
+        VirtAddr(self.0 - rhs.0)
+    }
+}
+impl Sub<usize> for VirtAddr {
+    type Output = VirtAddr;
+    fn sub(self, rhs: usize) -> VirtAddr {
+        VirtAddr(self.0 - rhs)
+    }
+}
+impl AddAssign<usize> for VirtAddr {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+impl SubAssign<usize> for VirtAddr {
+    fn sub_assign(&mut self, rhs: usize) {
+        self.0 -= rhs;
+    }
 }
 
-#[inline(always)]
-pub const fn vpn(addr: VirtAddr) -> [VPN; 3] {
-    [(addr >> 12) & 0x1FF, (addr >> 21) & 0x1FF, (addr >> 30) & 0x1FF]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+pub struct PPN(pub usize);
+impl PPN {
+    pub const fn from(ppn: usize) -> Self {
+        assert!(ppn < (VA_MAX >> 12), "PPN out of range");
+        Self(ppn)
+    }
+    pub const fn as_usize(&self) -> usize {
+        self.0
+    }
 }
-
-/// 物理地址转虚拟地址
-/// 不使用 HHDM 时，内核采用恒等映射，因此 PA == VA
-pub fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
-    VirtAddr::from(pa)
-}
-
-/// 虚拟地址转物理地址
-pub fn virt_to_phys(va: VirtAddr) -> PhysAddr {
-    PhysAddr::from(va)
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+pub struct VPN(pub usize);
+impl VPN {
+    pub const fn from(vpn: usize) -> Self {
+        assert!(vpn < 0x200, "VPN out of range");
+        Self(vpn)
+    }
+    pub const fn as_usize(&self) -> usize {
+        self.0
+    }
 }
