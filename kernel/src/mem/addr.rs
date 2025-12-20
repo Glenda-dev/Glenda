@@ -151,7 +151,7 @@ impl SubAssign<usize> for VirtAddr {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub struct PPN(pub usize);
+pub struct PPN(usize);
 impl PPN {
     pub const fn from(ppn: usize) -> Self {
         assert!(ppn < (VA_MAX >> 12), "PPN out of range");
@@ -162,7 +162,7 @@ impl PPN {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
-pub struct VPN(pub usize);
+pub struct VPN(usize);
 impl VPN {
     pub const fn from(vpn: usize) -> Self {
         assert!(vpn < 0x200, "VPN out of range");

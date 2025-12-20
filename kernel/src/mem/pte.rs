@@ -31,7 +31,7 @@ pub const fn set_ppn(pte: Pte, ppn: PPN) -> Pte {
 
 #[inline(always)]
 pub const fn get_ppn(pte: Pte) -> PPN {
-    PPN((pte >> 10) & 0xFFFFFFFFFFF)
+    PPN::from((pte >> 10) & 0xFFFFFFFFFFF)
 }
 
 #[inline(always)]
@@ -62,7 +62,7 @@ pub const fn is_table(pte: Pte) -> bool {
 
 #[inline(always)]
 pub const fn pte_to_pa(pte: Pte) -> PhysAddr {
-    PhysAddr::from(get_ppn(pte).0 << 12)
+    PhysAddr::from(get_ppn(pte).as_usize() << 12)
 }
 
 #[inline(always)]
