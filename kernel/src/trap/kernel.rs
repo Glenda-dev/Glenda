@@ -6,6 +6,7 @@ use super::user;
 use crate::cap::CapType;
 use crate::hart;
 use crate::ipc;
+use crate::ipc::MsgTag;
 use crate::irq;
 use crate::irq::plic;
 use crate::printk;
@@ -58,7 +59,7 @@ fn exception_handler(
             utcb.mrs_regs[0] = sc;
             utcb.mrs_regs[1] = tval;
             utcb.mrs_regs[2] = epc;
-            utcb.msg_tag = 0xFFFF_0003; // Label: 0xFFFF (Fault), Length: 3
+            utcb.msg_tag = MsgTag::new(ipc::label::FAULT, 3); // Label: 0xFFFF (Fault), Length: 3
         }
 
         // 2. 提取 Endpoint

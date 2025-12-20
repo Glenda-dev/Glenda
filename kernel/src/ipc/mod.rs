@@ -1,19 +1,15 @@
 pub mod endpoint;
+pub mod message;
+pub mod utcb;
+
+pub use message::{MsgTag, label};
+pub use utcb::{IPCBuffer, UTCB, UTCB_SIZE, UTCB_VA};
 
 use crate::mem::addr;
 use crate::proc::scheduler;
-use crate::proc::thread::{TCB, ThreadState, UTCB};
+use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
-
-/// 获取 TCB 对应的 UTCB 内核指针
-/// 这是一个辅助函数，用于在内核态访问用户的 UTCB
-unsafe fn get_utcb(tcb: &TCB) -> &mut UTCB {
-    let frame = tcb.utcb_frame.as_ref().expect("Thread has no UTCB");
-    // 将物理地址转换为内核虚拟地址 (HHDM)
-    let vaddr = addr::phys_to_virt(frame.addr());
-    &mut *(vaddr as *mut UTCB)
-}
 
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文
@@ -30,7 +26,9 @@ unsafe fn copy_msg(sender: &TCB, receiver: &mut TCB, badge: usize) {
     if dst.ipc_buffer_size > 0 {
         let src_buf_ptr = (sender.ipc_buffer) as *const u8;
         let dst_buf_ptr = (receiver.ipc_buffer) as *mut u8;
-        core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
+        unsafe {
+            core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
+        }
     }
 
     // 2. 传递 Badge

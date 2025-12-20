@@ -4,12 +4,13 @@ pub mod scheduler;
 pub mod thread;
 
 pub use context::ProcContext;
-pub use thread::{TCB, ThreadState, UTCB_VA};
+pub use thread::{TCB, ThreadState};
 
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
 use crate::hart;
+use crate::ipc::{UTCB, UTCB_VA};
 use crate::mem::addr;
 use crate::mem::pmem;
 use crate::mem::pte;
