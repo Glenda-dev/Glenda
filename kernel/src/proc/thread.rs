@@ -1,18 +1,18 @@
 use super::ProcContext;
 use crate::cap::{CapType, Capability};
 use crate::mem::PGSIZE;
+use crate::mem::addr;
 use crate::mem::{KernelStack, PhysAddr, PhysFrame, VSpace, VirtAddr};
 use crate::trap::TrapFrame;
 use alloc::collections::VecDeque;
 use core::mem::size_of;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::AtomicUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Inactive,
     Ready,
     Running,
-    Zombie,
     BlockedSend,
     BlockedRecv,
 }
@@ -76,18 +76,6 @@ impl TCB {
             ipc_partner: None,
             utcb_frame: None,
             utcb_base: 0,
-        }
-    }
-
-    pub fn alloc() -> Option<Self> {
-        let mut tcb = TCB::new();
-
-        // 分配内核栈
-        if let Some(kstack) = KernelStack::alloc() {
-            tcb.kstack = Some(kstack);
-            Some(tcb)
-        } else {
-            None
         }
     }
 
@@ -155,7 +143,7 @@ impl TCB {
 
     pub fn get_utcb(&self) -> Option<&mut UTCB> {
         if let Some(utcb_frame) = &self.utcb_frame {
-            let vaddr = self.utcb_base;
+            let vaddr = addr::phys_to_virt(utcb_frame.addr());
             unsafe { Some(&mut *(vaddr as *mut UTCB)) }
         } else {
             None

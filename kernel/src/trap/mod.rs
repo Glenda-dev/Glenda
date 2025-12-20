@@ -8,7 +8,11 @@ pub mod vector;
 
 pub use context::{TrapContext, TrapFrame};
 
+use crate::cap::CapType;
+use crate::ipc;
 use crate::printk;
+use crate::proc;
+use riscv::register::scause;
 
 pub fn init() {
     // 初始化定时器
@@ -20,6 +24,5 @@ pub fn init_hart(hartid: usize) {
     vector::init();
     // 启用 S-mode 中断
     interrupt::enable_s();
-    // 设置 PLIC 阈值为 0，允许所有优先级 > 0 的中断
     printk!("trap: Initialized for hart {}\n", hartid);
 }

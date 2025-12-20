@@ -21,7 +21,7 @@ static READY_QUEUES: Mutex<[VecDeque<TcbPtr>; MAX_PRIORITY]> =
     Mutex::new([const { VecDeque::new() }; MAX_PRIORITY]);
 
 unsafe extern "C" {
-    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext) -> !;
+    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
 }
 
 /// 将线程加入调度队列
