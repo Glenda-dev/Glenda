@@ -30,9 +30,7 @@ pub const UTCB_SIZE: usize = core::mem::size_of::<UTCB>();
 pub const IPC_BUFFER_SIZE: usize = PGSIZE - UTCB_SIZE;
 
 #[repr(C)]
-pub struct IPCBuffer {
-    pub data: [u8; IPC_BUFFER_SIZE],
-}
+pub struct IPCBuffer(pub [u8; IPC_BUFFER_SIZE]);
 
 impl IPCBuffer {
     pub fn from_utcb(utcb: &UTCB) -> &mut Self {
