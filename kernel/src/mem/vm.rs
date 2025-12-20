@@ -89,7 +89,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
     let mem = dtb::memory_range().expect("Memory range not found in DTB");
-    printk!("VM: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
+    printk!("vm: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
     unsafe {
         boot_map(&mut kpt, mem.start, mem.start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
     }
@@ -97,14 +97,14 @@ pub fn init_kernel_vm(hartid: usize) {
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
     let text_start = unsafe { &__text_start as *const u8 as usize };
     let text_end = unsafe { &__text_end as *const u8 as usize };
-    printk!("VM: Remap .text RX\n");
+    printk!("vm: Remap .text RX\n");
     unsafe {
         boot_map(&mut kpt, text_start, text_start, text_end - text_start, PTE_R | PTE_X | PTE_A);
     }
 
     let rodata_start = unsafe { &__rodata_start as *const u8 as usize };
     let rodata_end = unsafe { &__rodata_end as *const u8 as usize };
-    printk!("VM: Remap .rodata R\n");
+    printk!("vm: Remap .rodata R\n");
     unsafe {
         boot_map(&mut kpt, rodata_start, rodata_start, rodata_end - rodata_start, PTE_R | PTE_A);
     }
@@ -114,27 +114,27 @@ pub fn init_kernel_vm(hartid: usize) {
     // 3. 映射 Trampoline (高地址)
     let tramp_pa = align_down(vector::trampoline as usize);
     let tramp_va = super::VA_MAX - super::PGSIZE;
-    printk!("VM: Map TRAMPOLINE\n");
+    printk!("vm: Map TRAMPOLINE\n");
     unsafe {
         boot_map(&mut kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
     }
 
     // 4. 映射 MMIO (UART, PLIC)
     let uart_base = dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base;
-    printk!("VM: Map UART\n");
+    printk!("vm: Map UART\n");
     unsafe {
         boot_map(&mut kpt, uart_base, uart_base, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     }
 
     if let Some(plic_base) = dtb::plic_base() {
-        printk!("VM: Map PLIC\n");
+        printk!("vm: Map PLIC\n");
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
             boot_map(&mut kpt, plic_base, plic_base, 0x3000, PTE_R | PTE_W | PTE_A | PTE_D);
         }
     }
 
-    printk!("VM: Root page table built by hart {}\n", hartid);
+    printk!("vm: Root page table built by hart {}\n", hartid);
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
 
@@ -148,7 +148,7 @@ pub fn switch_to_kernel(hartid: usize) {
         satp::set(satp::Mode::Sv39, 0, root_ppn);
         sfence_vma_all();
     }
-    printk!("VM: Hart {} switched to kernel page table\n", hartid);
+    printk!("vm: Hart {} switched to kernel page table\n", hartid);
 }
 
 pub fn switch_off(hartid: usize) {
@@ -156,5 +156,5 @@ pub fn switch_off(hartid: usize) {
         satp::set(satp::Mode::Bare, 0, 0);
         sfence_vma_all();
     }
-    printk!("VM: Hart {} switching off VM\n", hartid);
+    printk!("vm: Hart {} switching off vm\n", hartid);
 }

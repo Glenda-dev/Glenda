@@ -9,12 +9,12 @@ use crate::printk;
 
 pub fn init() {
     timer::create();
-    printk!("IRQ: Initialized global IRQs\n");
+    printk!("irq: Initialized global IRQs\n");
 }
 
 pub fn init_hart(hartid: usize) {
     vector::init();
     // 启用 S-mode 中断
     interrupt::enable_s();
-    printk!("IRQ: Initialized for hart {}\n", hartid);
+    printk!("irq: Initialized for hart {}\n", hartid);
 }
