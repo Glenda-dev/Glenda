@@ -10,7 +10,7 @@ pub const SYS_SEND: usize = 2;
 pub const SYS_RECV: usize = 3;
 
 pub mod errcode {
-    pub const NO_ERROR: usize = 0;
+    pub const SUCCESS: usize = 0;
     pub const INVALID_CAP: usize = 1;
     pub const INVALID_ENDPOINT: usize = 2;
     pub const INVALID_OBJ_TYPE: usize = 3;

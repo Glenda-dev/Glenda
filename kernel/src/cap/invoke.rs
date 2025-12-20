@@ -46,11 +46,11 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]
                 }
             }
             ipc::send(tcb, ep, msg_info, cap_to_send);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         ipcmethod::RECV => {
             ipc::recv(tcb, ep);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,
     }
@@ -84,7 +84,7 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
                 tcb.vspace_root = vs;
                 tcb.utcb_base = VirtAddr::from(utcb_addr);
                 tcb.fault_handler = fault_cap;
-                errcode::NO_ERROR
+                errcode::SUCCESS
             } else {
                 errcode::INVALID_CAP
             }
@@ -95,12 +95,12 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
             let current = proc::current();
             if fault_ep_cptr == 0 {
                 tcb.fault_handler = None;
-                return errcode::NO_ERROR;
+                return errcode::SUCCESS;
             }
             if let Some(cap) = current.cap_lookup(fault_ep_cptr) {
                 if let CapType::Endpoint { .. } = cap.object {
                     tcb.fault_handler = Some(cap);
-                    errcode::NO_ERROR
+                    errcode::SUCCESS
                 } else {
                     errcode::INVALID_OBJ_TYPE
                 }
@@ -114,7 +114,7 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
             tcb.set_priority(prio);
             // 如果修改了优先级，可能需要触发重新调度
             scheduler::reschedule();
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         tcbmethod::SET_REGISTERS => {
             // SetRegisters: (flags, arch_flags, ...)
@@ -127,14 +127,14 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
             tcb.resume();
             // 将线程加入调度队列
             scheduler::add_thread(tcb);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         tcbmethod::SUSPEND => {
             // Suspend
             tcb.suspend();
             // 如果目标是当前线程，需要触发 yield
             scheduler::yield_proc();
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,
     }
@@ -156,7 +156,7 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
             // 执行映射
             // pt.map(vaddr, paddr, flags)
             match pt.map(vaddr, paddr, mem::PGSIZE, flags) {
-                Ok(()) => errcode::NO_ERROR,
+                Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
@@ -164,7 +164,7 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
             // Unmap: (vaddr)
             let vaddr = VirtAddr::from(args[0]);
             match pt.unmap(vaddr, PGSIZE) {
-                Ok(()) => errcode::NO_ERROR,
+                Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
@@ -189,7 +189,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
                 let mut new_cap = src_cap.mint(badge);
                 new_cap.rights &= rights;
                 if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
-                    errcode::NO_ERROR
+                    errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
                 }
@@ -208,7 +208,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
                 let mut new_cap = src_cap.clone();
                 new_cap.rights &= rights;
                 if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
-                    errcode::NO_ERROR
+                    errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
                 }
@@ -222,7 +222,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode::delete_recursive(slot_addr);
-                errcode::NO_ERROR
+                errcode::SUCCESS
             } else {
                 errcode::INVALID_SLOT
             }
@@ -233,7 +233,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &[usize]) -> usi
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode::revoke_recursive(slot_addr);
-                errcode::NO_ERROR
+                errcode::SUCCESS
             } else {
                 errcode::INVALID_SLOT
             }
@@ -326,7 +326,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                         return errcode::INVALID_SLOT;
                     }
                 }
-                errcode::NO_ERROR
+                errcode::SUCCESS
             } else {
                 errcode::INVALID_OBJ_TYPE
             }
@@ -345,7 +345,7 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
                 // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
                     irq::bind_notification(irq, ep_cap.clone());
-                    errcode::NO_ERROR
+                    errcode::SUCCESS
                 } else {
                     errcode::INVALID_OBJ_TYPE
                 }
@@ -357,18 +357,18 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
             // Ack: acknowledge handled IRQ and unmask
             let hartid = hart::getid();
             irq::ack_irq(hartid, irq);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         irqmethod::CLEAR_BINDING => {
             // Clear binding
             irq::clear_notification(irq);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority
             let priority = args[0];
             irq::plic::set_priority(irq, priority);
-            errcode::NO_ERROR
+            errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,
     }
