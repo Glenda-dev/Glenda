@@ -1,5 +1,5 @@
-use super::super::vector;
-use super::super::{TrapContext, TrapFrame};
+use super::vector;
+use super::{TrapContext, TrapFrame};
 use crate::mem::{PGSIZE, VA_MAX};
 use crate::proc;
 use crate::syscall;

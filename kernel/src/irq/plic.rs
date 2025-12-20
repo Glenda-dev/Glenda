@@ -1,12 +1,9 @@
-#![allow(dead_code)]
+use crate::dtb;
 use core::ptr::{read_volatile, write_volatile};
-
-pub const VIRTIO0_IRQ: usize = 1;
-pub const UART_IRQ: usize = 10; // UART IRQ number, adjust as needed
 
 #[inline(always)]
 fn plic_base() -> usize {
-    crate::dtb::plic_base().expect("PLIC base not found in DTB")
+    dtb::plic_base().expect("PLIC base not found in DTB")
 }
 
 #[inline(always)]

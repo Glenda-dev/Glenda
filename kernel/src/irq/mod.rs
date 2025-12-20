@@ -1,10 +1,6 @@
-pub mod interrupt;
 pub mod plic;
-pub mod timer;
-pub mod trap;
-pub mod vector;
-pub use trap::{TrapContext, TrapFrame};
 
+use crate::cap;
 use crate::cap::Capability;
 use crate::ipc;
 use crate::printk;
@@ -12,19 +8,15 @@ use alloc::vec::Vec;
 use core::default::Default;
 use spin::{Mutex, Once};
 
-const MAX_IRQS: usize = 1024;
+const MAX_IRQS: usize = 64;
 
 pub fn init() {
     // 初始化 IRQ 表与定时器
     init_table();
-    timer::create();
     printk!("irq: Initialized global IRQs\n");
 }
 
 pub fn init_hart(hartid: usize) {
-    vector::init();
-    // 启用 S-mode 中断
-    interrupt::enable_s();
     // 设置 PLIC 阈值为 0，允许所有优先级 > 0 的中断
     plic::set_threshold_s(hartid, 0);
     printk!("irq: Initialized for hart {}\n", hartid);
@@ -92,9 +84,9 @@ pub fn handle_claimed(hartid: usize, id: usize) {
 
     if let Some(cap) = &tbl[id].notification {
         // 如果绑定了 Endpoint，直接通知（使用 badge，如果没有则 0）
-        if let crate::cap::CapType::Endpoint { ep_ptr } = cap.object {
+        if let cap::CapType::Endpoint { ep_ptr } = cap.object {
             let badge = cap.badge.unwrap_or(0usize);
-            let ep = unsafe { &mut *(ep_ptr as *mut crate::ipc::Endpoint) };
+            let ep = unsafe { &mut *(ep_ptr as *mut ipc::Endpoint) };
             ipc::notify(ep, badge);
         }
     }

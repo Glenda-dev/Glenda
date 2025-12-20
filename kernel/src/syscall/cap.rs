@@ -1,6 +1,6 @@
 use crate::cap::{invoke, rights};
-use crate::irq::TrapContext;
 use crate::proc;
+use crate::trap::TrapContext;
 
 /// 系统调用入口：sys_invoke
 ///

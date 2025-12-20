@@ -1,8 +1,8 @@
 use super::ProcContext;
 use crate::cap::{CapType, Capability};
-use crate::irq::TrapFrame;
 use crate::mem::PGSIZE;
 use crate::mem::{KernelStack, PhysAddr, PhysFrame, VSpace, VirtAddr};
+use crate::trap::TrapFrame;
 use alloc::collections::VecDeque;
 use core::mem::size_of;
 use core::sync::atomic::{AtomicUsize, Ordering};

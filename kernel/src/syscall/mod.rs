@@ -1,6 +1,6 @@
-use crate::irq::TrapContext;
 use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
+use crate::trap::TrapContext;
 
 pub mod cap;
 pub mod ipc;

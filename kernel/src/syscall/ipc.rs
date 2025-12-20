@@ -1,7 +1,7 @@
 use crate::ipc;
 use crate::ipc::Endpoint;
-use crate::irq::TrapContext;
 use crate::proc;
+use crate::trap::TrapContext;
 
 pub fn sys_send(ctx: &mut TrapContext) -> usize {
     let cptr = ctx.a0;

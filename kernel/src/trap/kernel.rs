@@ -1,11 +1,11 @@
-use super::super::TrapContext;
-use super::super::interrupt;
-use super::super::plic;
-use super::super::timer;
+use super::TrapContext;
+use super::info::{EXCEPTION_INFO, INTERRUPT_INFO};
+use super::interrupt;
+use super::timer;
 use super::user;
-use super::{EXCEPTION_INFO, INTERRUPT_INFO};
 use crate::hart;
 use crate::irq;
+use crate::irq::plic;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc;
