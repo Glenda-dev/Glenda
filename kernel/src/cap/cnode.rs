@@ -155,3 +155,41 @@ impl CNode {
         }
     }
 }
+
+pub fn revoke_recursive(slot_addr: PhysAddr) {
+    let slot = unsafe { &mut *(slot_addr as *mut Slot) };
+    let mut child_addr = slot.cdt.first_child;
+    while child_addr != 0 {
+        let next_sibling = unsafe { (*(child_addr as *mut Slot)).cdt.next_sibling };
+        delete_recursive(child_addr);
+        child_addr = next_sibling;
+    }
+    slot.cdt.first_child = 0;
+}
+
+pub fn delete_recursive(slot_addr: PhysAddr) {
+    // 1. 递归撤销所有子能力
+    revoke_recursive(slot_addr);
+
+    // 2. 从 CDT 兄弟链表中移除
+    unsafe {
+        let slot = &mut *(slot_addr as *mut Slot);
+        let prev = slot.cdt.prev_sibling;
+        let next = slot.cdt.next_sibling;
+        let parent = slot.cdt.parent;
+
+        if prev != 0 {
+            (*(prev as *mut Slot)).cdt.next_sibling = next;
+        } else if parent != 0 {
+            (*(parent as *mut Slot)).cdt.first_child = next;
+        }
+
+        if next != 0 {
+            (*(next as *mut Slot)).cdt.prev_sibling = prev;
+        }
+
+        // 3. 清空槽位 (触发 Capability::drop)
+        slot.cap = Capability::empty();
+        slot.cdt = CDTNode::new();
+    }
+}

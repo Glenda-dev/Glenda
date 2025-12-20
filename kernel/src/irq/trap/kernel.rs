@@ -106,7 +106,8 @@ pub fn external_handler() {
     match id {
         0 => return,
         _ => {
-            panic!("Unexpected interrupt id {} on hart {}", id, hartid);
+            // Delegate to irq manager to notify bound endpoint and complete
+            crate::irq::handle_claimed(hartid, id);
         }
     }
 }

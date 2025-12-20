@@ -179,18 +179,77 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
 }
 
 impl ProcPayload {
-    // TODO: parse ELF to get entry point and stack top
+    /// 简单的 ELF 解析 (Sv39)
     pub fn info(&self) -> (usize, usize) {
-        unimplemented!();
-        // For simplicity, assume the payload data is an ELF binary
-        // and we can extract entry point and stack top from it.
-        // Here we just return dummy values for illustration.
-        let entry_point = 0x80200000; // Example entry point
-        let stack_top = 0x80400000; // Example stack top
-        (entry_point, stack_top)
+        if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
+            return (0, 0);
+        }
+        // Entry point at offset 24 (64-bit ELF)
+        let entry = u64::from_le_bytes(self.data[24..32].try_into().unwrap()) as usize;
+        
+        // 默认栈顶 (Sv39 用户空间高地址)
+        let stack_top = 0x4000000000; 
+        (entry, stack_top)
     }
-    // TODO: implement segment mapping
+
+    /// 遍历 ELF Program Headers 并映射 LOAD 段
     pub fn map_segments(&self, vspace: &mut crate::mem::PageTable) {
-        unimplemented!();
+        if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
+            return;
+        }
+        let phoff = u64::from_le_bytes(self.data[32..40].try_into().unwrap()) as usize;
+        let phnum = u16::from_le_bytes(self.data[56..58].try_into().unwrap()) as usize;
+        let phentsize = u16::from_le_bytes(self.data[54..56].try_into().unwrap()) as usize;
+
+        for i in 0..phnum {
+            let off = phoff + i * phentsize;
+            let p_type = u32::from_le_bytes(self.data[off..off+4].try_into().unwrap());
+            if p_type == 1 { // PT_LOAD
+                let p_offset = u64::from_le_bytes(self.data[off+8..off+16].try_into().unwrap()) as usize;
+                let p_vaddr = u64::from_le_bytes(self.data[off+16..off+24].try_into().unwrap()) as usize;
+                let p_filesz = u64::from_le_bytes(self.data[off+32..off+40].try_into().unwrap()) as usize;
+                let p_memsz = u64::from_le_bytes(self.data[off+40..off+48].try_into().unwrap()) as usize;
+                let p_flags = u32::from_le_bytes(self.data[off+4..off+8].try_into().unwrap());
+
+                let mut flags = pte::PTE_U | pte::PTE_V;
+                if p_flags & 1 != 0 { flags |= pte::PTE_X; }
+                if p_flags & 2 != 0 { flags |= pte::PTE_W; }
+                if p_flags & 4 != 0 { flags |= pte::PTE_R; }
+
+                let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;
+                for j in 0..num_pages {
+                    let mut frame = PhysFrame::alloc().expect("Failed to alloc frame for segment");
+                    frame.zero();
+                    
+                    let va = p_vaddr + j * PGSIZE;
+                    let copy_size = if (j + 1) * PGSIZE <= p_filesz {
+                        PGSIZE
+                    } else if j * PGSIZE < p_filesz {
+                        p_filesz - j * PGSIZE
+                    } else {
+                        0
+                    };
+
+                    if copy_size > 0 {
+                        let src = &self.data[p_offset + j * PGSIZE .. p_offset + j * PGSIZE + copy_size];
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(src.as_ptr(), frame.va() as *mut u8, copy_size);
+                        }
+                    }
+
+                    // 建立中间页表 (如果需要)
+                    // 注意：vspace.map 假设中间页表已存在，所以我们需要先 map_table
+                    // 这里简化处理，假设 root task 的代码段在同一个 1GB/2MB 范围内
+                    // 或者我们应该在 map 内部自动处理 (但微内核原则是不自动处理)
+                    // 为了 Root Task 启动，我们在这里手动处理一下
+                    for level in (1..3).rev() {
+                        let _ = vspace.map_table(va, PhysFrame::alloc().unwrap().leak(), level);
+                    }
+
+                    vspace.map(va, frame.addr(), PGSIZE, flags).expect("Failed to map segment");
+                    frame.leak();
+                }
+            }
+        }
     }
 }

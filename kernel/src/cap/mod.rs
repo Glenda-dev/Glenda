@@ -1,5 +1,6 @@
 pub mod capability;
 pub mod cnode;
+pub mod invoke;
 
 pub use capability::Capability;
 pub use cnode::CNode;

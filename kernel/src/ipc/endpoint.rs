@@ -15,6 +15,9 @@ pub struct Endpoint {
 
     /// 等待接收的线程队列
     pub recv_queue: VecDeque<*mut TCB>,
+
+    /// 内核层面的 pending 通知队列（用于 IRQ 通知等，无消息体，仅 badge）
+    pub pending_notifs: VecDeque<usize>,
 }
 
 impl Endpoint {
@@ -23,6 +26,7 @@ impl Endpoint {
             ref_count: AtomicUsize::new(1), // 初始引用计数为 1 (创建者持有)
             send_queue: VecDeque::new(),
             recv_queue: VecDeque::new(),
+            pending_notifs: VecDeque::new(),
         }
     }
 }

@@ -73,11 +73,31 @@ pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize) {
     }
 }
 
+/// 内核层面的通知（用于 IRQ 等），仅传递 badge
+pub fn notify(ep: &mut Endpoint, badge: usize) {
+    // 如果有接收者在等，直接交付并唤醒
+    if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
+        let receiver = unsafe { &mut *receiver_ptr };
+        receiver.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+        scheduler::wake_up(receiver);
+    } else {
+        // 否则把通知放入 pending 队列，等待将来 recv
+        ep.pending_notifs.push_back(badge);
+    }
+}
+
 /// 接收操作 (sys_recv)
 ///
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
+    // 0. 检查是否有内核 pending 通知（例如 IRQ）
+    if let Some(badge) = ep.pending_notifs.pop_front() {
+        // 将 badge 放到接收者上下文并返回（无数据拷贝）
+        current.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+        return;
+    }
+
     // 1. 检查是否有发送者在等待
     if let Some((sender_ptr, badge)) = ep.send_queue.pop_front() {
         let sender = unsafe { &mut *sender_ptr };
