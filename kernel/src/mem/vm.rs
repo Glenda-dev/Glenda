@@ -1,7 +1,6 @@
 use super::PGSIZE;
-use super::pte;
-use super::pte::{PTE_A, PTE_D, PTE_R, PTE_V, PTE_W, PTE_X, pa_to_pte, pte_to_pa};
-use super::{PageTable, PhysAddr, PhysFrame, VirtAddr};
+use super::pte::perms;
+use super::{PageTable, PhysAddr, PhysFrame, Pte, PteFlags, VirtAddr};
 use crate::dtb;
 use crate::printk;
 use crate::printk::uart;
@@ -35,7 +34,7 @@ unsafe fn boot_map(
     va_start: VirtAddr,
     pa_start: PhysAddr,
     size: usize,
-    flags: usize,
+    flags: PteFlags,
 ) {
     let start = va_start.align_down(PGSIZE);
     let end = (va_start + size).align_up(PGSIZE);
@@ -49,7 +48,7 @@ unsafe fn boot_map(
             let idx = va.vpn()[level].as_usize();
             let entry = unsafe { &mut (*table).entries[idx] };
 
-            if !pte::is_valid(*entry) {
+            if !entry.is_valid() {
                 // 分配新的页表页
                 let frame = PhysFrame::alloc().expect("Boot OOM: Failed to allocate page table");
                 // pmem::allocate 已经清零了内存，这里不需要再次 zero()
@@ -57,11 +56,11 @@ unsafe fn boot_map(
                 let frame_pa = frame.leak();
 
                 // 建立中间层级映射 (V=1, 无 R/W/X)
-                *entry = pa_to_pte(frame_pa, PTE_V);
+                *entry = Pte::from(frame_pa, PteFlags::from(perms::VALID));
             }
 
             // 进入下一级
-            let next_pa = pte_to_pa(*entry);
+            let next_pa = entry.pa();
             // 在恒等映射模式下，物理地址即为内核虚拟地址
             let next_va = next_pa.to_va();
             table = next_va.as_mut::<PageTable>();
@@ -72,7 +71,7 @@ unsafe fn boot_map(
 
         let pte_ptr = unsafe { &mut (*table).entries[idx] };
         // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
-        *pte_ptr = pa_to_pte(pa, flags | PTE_V);
+        *pte_ptr = Pte::from(pa, flags | perms::VALID);
         va += PGSIZE;
         pa += PGSIZE;
     }
@@ -88,7 +87,13 @@ pub fn init_kernel_vm(hartid: usize) {
     printk!("vm: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
     let mem_start = PhysAddr::from(mem.start);
     unsafe {
-        boot_map(&mut kpt, mem_start.to_va(), mem_start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
+        boot_map(
+            &mut kpt,
+            mem_start.to_va(),
+            mem_start,
+            mem.size,
+            PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+        );
     }
 
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
@@ -101,7 +106,7 @@ pub fn init_kernel_vm(hartid: usize) {
             text_start.to_va(),
             text_start,
             (text_end - text_start).as_usize(),
-            PTE_R | PTE_X | PTE_A,
+            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED),
         );
     }
 
@@ -114,7 +119,7 @@ pub fn init_kernel_vm(hartid: usize) {
             rodata_start.to_va(),
             rodata_start,
             (rodata_end - rodata_start).as_usize(),
-            PTE_R | PTE_A,
+            PteFlags::from(perms::READ | perms::ACCESSED),
         );
     }
 
@@ -125,14 +130,26 @@ pub fn init_kernel_vm(hartid: usize) {
     let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
     printk!("vm: Map TRAMPOLINE\n");
     unsafe {
-        boot_map(&mut kpt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+        boot_map(
+            &mut kpt,
+            tramp_va,
+            tramp_pa,
+            PGSIZE,
+            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED),
+        );
     }
 
     // 4. 映射 MMIO (UART, PLIC)
     let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
     printk!("vm: Map UART\n");
     unsafe {
-        boot_map(&mut kpt, uart_base.to_va(), uart_base, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+        boot_map(
+            &mut kpt,
+            uart_base.to_va(),
+            uart_base,
+            PGSIZE,
+            PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+        );
     }
 
     if let Some(plic_base) = dtb::plic_base() {
@@ -140,7 +157,13 @@ pub fn init_kernel_vm(hartid: usize) {
         printk!("vm: Map PLIC\n");
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
-            boot_map(&mut kpt, plic_pa.to_va(), plic_pa, 0x3000, PTE_R | PTE_W | PTE_A | PTE_D);
+            boot_map(
+                &mut kpt,
+                plic_pa.to_va(),
+                plic_pa,
+                0x3000,
+                PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+            );
         }
     }
 

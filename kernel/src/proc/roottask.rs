@@ -6,8 +6,8 @@ use crate::cap::Capability;
 use crate::cap::rights;
 use crate::ipc::UTCB_VA;
 use crate::mem::pmem;
-use crate::mem::pte;
-use crate::mem::{PGSIZE, PageTable, PhysFrame};
+use crate::mem::pte::perms;
+use crate::mem::{PGSIZE, PageTable, PhysFrame, PteFlags};
 use crate::printk;
 
 /// 初始化进程子系统并创建 Root Task
@@ -31,7 +31,7 @@ pub fn init() {
     let utcb_base = UTCB_VA;
     // 映射 UTCB 到固定位置
     vspace
-        .map(utcb_base, root_utcb_frame.addr(), PGSIZE, pte::PTE_R | pte::PTE_W)
+        .map(utcb_base, root_utcb_frame.addr(), PGSIZE, PteFlags::from(perms::READ | perms::WRITE))
         .expect("Failed to map UTCB");
 
     // 4. 构建 Root CSpace (CNode)

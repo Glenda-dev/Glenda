@@ -1,5 +1,5 @@
-use crate::mem::pte;
-use crate::mem::{PGSIZE, PhysFrame, VirtAddr};
+use crate::mem::pte::perms;
+use crate::mem::{PGSIZE, PhysFrame, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use alloc::vec::Vec;
@@ -216,15 +216,15 @@ impl ProcPayload {
                     u64::from_le_bytes(self.data[off + 40..off + 48].try_into().unwrap()) as usize;
                 let p_flags = u32::from_le_bytes(self.data[off + 4..off + 8].try_into().unwrap());
 
-                let mut flags = pte::PTE_U | pte::PTE_V;
-                if p_flags & 1 != 0 {
-                    flags |= pte::PTE_X;
+                let mut flags = PteFlags::from(perms::USER | perms::VALID);
+                if p_flags & perms::EXECUTE as u32 != 0 {
+                    flags |= perms::EXECUTE;
                 }
-                if p_flags & 2 != 0 {
-                    flags |= pte::PTE_W;
+                if p_flags & perms::WRITE as u32 != 0 {
+                    flags |= perms::WRITE;
                 }
-                if p_flags & 4 != 0 {
-                    flags |= pte::PTE_R;
+                if p_flags & perms::READ as u32 != 0 {
+                    flags |= perms::READ;
                 }
 
                 let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;

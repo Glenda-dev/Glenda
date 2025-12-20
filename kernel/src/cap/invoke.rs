@@ -2,11 +2,11 @@ use crate::cap::cnode;
 use crate::cap::{CNode, CapType, Capability, rights};
 use crate::hart;
 use crate::ipc;
-use crate::ipc::Endpoint;
 use crate::irq;
-use crate::mem::PGSIZE;
-use crate::mem::{self, PageTable, PhysAddr, VirtAddr};
-use crate::proc::{self, TCB, scheduler};
+use crate::mem;
+use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::proc;
+use crate::proc::{TCB, scheduler};
 use core::mem::size_of;
 
 pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
@@ -22,10 +22,10 @@ pub fn dispatch(cap: &Capability, method: usize, args: &[usize]) -> usize {
     }
 }
 
-// --- IPC Endpoint Methods ---
+// --- IPC ipc::Endpoint Methods ---
 
 fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &[usize]) -> usize {
-    let ep = ep_ptr.as_mut::<Endpoint>();
+    let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = proc::current();
     match method {
         // Send
@@ -101,7 +101,7 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &[usize]) -> usize {
                     tcb.fault_handler = Some(cap);
                     0
                 } else {
-                    2 // Error: Not an Endpoint
+                    2 // Error: Not an ipc::Endpoint
                 }
             } else {
                 1 // Error: Invalid Cap
@@ -152,10 +152,7 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &[usize]) -> usize {
             // 假设 args[0] 已经是 paddr (简化)
             let paddr = PhysAddr::from(args[0]);
             let vaddr = VirtAddr::from(args[1]);
-            let flags = args[2];
-
-            // 转换 flags 为 PTE flags
-            // ...
+            let flags = PteFlags::from(args[2]);
 
             // 执行映射
             // pt.map(vaddr, paddr, flags)
@@ -294,13 +291,13 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &[usize]) -
                             unsafe { tcb_ptr.write(TCB::new()) };
                             Capability::create_thread(obj_vaddr, rights::ALL)
                         }
-                        // Endpoint
+                        // ipc::Endpoint
                         3 => {
-                            if obj_size < size_of::<Endpoint>() {
+                            if obj_size < size_of::<ipc::Endpoint>() {
                                 return 9;
                             }
-                            let ep_ptr = obj_vaddr.as_mut_ptr::<Endpoint>();
-                            unsafe { ep_ptr.write(Endpoint::new()) };
+                            let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
+                            unsafe { ep_ptr.write(ipc::Endpoint::new()) };
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
                         // Frame
@@ -338,7 +335,7 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
             let ep_cptr = args[0];
             let current = proc::current();
             if let Some(ep_cap) = current.cap_lookup(ep_cptr) {
-                // Only accept Endpoint caps
+                // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
                     irq::bind_notification(irq, ep_cap.clone());
                     0

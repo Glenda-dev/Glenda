@@ -1,10 +1,11 @@
-use super::pte::{self, pa_to_pte, pte_to_pa};
+use crate::mem::pte::PteFlags;
+
+use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
 use super::{PhysFrame, Pte};
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
-#[derive(Clone, Copy)]
 pub struct PageTable {
     pub entries: [Pte; PGNUM],
 }
@@ -12,7 +13,7 @@ pub struct PageTable {
 impl PageTable {
     /// 创建一个新的空页表 (仅用于初始化)
     pub const fn new() -> Self {
-        PageTable { entries: [0; PGNUM] }
+        PageTable { entries: [Pte::null(); PGNUM] }
     }
 
     /// 从物理帧获取页表的可变引用
@@ -38,20 +39,20 @@ impl PageTable {
             let idx = va.vpn()[level].as_usize();
             let pte_val = table.entries[idx];
 
-            if !pte::is_valid(pte_val) {
+            if !pte_val.is_valid() {
                 // 中间页表不存在，直接返回 None
                 // 在微内核中，这意味着用户必须先 Map 一个 PageTable 到这个位置
                 return None;
             }
 
-            if pte::is_leaf(pte_val) {
+            if pte_val.is_leaf() {
                 // 遇到大页 (Huge Page)，直接返回该 PTE
                 // 注意：调用者需要知道这是一个大页 PTE
                 return Some(&mut table.entries[idx] as *mut Pte);
             }
 
             // 进入下一级页表
-            let next_pa = pte_to_pa(pte_val);
+            let next_pa = pte_val.pa();
             let next_va = next_pa.to_va();
             table = next_va.as_mut::<PageTable>();
         }
@@ -69,7 +70,13 @@ impl PageTable {
     ///
     /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
     /// 用户必须先调用 map_table 来建立中间层级。
-    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: usize) -> Result<(), ()> {
+    pub fn map(
+        &mut self,
+        va: VirtAddr,
+        pa: PhysAddr,
+        size: usize,
+        flags: PteFlags,
+    ) -> Result<(), ()> {
         let start_va = va.align_down(PGSIZE);
         let end_va = (va + size).align_up(PGSIZE);
 
@@ -81,12 +88,12 @@ impl PageTable {
             unsafe {
                 let old_pte = *pte_ptr;
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
-                if pte::is_valid(old_pte) && (pte_to_pa(old_pte) != current_pa) {
+                if old_pte.is_valid() && (old_pte.pa() != current_pa) {
                     return Err(());
                 }
 
                 // 写入新的 PTE
-                *pte_ptr = pa_to_pte(current_pa, flags | pte::PTE_V);
+                *pte_ptr = Pte::from(current_pa, flags | perms::VALID);
             }
 
             current_va += PGSIZE;
@@ -111,7 +118,7 @@ impl PageTable {
             if let Some(pte_ptr) = self.walk(current_va) {
                 unsafe {
                     // 无论之前是否有效，直接清零
-                    *pte_ptr = 0;
+                    *pte_ptr = Pte::null();
                 }
             }
             current_va += PGSIZE;
@@ -134,10 +141,10 @@ impl PageTable {
         for l in ((level + 1)..3).rev() {
             let idx = va.vpn()[l].as_usize();
             let pte_val = table.entries[idx];
-            if !pte::is_valid(pte_val) || pte::is_leaf(pte_val) {
+            if !pte_val.is_valid() || pte_val.is_leaf() {
                 return Err(()); // 父级页表不存在或已被大页占用
             }
-            let next_pa = pte_to_pa(pte_val);
+            let next_pa = pte_val.pa();
             let next_va = next_pa.to_va();
             table = next_va.as_mut::<PageTable>();
         }
@@ -146,11 +153,11 @@ impl PageTable {
         let idx = va.vpn()[level].as_usize();
         let pte_ptr = &mut table.entries[idx];
 
-        if pte::is_valid(*pte_ptr) {
+        if pte_ptr.is_valid() {
             return Err(()); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
-        *pte_ptr = pa_to_pte(table_pa, pte::PTE_V);
+        *pte_ptr = Pte::from(table_pa, PteFlags::from(perms::VALID));
 
         Ok(())
     }
