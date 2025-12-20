@@ -31,7 +31,19 @@ fn invoke_ipc(ep_ptr: usize, _cap: &Capability, method: usize, args: &[usize]) -
         // Send
         1 => {
             let msg_info = args[0];
-            ipc::send(tcb, ep, msg_info);
+            // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
+            let mut cap_to_send = None;
+            let tag = ipc::MsgTag(msg_info);
+            if tag.has_cap() {
+                if let Some(utcb) = tcb.get_utcb() {
+                    if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+                        if (cap.rights & rights::GRANT) != 0 {
+                            cap_to_send = Some(cap);
+                        }
+                    }
+                }
+            }
+            ipc::send(tcb, ep, msg_info, cap_to_send);
             0
         }
         // Receive
@@ -51,9 +63,52 @@ fn invoke_tcb(tcb_ptr: usize, method: usize, args: &[usize]) -> usize {
         // Configure: (cspace, vspace, utcb, fault_ep)
         // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr]
         1 => {
-            // 注意：这里传递的是 CPTR，内核需要再次查找这些 Cap 对应的内核对象
-            // 这是一个简化的实现，实际需要验证这些 Cap 的有效性
-            unimplemented!()
+            let cspace_cptr = args[0];
+            let vspace_cptr = args[1];
+            let utcb_addr = args[2];
+            let fault_ep_cptr = args[3];
+
+            let current = proc::current();
+            
+            // 查找并验证能力
+            let cspace_cap = current.cap_lookup(cspace_cptr);
+            let vspace_cap = current.cap_lookup(vspace_cptr);
+            let fault_cap = if fault_ep_cptr != 0 {
+                current.cap_lookup(fault_ep_cptr)
+            } else {
+                None
+            };
+
+            // 简化的配置逻辑
+            if let (Some(cs), Some(vs)) = (cspace_cap, vspace_cap) {
+                // 实际实现中需要更严格的类型检查
+                tcb.cspace_root = cs;
+                tcb.vspace_root = vs;
+                tcb.utcb_base = utcb_addr;
+                tcb.fault_handler = fault_cap;
+                0
+            } else {
+                1 // Error: Invalid Cap
+            }
+        }
+        // SetFaultHandler: (fault_ep_cptr)
+        4 => {
+            let fault_ep_cptr = args[0];
+            let current = proc::current();
+            if fault_ep_cptr == 0 {
+                tcb.fault_handler = None;
+                return 0;
+            }
+            if let Some(cap) = current.cap_lookup(fault_ep_cptr) {
+                if let CapType::Endpoint { .. } = cap.object {
+                    tcb.fault_handler = Some(cap);
+                    0
+                } else {
+                    2 // Error: Not an Endpoint
+                }
+            } else {
+                1 // Error: Invalid Cap
+            }
         }
         // SetPriority: (prio)
         2 => {

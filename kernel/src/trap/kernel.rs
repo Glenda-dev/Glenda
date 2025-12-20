@@ -68,7 +68,7 @@ fn exception_handler(
             let badge = handler_cap.badge.unwrap_or(0);
 
             // 3. 执行发送 (这会阻塞当前线程)
-            ipc::send(tcb, ep, badge);
+            ipc::send(tcb, ep, badge, None);
         } else {
             panic!("Fault handler is not an Endpoint");
         }

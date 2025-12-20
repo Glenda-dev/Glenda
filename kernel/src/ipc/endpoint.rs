@@ -9,9 +9,8 @@ pub struct Endpoint {
     pub ref_count: AtomicUsize,
 
     /// 等待发送的线程队列
-    /// 存储元组: (线程指针, Badge)
-    /// Badge 是发送者使用的 Capability 携带的身份标识
-    pub send_queue: VecDeque<(*mut TCB, usize)>,
+    /// 存储元组: (线程指针, Badge, 可选的待传递能力)
+    pub send_queue: VecDeque<(*mut TCB, usize, Option<crate::cap::Capability>)>,
 
     /// 等待接收的线程队列
     pub recv_queue: VecDeque<*mut TCB>,
