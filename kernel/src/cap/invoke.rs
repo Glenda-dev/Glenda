@@ -359,7 +359,7 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &[usize]) -> usize {
             irq::ack_irq(hartid, irq);
             errcode::SUCCESS
         }
-        irqmethod::CLEAR_BINDING => {
+        irqmethod::CLEAR_NOTIFICATION => {
             // Clear binding
             irq::clear_notification(irq);
             errcode::SUCCESS
