@@ -54,28 +54,27 @@ unsafe fn boot_map(
 
             if !pte::is_valid(*entry) {
                 // 分配新的页表页
-                let mut frame =
-                    PhysFrame::alloc().expect("Boot OOM: Failed to allocate page table");
-                frame.zero(); // 必须清零
+                let frame = PhysFrame::alloc().expect("Boot OOM: Failed to allocate page table");
+                // pmem::allocate 已经清零了内存，这里不需要再次 zero()
+                // 必须 leak，否则 frame 在作用域结束时会被释放，导致页表损坏
+                let frame_pa = frame.leak();
 
                 // 建立中间层级映射 (V=1, 无 R/W/X)
-                *entry = pa_to_pte(frame.addr(), PTE_V);
+                *entry = pa_to_pte(frame_pa, PTE_V);
             }
 
             // 进入下一级
             let next_pa = pte_to_pa(*entry);
             // 在恒等映射模式下，物理地址即为内核虚拟地址
             let next_va = addr::phys_to_virt(PhysAddr::from(next_pa));
-            table = &mut *(next_va as *mut PageTable);
+            table = unsafe { &mut *(next_va as *mut PageTable) };
         }
 
         // 设置最后一级 PTE
         let idx = vpn(VirtAddr::from(va))[0];
 
         let pte_ptr = unsafe { &mut (*table).entries[idx] };
-        if pte::is_valid(*pte_ptr) {
-            panic!("boot_map: remap va {:#x}!", va);
-        }
+        // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
         *pte_ptr = pa_to_pte(PhysAddr::from(pa), flags | PTE_V);
 
         va += PGSIZE;
@@ -89,11 +88,10 @@ pub fn init_kernel_vm(hartid: usize) {
     // 1. 映射所有物理内存 (Identity Mapping)
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
-    if let Some(mem) = dtb::memory_range() {
-        printk!("VM: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
-        unsafe {
-            boot_map(&mut kpt, mem.start, mem.start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
-        }
+    let mem = dtb::memory_range().expect("Memory range not found in DTB");
+    printk!("VM: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
+    unsafe {
+        boot_map(&mut kpt, mem.start, mem.start, mem.size, PTE_R | PTE_W | PTE_A | PTE_D);
     }
 
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
@@ -132,7 +130,7 @@ pub fn init_kernel_vm(hartid: usize) {
         printk!("VM: Map PLIC\n");
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
-            boot_map(&mut kpt, plic_base, plic_base, 0x400000, PTE_R | PTE_W | PTE_A | PTE_D);
+            boot_map(&mut kpt, plic_base, plic_base, 0x3000, PTE_R | PTE_W | PTE_A | PTE_D);
         }
     }
 

@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 use spin::Mutex;
 
 use super::super::PGSIZE;
-use crate::mem::pmem;
+use crate::mem::PhysFrame;
 
 const HEADER_SIZE: usize = size_of::<AllocHeader>();
 const MIN_NODE_SIZE: usize = size_of::<ListNode>();
@@ -189,7 +189,7 @@ unsafe impl GlobalAlloc for ChainAllocator {
                 return ptr;
             }
 
-            let region_pa = pmem::alloc() as usize;
+            let region_pa = PhysFrame::alloc().map(|f| f.leak()).unwrap_or(0);
             if region_pa == 0 {
                 return core::ptr::null_mut();
             }

@@ -131,10 +131,10 @@ static KERNEL_REGION: BootAllocRegion = BootAllocRegion::new();
 static USER_REGION: Once<UntypedRegion> = Once::new();
 
 pub fn initialize_regions(hartid: usize) {
-    let mem_range = dtb::memory_range()
-        .unwrap_or_else(|| dtb::MemoryRange { start: 0x8000_0000, size: 128 * 1024 * 1024 });
+    let mem_range = dtb::memory_range().expect("Memory range not found in DTB");
     let mem_end = mem_range.start + mem_range.size;
     let alloc_begin = addr_of_mut!(__alloc_start) as PhysAddr;
+    printk!("pmem: Physical Memory Range: [{:#x}, {:#x})\n", mem_range.start, mem_end);
 
     // 划分内核保留区和用户 Untyped 区
     let mut kernel_split = align_up(alloc_begin + KERN_PAGES * PGSIZE);
@@ -163,16 +163,17 @@ pub fn initialize_regions(hartid: usize) {
     );
 }
 
-/// [Internal] 仅供 PhysFrame::alloc 使用
-pub(super) fn alloc() -> *mut u8 {
-    KERNEL_REGION.allocate().expect("Kernel Boot Memory Exhausted")
+/// 分配一个物理页，仅供 PhysFrame 使用
+pub(super) fn alloc_frame() -> Option<PhysAddr> {
+    KERNEL_REGION.allocate().map(|p| p as PhysAddr)
 }
 
-pub(super) fn free(pa: PhysAddr) {
+/// 释放一个物理页，仅供 PhysFrame 使用
+pub(super) fn free_frame(pa: PhysAddr) {
     KERNEL_REGION.free(pa).expect("Free Failed: Address not in kernel region");
 }
 
-pub fn get_untyped_regions() -> impl Iterator<Item = UntypedRegion> {
+pub fn get_untyped() -> UntypedRegion {
     // TODO: 目前只有一个大的连续区域，未来可能有多个碎片
-    USER_REGION.get().cloned().into_iter()
+    USER_REGION.get().cloned().expect("Untyped region not initialized")
 }

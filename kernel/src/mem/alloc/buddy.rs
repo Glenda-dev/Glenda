@@ -1,4 +1,4 @@
-use crate::mem::pmem;
+use crate::mem::PhysFrame;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::{max, min};
 use core::mem::size_of;
@@ -100,7 +100,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
             }
         }
 
-        let page = pmem::alloc();
+        let page = PhysFrame::alloc().map(|f| f.leak() as *mut u8).unwrap_or(ptr::null_mut());
         if page.is_null() {
             return ptr::null_mut();
         }
@@ -141,7 +141,7 @@ unsafe impl GlobalAlloc for BuddyAllocator {
         }
 
         if order == MAX_ORDER {
-            pmem::free(current_ptr);
+            unsafe { PhysFrame::from_raw(current_ptr) };
         } else {
             unsafe { self.push_block(current_ptr as *mut u8, order) };
         }

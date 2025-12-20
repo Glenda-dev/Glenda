@@ -82,14 +82,15 @@ pub fn init() {
 /// 填充 Root CNode
 /// 将所有空闲物理内存作为 Untyped Capability 授予 Root Task
 fn populate_root_cnode(cnode: &mut CNode) {
-    let free_regions = pmem::get_untyped_regions();
-    let mut slot = 1; // Slot 0 通常保留
+    let free_regions = pmem::get_untyped();
+    let slot = 1; // Slot 0 通常保留
 
-    for region in free_regions {
-        let cap = Capability::create_untyped(region.start, region.end - region.start, rights::ALL);
-        cnode.insert(slot, cap);
-        slot += 1;
-    }
+    let cap = Capability::create_untyped(
+        free_regions.start,
+        free_regions.end - free_regions.start,
+        rights::ALL,
+    );
+    cnode.insert(slot, cap);
 
     // TODO: 还需要插入设备内存 (MMIO) 和 IRQ Capability
     // ...

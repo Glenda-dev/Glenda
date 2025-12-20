@@ -7,8 +7,7 @@ pub struct PhysFrame {
 
 impl PhysFrame {
     pub fn alloc() -> Option<Self> {
-        let pa = pmem::alloc() as usize;
-        if pa == 0 { None } else { Some(Self { addr: pa }) }
+        pmem::alloc_frame().map(|addr| Self { addr })
     }
     pub fn addr(&self) -> usize {
         self.addr
@@ -36,10 +35,17 @@ impl PhysFrame {
             core::ptr::write_bytes(self.as_mut_ptr::<u8>(), 0, PGSIZE);
         }
     }
+
+    /// 消耗 PhysFrame 并返回其物理地址，不触发 Drop
+    pub fn leak(self) -> usize {
+        let addr = self.addr;
+        core::mem::forget(self);
+        addr
+    }
 }
 
 impl Drop for PhysFrame {
     fn drop(&mut self) {
-        pmem::free(self.addr);
+        pmem::free_frame(self.addr);
     }
 }

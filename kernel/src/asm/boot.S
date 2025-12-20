@@ -14,9 +14,11 @@
         bgeu a0, t3, 1f
         mul  t2, t2, a0
         sub  sp, t1, t2
+        li   s0, 0            // 初始化 fp 为 0，方便 backtrace 终止
         j    2f
 1:
         mv   sp, t1
+        li   s0, 0
 2:
         tail glenda_main
     .endm
