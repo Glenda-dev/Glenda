@@ -4,7 +4,6 @@ use super::{TCB, ThreadState};
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
-use crate::ipc::UTCB_SIZE;
 use crate::ipc::UTCB_VA;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
@@ -33,7 +32,6 @@ pub fn init() {
     let root_cspace_frame = PhysFrame::alloc().expect("Failed to alloc root CSpace");
     let root_tcb_frame = PhysFrame::alloc().expect("Failed to alloc root TCB");
     let root_utcb_frame = PhysFrame::alloc().expect("Failed to alloc root UTCB");
-    let utcb_addr = root_utcb_frame.addr();
 
     // 3. 构建 Root VSpace (页表)
     // 必须映射内核空间和 Root Task 自身的代码/数据段
@@ -66,10 +64,12 @@ pub fn init() {
         2,
         rights::ALL,
     );
+    let cap_utcb = Capability::create_frame(root_utcb_frame.addr(), rights::ALL);
+
     tcb.configure(
         &cap_cspace,
         &cap_vspace,
-        root_utcb_frame,
+        Some(&cap_utcb),
         utcb_base,
         None, // Root Task 暂时没有 Fault Handler，或者指向内核默认处理
     );
@@ -82,7 +82,6 @@ pub fn init() {
     scheduler::add_thread(tcb);
 
     let cap_tcb = Capability::create_thread(root_tcb_frame.va(), rights::ALL);
-    let cap_utcb = Capability::create_untyped(utcb_addr, UTCB_SIZE, rights::ALL);
 
     // 9. 在 Root CNode 中注册 VSpace 和 CSpace 的 Capability
     let cspace = cap_cspace.obj_ptr().as_mut::<CNode>();

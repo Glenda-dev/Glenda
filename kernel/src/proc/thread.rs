@@ -1,7 +1,7 @@
 use super::ProcContext;
 use crate::cap::{CapType, Capability};
 use crate::ipc::{UTCB, UTCB_SIZE};
-use crate::mem::{KernelStack, PhysAddr, PhysFrame, VSpace, VirtAddr};
+use crate::mem::{KernelStack, PhysAddr, VSpace, VirtAddr};
 use crate::trap::TrapFrame;
 use alloc::collections::VecDeque;
 use core::mem::size_of;
@@ -53,8 +53,8 @@ pub struct TCB {
     pub ipc_partner: Option<*mut TCB>,
 
     // --- UTCB (User Thread Control Block) ---
-    pub utcb_frame: Option<PhysFrame>, // UTCB 所在的物理帧
-    pub utcb_base: VirtAddr,           // UTCB 在用户地址空间中的基址
+    pub utcb_frame: Option<Capability>, // UTCB 所在的物理帧 (以 Capability 形式存储)
+    pub utcb_base: VirtAddr,            // UTCB 在用户地址空间中的基址
 }
 
 impl TCB {
@@ -85,14 +85,14 @@ impl TCB {
         &mut self,
         cspace: &Capability,
         vspace: &Capability,
-        utcb_frame: PhysFrame,
+        utcb_frame: Option<&Capability>,
         utcb_vaddr: VirtAddr,
-        fault_ep: Option<Capability>,
+        fault_ep: Option<&Capability>,
     ) {
         self.cspace_root = cspace.clone();
         self.vspace_root = vspace.clone();
-        self.utcb_frame = Some(utcb_frame);
-        self.fault_handler = fault_ep;
+        self.utcb_frame = utcb_frame.cloned();
+        self.fault_handler = fault_ep.cloned();
         self.utcb_base = utcb_vaddr;
         // UTCB 通常包含 IPC Buffer
         self.ipc_buffer = utcb_vaddr + UTCB_SIZE;
@@ -142,8 +142,8 @@ impl TCB {
     }
 
     pub fn get_utcb(&self) -> Option<&mut UTCB> {
-        if let Some(utcb_frame) = &self.utcb_frame {
-            let vaddr = utcb_frame.va();
+        if let Some(utcb_cap) = &self.utcb_frame {
+            let vaddr = utcb_cap.obj_ptr();
             Some(vaddr.as_mut::<UTCB>())
         } else {
             None

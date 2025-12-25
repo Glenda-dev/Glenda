@@ -26,9 +26,10 @@ pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
 
 // --- IPC ipc::Endpoint Methods ---
 
-fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &Args) -> usize {
+fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) -> usize {
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let badge = cap.get_badge();
     match method {
         ipcmethod::SEND => {
             let msg_info = args[0];
@@ -44,7 +45,7 @@ fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &Args) -
                     }
                 }
             }
-            ipc::send(tcb, ep, msg_info, cap_to_send);
+            ipc::send(tcb, ep, badge, cap_to_send);
             errcode::SUCCESS
         }
         ipcmethod::RECV => {
@@ -61,28 +62,34 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
     let tcb = tcb_ptr.as_mut::<TCB>();
     match method {
         tcbmethod::CONFIGURE => {
-            // Configure: (cspace, vspace, utcb, fault_ep)
-            // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr]
+            // Configure: (cspace, vspace, utcb, fault_ep, utcb_frame)
+            // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr, utcb_frame_cptr]
             let cspace_cptr = args[0];
             let vspace_cptr = args[1];
             let utcb_addr = args[2];
             let fault_ep_cptr = args[3];
+            let utcb_frame_cptr = args[4];
 
-            let tcb =
+            let current_tcb =
                 unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
 
             // 查找并验证能力
-            let cspace_cap = tcb.cap_lookup(cspace_cptr);
-            let vspace_cap = tcb.cap_lookup(vspace_cptr);
-            let fault_cap = if fault_ep_cptr != 0 { tcb.cap_lookup(fault_ep_cptr) } else { None };
+            let cspace_cap = current_tcb.cap_lookup(cspace_cptr);
+            let vspace_cap = current_tcb.cap_lookup(vspace_cptr);
+            let fault_cap =
+                if fault_ep_cptr != 0 { current_tcb.cap_lookup(fault_ep_cptr) } else { None };
+            let utcb_frame_cap =
+                if utcb_frame_cptr != 0 { current_tcb.cap_lookup(utcb_frame_cptr) } else { None };
 
             // 简化的配置逻辑
             if let (Some(cs), Some(vs)) = (cspace_cap, vspace_cap) {
-                // 实际实现中需要更严格的类型检查
-                tcb.cspace_root = cs;
-                tcb.vspace_root = vs;
-                tcb.utcb_base = VirtAddr::from(utcb_addr);
-                tcb.fault_handler = fault_cap;
+                tcb.configure(
+                    &cs,
+                    &vs,
+                    utcb_frame_cap.as_ref(),
+                    VirtAddr::from(utcb_addr),
+                    fault_cap.as_ref(),
+                );
                 errcode::SUCCESS
             } else {
                 errcode::INVALID_CAP
