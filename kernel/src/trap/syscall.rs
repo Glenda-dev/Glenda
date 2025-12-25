@@ -1,5 +1,5 @@
 use crate::cap::{invoke, rights};
-use crate::proc;
+use crate::proc::scheduler;
 use crate::trap::TrapContext;
 
 pub type Args = [usize; 6];
@@ -20,10 +20,10 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
     let cptr = ctx.a0;
 
     // 获取当前线程
-    let current_tcb = proc::current();
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     // 1. 查找 Capability
     // 注意：这里需要从当前线程的 CSpace 中查找
-    let cap = match current_tcb.cap_lookup(cptr) {
+    let cap = match tcb.cap_lookup(cptr) {
         Some(c) => c,
         None => return errcode::INVALID_CAP, // Error: Invalid Capability
     };

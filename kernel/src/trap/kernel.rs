@@ -11,7 +11,7 @@ use crate::irq;
 use crate::irq::plic;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
-use crate::proc;
+use crate::proc::scheduler;
 use core::panic;
 use riscv::interrupt::Interrupt;
 use riscv::register::scause::Trap;
@@ -50,7 +50,7 @@ fn exception_handler(
 ) {
     // 其他同步异常交给 handle_exception 处理
     let sc = scause::read().bits();
-    let tcb = proc::current();
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
 
     if let Some(handler_cap) = tcb.fault_handler.clone() {
         // 1. 将异常详情写入 UTCB (IPC Buffer)
@@ -128,7 +128,7 @@ fn interrupt_handler(
 
 // 外设中断处理 (基于PLIC)
 pub fn external_handler() {
-    let hartid = hart::getid();
+    let hartid = hart::get().id;
     let id = plic::claim(hartid);
     match id {
         0 => return,
@@ -140,7 +140,7 @@ pub fn external_handler() {
 }
 
 pub fn timer_handler_ssip(sstatus_bits: usize) {
-    if hart::getid() == 0 {
+    if hart::get().id == 0 {
         timer::update();
     }
     unsafe {
@@ -148,17 +148,17 @@ pub fn timer_handler_ssip(sstatus_bits: usize) {
     }
 
     if (sstatus_bits & (1 << 8)) == 0 {
-        proc::scheduler::yield_proc();
+        scheduler::yield_proc();
     }
 }
 
 pub fn timer_handler_stip(sstatus_bits: usize) {
-    if hart::getid() == 0 {
+    if hart::get().id == 0 {
         timer::update();
     }
     timer::program_next_tick();
 
     if (sstatus_bits & (1 << 8)) == 0 {
-        proc::scheduler::yield_proc();
+        scheduler::yield_proc();
     }
 }

@@ -1,6 +1,7 @@
 use super::context::ProcContext;
 use super::thread::{TCB, ThreadState};
 use crate::hart;
+use crate::hart::MAX_HARTS;
 use alloc::collections::VecDeque;
 use spin::Mutex;
 
@@ -19,6 +20,8 @@ unsafe impl Sync for TcbPtr {}
 // 这里为了简化，使用全局锁保护所有队列
 static READY_QUEUES: Mutex<[VecDeque<TcbPtr>; MAX_PRIORITY]> =
     Mutex::new([const { VecDeque::new() }; MAX_PRIORITY]);
+
+static mut CURRENT_TCB: [Option<*mut TCB>; MAX_HARTS] = [None; MAX_HARTS];
 
 unsafe extern "C" {
     fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
@@ -65,16 +68,18 @@ pub fn scheduler() -> ! {
 
             // 获取当前 CPU 的 Hart 结构
             let hart = hart::get();
-            hart.proc = tcb_ptr;
+            let mut context = hart.context;
 
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
-                switch_context(&mut hart.context, &mut tcb.context);
+                switch_context(&mut context, &mut tcb.context);
             }
 
             // --- 线程返回 ---
             // 当线程被抢占或主动 yield 后，会回到这里
-            hart.proc = core::ptr::null_mut();
+            unsafe {
+                CURRENT_TCB[hart.id] = None;
+            }
         } else {
             // 没有可运行的线程，进入低功耗等待
             unsafe {
@@ -88,12 +93,11 @@ pub fn scheduler() -> ! {
 /// 主动放弃 CPU (Yield)
 /// 将当前线程放回 Ready 队列末尾，并触发调度
 pub fn yield_proc() {
-    let hart = hart::get();
-    let tcb_ptr = hart.proc;
-
-    if tcb_ptr.is_null() {
-        return;
-    }
+    let tcb_ptr = match current() {
+        Some(ptr) => ptr,
+        None => return,
+    };
+    let mut context = hart::get().context;
 
     let tcb = unsafe { &mut *tcb_ptr };
 
@@ -103,21 +107,20 @@ pub fn yield_proc() {
         add_thread(tcb); // 放回队列末尾
     }
 
-    // 切换回调度器 (hart.context)
+    // 切换回调度器 (context)
     unsafe {
-        switch_context(&mut tcb.context, &mut hart.context);
+        switch_context(&mut tcb.context, &mut context);
     }
 }
 
 /// 阻塞当前线程
 /// 线程状态必须在调用此函数前被设置为 BlockedSend / BlockedRecv / Inactive
 pub fn block_current_thread() {
-    let hart = hart::get();
-    let tcb_ptr = hart.proc;
-
-    if tcb_ptr.is_null() {
-        return;
-    }
+    let tcb_ptr = match current() {
+        Some(ptr) => ptr,
+        None => return,
+    };
+    let mut context = hart::get().context;
 
     let tcb = unsafe { &mut *tcb_ptr };
 
@@ -129,7 +132,7 @@ pub fn block_current_thread() {
 
     // 直接切换回调度器，不加入 Ready 队列
     unsafe {
-        switch_context(&mut tcb.context, &mut hart.context);
+        switch_context(&mut tcb.context, &mut context);
     }
 }
 
@@ -149,11 +152,11 @@ pub fn wake_up(tcb: &mut TCB) {
 /// 抢占当前线程，进入调度器
 /// 通常在修改线程优先级后调用
 pub fn reschedule() {
-    let hart = hart::get();
-    let tcb_ptr = hart.proc;
-    if tcb_ptr.is_null() {
-        return;
-    }
+    let tcb_ptr = match current() {
+        Some(ptr) => ptr,
+        None => return,
+    };
+    let mut context = hart::get().context;
     let tcb = unsafe { &mut *tcb_ptr };
     // 将当前线程状态设置为 Ready 并加入队列
     if tcb.state == ThreadState::Running {
@@ -162,6 +165,12 @@ pub fn reschedule() {
     }
     // 切换回调度器
     unsafe {
-        switch_context(&mut tcb.context, &mut hart.context);
+        switch_context(&mut tcb.context, &mut context);
     }
+}
+
+pub fn current() -> Option<*mut TCB> {
+    let hart = hart::get().id;
+    let tcb_ptr = unsafe { CURRENT_TCB[hart] };
+    if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
 }

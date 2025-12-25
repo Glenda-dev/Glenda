@@ -17,6 +17,7 @@ pub enum ThreadState {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct TCB {
     /// 引用计数
     pub ref_count: AtomicUsize,

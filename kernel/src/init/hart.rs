@@ -52,6 +52,6 @@ pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
 }
 
 pub fn init(hartid: usize, dtb: *const u8) {
-    hart::enable_hart(hartid);
+    hart::init(hartid);
     bootstrap_secondary_harts(hartid, dtb);
 }

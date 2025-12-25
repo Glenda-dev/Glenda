@@ -1,4 +1,3 @@
-
 use super::frame::PhysFrame;
 use super::{PGSIZE, VirtAddr};
 use alloc::vec::Vec;
@@ -42,6 +41,7 @@ impl KStackAllocator {
     }
 }
 
+#[derive(Debug)]
 pub struct KernelStack {
     base: VirtAddr,
     slot: usize,

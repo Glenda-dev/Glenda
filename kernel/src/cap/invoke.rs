@@ -29,7 +29,7 @@ pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
 
 fn invoke_ipc(ep_ptr: VirtAddr, _cap: &Capability, method: usize, args: &Args) -> usize {
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
-    let tcb = proc::current();
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     match method {
         ipcmethod::SEND => {
             let msg_info = args[0];
@@ -69,13 +69,13 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
             let utcb_addr = args[2];
             let fault_ep_cptr = args[3];
 
-            let current = proc::current();
+            let tcb =
+                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
 
             // 查找并验证能力
-            let cspace_cap = current.cap_lookup(cspace_cptr);
-            let vspace_cap = current.cap_lookup(vspace_cptr);
-            let fault_cap =
-                if fault_ep_cptr != 0 { current.cap_lookup(fault_ep_cptr) } else { None };
+            let cspace_cap = tcb.cap_lookup(cspace_cptr);
+            let vspace_cap = tcb.cap_lookup(vspace_cptr);
+            let fault_cap = if fault_ep_cptr != 0 { tcb.cap_lookup(fault_ep_cptr) } else { None };
 
             // 简化的配置逻辑
             if let (Some(cs), Some(vs)) = (cspace_cap, vspace_cap) {
@@ -165,8 +165,8 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
             let badge = if args[2] != 0 { Some(args[2]) } else { None };
             let rights = args[3] as u8;
 
-            let current_tcb = proc::current();
-            if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
+            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+            if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
                 let new_cap = src_cap.mint(rights, badge);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
@@ -183,8 +183,8 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
             let dest_slot = args[1];
             let rights = args[2] as u8;
 
-            let current_tcb = proc::current();
-            if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
+            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+            if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
                 let new_cap = src_cap.mint(rights, None);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
@@ -231,8 +231,8 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> u
             let dest_cnode_cptr = args[3];
             let dest_slot_offset = args[4];
 
-            let current_tcb = proc::current();
-            let dest_cnode_cap = match current_tcb.cap_lookup(dest_cnode_cptr) {
+            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+            let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
                 None => return errcode::INVALID_CAP,
             };
@@ -319,8 +319,10 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
         irqmethod::SET_NOTIFICATION => {
             // SetNotification: args[0] = ep_cptr
             let ep_cptr = args[0];
-            let current = proc::current();
-            if let Some(ep_cap) = current.cap_lookup(ep_cptr) {
+
+            let tcb =
+                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
+            if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
                     irq::bind_notification(irq, ep_cap.clone());
@@ -334,7 +336,7 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
-            let hartid = hart::getid();
+            let hartid = hart::get().id;
             irq::ack_irq(hartid, irq);
             errcode::SUCCESS
         }

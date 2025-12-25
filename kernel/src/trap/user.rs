@@ -2,7 +2,7 @@ use super::syscall;
 use super::vector;
 use super::{TrapContext, TrapFrame};
 use crate::mem::{PGSIZE, VA_MAX};
-use crate::proc;
+use crate::proc::scheduler;
 use core::mem;
 use riscv::register::{
     satp, sepc, sscratch, sstatus,
@@ -95,8 +95,8 @@ pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
 pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // TODO: Refactor this
     // 直接通过当前 hart 的进程状态获取 TrapFrame 的指针
-    let proc = proc::current();
-    let ctx: &mut TrapFrame = &mut *proc.get_trapframe().expect("No TrapFrame found");
+    let tcb = unsafe { &*scheduler::current().expect("No current process in trap_user_return") };
+    let ctx: &mut TrapFrame = &mut *tcb.get_trapframe().expect("No TrapFrame found");
     unsafe {
         sstatus::clear_sie();
     }
@@ -123,18 +123,18 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     // S 态页表
     ctx.kernel_satp = satp::read().bits();
     // S 态 hartid
-    ctx.kernel_hartid = crate::hart::getid();
+    ctx.kernel_hartid = crate::hart::get().id;
     // KSTACK(0) 顶部
     // vm::map_kstack0();
-    ctx.kernel_sp = proc.kstack.as_ref().unwrap().top().as_usize();
+    ctx.kernel_sp = tcb.kstack.as_ref().unwrap().top().as_usize();
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = (*proc::current()).get_trapframe_va().expect("No TrapFrame VA found");
+    let user_tf_va = tcb.get_trapframe_va().expect("No TrapFrame VA found");
     unsafe {
         sscratch::write(user_tf_va.as_usize());
     }
 
-    let user_satp = proc.get_satp().expect("Failed to get satp").as_usize() as u64;
+    let user_satp = tcb.get_satp().expect("Failed to get satp").as_usize() as u64;
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
     let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);

@@ -2,7 +2,7 @@ use crate::hart;
 use riscv::register::{sie, sscratch, sstatus};
 
 pub fn enable_s() {
-    let hartid = hart::getid();
+    let hartid = hart::get().id;
     unsafe {
         sscratch::write(hartid);
         sstatus::set_sie();

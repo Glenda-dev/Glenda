@@ -4,6 +4,7 @@ use crate::mem::VirtAddr;
 use super::PGSIZE;
 use super::pmem;
 
+#[derive(Debug)]
 pub struct PhysFrame {
     addr: PhysAddr,
 }
