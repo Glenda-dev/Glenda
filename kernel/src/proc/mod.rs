@@ -7,8 +7,6 @@ pub mod thread;
 pub use context::ProcContext;
 pub use thread::{TCB, ThreadState};
 
-use crate::hart;
-
 pub fn init() {
     payload::init();
 }

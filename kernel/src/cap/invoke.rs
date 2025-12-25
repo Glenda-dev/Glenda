@@ -7,7 +7,6 @@ use crate::ipc;
 use crate::irq;
 use crate::mem;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
-use crate::proc;
 use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::{Args, errcode};
 use core::mem::size_of;
