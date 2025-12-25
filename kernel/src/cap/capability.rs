@@ -50,13 +50,19 @@ impl Capability {
         Self { object: CapType::Empty, badge: None, rights: 0 }
     }
 
-    /// Mint 操作：创建一个新的 Cap，可以附加 Badge
-    pub fn mint(&self, badge: Option<usize>) -> Self {
-        Self {
-            object: self.object,
-            badge: badge.or(self.badge), // 如果已有 Badge 则保留，否则使用新的
-            rights: self.rights,
+    pub fn mint(&self, rights: u8, badge: Option<usize>) -> Self {
+        // 1. 使用 clone() 确保引用计数正确增加
+        let mut new_cap = self.clone();
+
+        // 2. 权限只能缩小，不能放大 (Security: Masking)
+        new_cap.rights &= rights;
+
+        // 3. Badge 逻辑：如果原 Cap 已经有 Badge，则不允许修改 (Immutable Identity)
+        // 如果原 Cap 没有 Badge，则可以赋予新的 Badge
+        if new_cap.badge.is_none() {
+            new_cap.badge = badge;
         }
+        new_cap
     }
 
     pub fn obj_ptr(&self) -> VirtAddr {
@@ -85,6 +91,16 @@ impl Capability {
     /// 检查是否允许 Grant (传递)
     pub fn can_grant(&self) -> bool {
         self.has_rights(rights::GRANT)
+    }
+
+    /// 获取 Badge 值，若无则返回 0
+    pub fn get_badge(&self) -> usize {
+        self.badge.unwrap_or(0)
+    }
+
+    /// 检查是否已被标记
+    pub fn is_badged(&self) -> bool {
+        self.badge.is_some()
     }
 
     pub fn create_untyped(start_paddr: PhysAddr, size: usize, rights: u8) -> Self {

@@ -167,9 +167,8 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
 
             let current_tcb = proc::current();
             if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
-                let mut new_cap = src_cap.mint(badge);
-                new_cap.rights &= rights;
-                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
+                let new_cap = src_cap.mint(rights, badge);
+                if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
@@ -186,9 +185,8 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
 
             let current_tcb = proc::current();
             if let Some((src_cap, src_slot_addr)) = current_tcb.cap_lookup_slot(src_cptr) {
-                let mut new_cap = src_cap.clone();
-                new_cap.rights &= rights;
-                if cnode.insert_child(dest_slot, new_cap, src_slot_addr) {
+                let new_cap = src_cap.mint(rights, None);
+                if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
@@ -303,7 +301,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> u
                         _ => return errcode::INVALID_OBJ_TYPE,
                     };
 
-                    if !dest_cnode.insert(dest_slot_offset + i, new_cap) {
+                    if !dest_cnode.insert(dest_slot_offset + i, &new_cap) {
                         return errcode::INVALID_SLOT;
                     }
                 }

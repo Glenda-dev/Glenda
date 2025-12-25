@@ -13,12 +13,7 @@ pub use endpoint::Endpoint;
 
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文，并可选地传递一个 Capability
-unsafe fn copy_msg(
-    sender: &TCB,
-    receiver: &mut TCB,
-    badge: usize,
-    cap: Option<crate::cap::Capability>,
-) {
+unsafe fn copy_msg(sender: &TCB, receiver: &mut TCB, badge: usize, cap: Option<Capability>) {
     let src = sender.get_utcb().expect("ipc: Sender has no UTCB");
     let dst = receiver.get_utcb().expect("ipc: Receiver has no UTCB");
 
@@ -37,7 +32,7 @@ unsafe fn copy_msg(
     }
 
     // 2. 传递 Badge
-    receiver.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+    set_badge(receiver, badge);
 
     // 3. 传递 Capability (如果提供且接收者准备好了接收窗口)
     if let Some(c) = cap {
@@ -50,6 +45,10 @@ unsafe fn copy_msg(
             }
         }
     }
+}
+
+fn set_badge(tcb: &TCB, badge: usize) {
+    tcb.get_trapframe().expect("ipc: TCB has no TrapFrame").t0 = badge;
 }
 
 /// 发送操作 (sys_send)
@@ -85,7 +84,7 @@ pub fn notify(ep: &mut Endpoint, badge: usize) {
     // 如果有接收者在等，直接交付并唤醒
     if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
         let receiver = unsafe { &mut *receiver_ptr };
-        receiver.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+        set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
         // 否则把通知放入 pending 队列，等待将来 recv
@@ -101,7 +100,7 @@ pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     if let Some(badge) = ep.pending_notifs.pop_front() {
         // 将 badge 放到接收者上下文并返回（无数据拷贝）
-        current.get_trapframe().expect("ipc: Receiver has no TrapFrame").t0 = badge;
+        set_badge(current, badge);
         return;
     }
 

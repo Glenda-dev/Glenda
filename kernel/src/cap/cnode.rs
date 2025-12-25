@@ -102,20 +102,20 @@ impl CNode {
         if let CapType::Empty = cap.object { None } else { Some(cap) }
     }
 
-    pub fn insert(&mut self, slot: usize, cap: Capability) -> bool {
+    pub fn insert(&mut self, slot: usize, cap: &Capability) -> bool {
         if slot >= self.size() {
             return false;
         }
         let ptr = self.get_slots_ptr();
         unsafe {
             // 注意：这里会触发旧 Cap 的 Drop
-            (*ptr.add(slot)).cap = cap;
+            (*ptr.add(slot)).cap = cap.clone();
         }
         true
     }
 
     /// 插入能力并建立 CDT 关系
-    pub fn insert_child(&mut self, slot: usize, cap: Capability, parent_addr: PhysAddr) -> bool {
+    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: PhysAddr) -> bool {
         if slot >= self.size() {
             return false;
         }
@@ -124,8 +124,7 @@ impl CNode {
 
         unsafe {
             // 1. 插入能力
-            (*slot_ptr).cap = cap;
-
+            (*slot_ptr).cap = cap.clone();
             // 2. 建立 CDT 关系
             let mut cdt = CDTNode::new();
             cdt.parent = parent_addr;

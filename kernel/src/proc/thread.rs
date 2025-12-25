@@ -82,14 +82,14 @@ impl TCB {
     /// 这是 Capability 系统分发 VSpace 和 CSpace 的关键接口
     pub fn configure(
         &mut self,
-        cspace: Capability,
-        vspace: Capability,
+        cspace: &Capability,
+        vspace: &Capability,
         utcb_frame: PhysFrame,
         utcb_vaddr: VirtAddr,
         fault_ep: Option<Capability>,
     ) {
-        self.cspace_root = cspace;
-        self.vspace_root = vspace;
+        self.cspace_root = cspace.clone();
+        self.vspace_root = vspace.clone();
         self.utcb_frame = Some(utcb_frame);
         self.fault_handler = fault_ep;
         self.utcb_base = utcb_vaddr;

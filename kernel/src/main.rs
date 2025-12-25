@@ -40,7 +40,6 @@ static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
-    unimplemented!();
     if hartid == 0 {
         printk!("{}", logo::LOGO);
         printk!("Starting scheduler on hart 0...\n");
