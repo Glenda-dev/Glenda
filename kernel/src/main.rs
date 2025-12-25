@@ -21,7 +21,7 @@ use core::panic::PanicInfo;
 use init::init;
 use mem::alloc::Allocator;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
-use riscv::asm::wfi;
+use riscv::asm::{ebreak, wfi};
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
@@ -92,6 +92,9 @@ fn backtrace() {
 pub fn panic(info: &PanicInfo) -> ! {
     printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
     backtrace();
+    unsafe {
+        ebreak();
+    }
     loop {
         wfi();
     }
