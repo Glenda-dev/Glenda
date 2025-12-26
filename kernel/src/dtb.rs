@@ -25,7 +25,6 @@ pub struct DeviceTreeInfo {
     hart_count: usize,
     memory: Option<MemoryRange>,
     plic_base: Option<usize>,
-    mmio: Option<MemoryRange>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
 }
@@ -36,10 +35,8 @@ impl DeviceTreeInfo {
         let uart = parse_uart(fdt);
         let memory = parse_memory(fdt);
         let plic_base = parse_plic_base(fdt);
-        let mmio = parse_mmio(fdt);
         let dtb_size = fdt.total_size();
-
-        Self { uart, hart_count, memory, plic_base, mmio, dtb_paddr, dtb_size }
+        Self { uart, hart_count, memory, plic_base, dtb_paddr, dtb_size }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -56,9 +53,6 @@ impl DeviceTreeInfo {
 
     fn plic_base(&self) -> Option<usize> {
         self.plic_base
-    }
-    fn mmio(&self) -> Option<MemoryRange> {
-        self.mmio
     }
 }
 
@@ -161,8 +155,51 @@ pub fn plic_base() -> Option<usize> {
     DEVICE_TREE.get().and_then(DeviceTreeInfo::plic_base)
 }
 
-pub fn mmio_range() -> Option<MemoryRange> {
-    DEVICE_TREE.get().and_then(DeviceTreeInfo::mmio)
+pub fn soc_mmio_range() -> Option<(usize, usize)> {
+    let info = DEVICE_TREE.get()?;
+    let fdt = unsafe { fdt::Fdt::from_ptr(info.dtb_paddr as *const u8) }.ok()?;
+    let soc = fdt.find_node("/soc")?;
+
+    // 获取根节点的 cells 信息 (用于解析 parent-bus-address 和 length)
+    let root = fdt.find_node("/")?;
+    let parent_addr_cells = root.property("#address-cells")?.as_usize()?;
+    let parent_size_cells = root.property("#size-cells")?.as_usize()?;
+
+    // 获取 soc 节点的 cells 信息 (用于解析 child-bus-address)
+    let child_addr_cells = soc.property("#address-cells")?.as_usize()?;
+
+    let ranges = soc.property("ranges")?;
+    let value = ranges.value;
+
+    // ranges 格式: (child_addr, parent_addr, size)
+    let entry_size = (child_addr_cells + parent_addr_cells + parent_size_cells) * 4;
+    if value.len() < entry_size {
+        return None;
+    }
+
+    // 简单起见，我们只取第一个 entry
+    let mut offset = 0;
+
+    // 跳过 child_addr
+    offset += child_addr_cells * 4;
+
+    // 读取 parent_addr (CPU 物理地址)
+    let mut parent_addr: usize = 0;
+    for _ in 0..parent_addr_cells {
+        parent_addr = (parent_addr << 32)
+            | (u32::from_be_bytes(value[offset..offset + 4].try_into().unwrap()) as usize);
+        offset += 4;
+    }
+
+    // 读取 size
+    let mut size: usize = 0;
+    for _ in 0..parent_size_cells {
+        size = (size << 32)
+            | (u32::from_be_bytes(value[offset..offset + 4].try_into().unwrap()) as usize);
+        offset += 4;
+    }
+
+    Some((parent_addr, size))
 }
 
 fn parse_uart(fdt: &Fdt) -> Option<UartConfig> {
@@ -216,10 +253,6 @@ fn parse_plic_base(fdt: &Fdt) -> Option<usize> {
         }
     }
     None
-}
-
-fn parse_mmio(_fdt: &Fdt) -> Option<MemoryRange> {
-    unimplemented!()
 }
 
 pub fn init(dtb: *const u8) {

@@ -152,21 +152,6 @@ fn populate_root_cnode(cnode: &mut CNode, bootinfo: &mut BootInfo) {
 
     slot += 1;
 
-    let mmio_range = dtb::mmio_range();
-    if let Some(mmio) = mmio_range {
-        let cap = Capability::create_untyped(mmio.start, mmio.size, rights::ALL);
-        cnode.insert(slot, &cap);
-
-        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
-            paddr: mmio.start,
-            size_bits: (size.ilog2() as u8),
-            is_device: true,
-            padding: [0; 6],
-        };
-        bootinfo.untyped_count += 1;
-        slot += 1;
-    }
-
     bootinfo.untyped.end = slot;
 
     // 插入 IRQ Handler Capabilities

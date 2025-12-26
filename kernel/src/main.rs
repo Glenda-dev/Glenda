@@ -19,7 +19,7 @@ mod trap;
 use core::panic::PanicInfo;
 use init::init;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
-use riscv::asm::{ebreak, wfi};
+use riscv::asm::wfi;
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核
@@ -87,9 +87,6 @@ fn backtrace() {
 pub fn panic(info: &PanicInfo) -> ! {
     printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
     backtrace();
-    unsafe {
-        ebreak();
-    }
     loop {
         wfi();
     }

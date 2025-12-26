@@ -105,7 +105,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
     let text_start = PhysAddr::from(unsafe { &__text_start as *const u8 as usize });
     let text_end = PhysAddr::from(unsafe { &__text_end as *const u8 as usize });
-    printk!("vm: Remap .text RX\n");
+    printk!("vm: Remap .text [{:#x}, {:#x}) RX\n", text_start.as_usize(), text_end.as_usize());
     unsafe {
         boot_map(
             &mut kpt,
@@ -118,7 +118,7 @@ pub fn init_kernel_vm(hartid: usize) {
 
     let rodata_start = PhysAddr::from(unsafe { &__rodata_start as *const u8 as usize });
     let rodata_end = PhysAddr::from(unsafe { &__rodata_end as *const u8 as usize });
-    printk!("vm: Remap .rodata R\n");
+    printk!("vm: Remap .rodata [{:#x}, {:#x}) R\n", rodata_start.as_usize(), rodata_end.as_usize());
     unsafe {
         boot_map(
             &mut kpt,
@@ -134,7 +134,11 @@ pub fn init_kernel_vm(hartid: usize) {
     // 3. 映射 Trampoline (高地址)
     let tramp_pa = PhysAddr::from(vector::trampoline as usize).align_down(PGSIZE);
     let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
-    printk!("vm: Map TRAMPOLINE\n");
+    printk!(
+        "vm: Map TRAMPOLINE [{:#x}, {:#x})\n",
+        tramp_pa.as_usize(),
+        (tramp_pa + PGSIZE).as_usize()
+    );
     unsafe {
         boot_map(
             &mut kpt,
@@ -147,7 +151,7 @@ pub fn init_kernel_vm(hartid: usize) {
 
     // 4. 映射 MMIO (UART, PLIC)
     let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
-    printk!("vm: Map UART\n");
+    printk!("vm: Map UART [{:#x}, {:#x})\n", uart_base.as_usize(), (uart_base + PGSIZE).as_usize());
     unsafe {
         boot_map(
             &mut kpt,
@@ -160,7 +164,7 @@ pub fn init_kernel_vm(hartid: usize) {
 
     if let Some(plic_base) = dtb::plic_base() {
         let plic_pa = PhysAddr::from(plic_base);
-        printk!("vm: Map PLIC\n");
+        printk!("vm: Map PLIC [{:#x}, {:#x})\n", plic_pa.as_usize(), (plic_pa + 0x3000).as_usize());
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
             boot_map(
