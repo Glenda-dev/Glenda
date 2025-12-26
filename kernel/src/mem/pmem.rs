@@ -58,8 +58,8 @@ static PMEM: Mutex<PmemManager> = Mutex::new(PmemManager::new());
 
 pub fn initialize_regions(_hartid: usize) {
     let mem_range = dtb::memory_range().expect("Memory range not found in DTB");
-    let mem_start = PhysAddr::from(mem_range.start);
-    let mem_end = PhysAddr::from(mem_range.start + mem_range.size);
+    let mem_start = mem_range.start;
+    let mem_end = mem_range.start + mem_range.size;
 
     unsafe extern "C" {
         static mut __alloc_start: u8;

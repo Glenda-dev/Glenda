@@ -2,10 +2,10 @@ use super::PGSIZE;
 use super::pte::perms;
 use super::{PageTable, PhysAddr, Pte, PteFlags, VirtAddr};
 use crate::dtb;
+use crate::mem::pmem;
 use crate::printk;
 use crate::printk::uart;
 use crate::trap::vector;
-use crate::mem::pmem;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Once;
@@ -51,7 +51,8 @@ unsafe fn boot_map(
 
             if !entry.is_valid() {
                 // 分配新的页表页
-                let frame_cap = pmem::alloc_pagetable_cap().expect("Boot OOM: Failed to allocate page table");
+                let frame_cap =
+                    pmem::alloc_pagetable_cap().expect("Boot OOM: Failed to allocate page table");
                 let frame_pa = frame_cap.obj_ptr().to_pa();
                 // 必须 leak，否则 frame 在作用域结束时会被释放，导致页表损坏
                 core::mem::forget(frame_cap);
@@ -85,8 +86,12 @@ pub fn init_kernel_vm(hartid: usize) {
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
     let mem = dtb::memory_range().expect("Memory range not found in DTB");
-    printk!("vm: Identity Map RAM [{:#x}, {:#x})\n", mem.start, mem.start + mem.size);
-    let mem_start = PhysAddr::from(mem.start);
+    printk!(
+        "vm: Identity Map RAM [{:#x}, {:#x})\n",
+        mem.start.as_usize(),
+        (mem.start + mem.size).as_usize()
+    );
+    let mem_start = mem.start;
     unsafe {
         boot_map(
             &mut kpt,

@@ -1,3 +1,4 @@
+use crate::mem::PhysAddr;
 use crate::printk;
 use crate::printk::uart::Config as UartConfig;
 use core::cell::UnsafeCell;
@@ -8,12 +9,12 @@ use fdt::Fdt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRange {
-    pub start: usize,
+    pub start: PhysAddr,
     pub size: usize,
 }
 
 impl MemoryRange {
-    pub fn end(&self) -> usize {
+    pub fn end(&self) -> PhysAddr {
         self.start + self.size
     }
 }
@@ -195,7 +196,7 @@ fn parse_memory(fdt: &Fdt) -> Option<MemoryRange> {
     let mut regions = memory.regions();
     regions.find_map(|region| {
         let start = region.starting_address as usize;
-        region.size.map(|size| MemoryRange { start, size })
+        region.size.map(|size| MemoryRange { start: PhysAddr::from(start), size })
     })
 }
 

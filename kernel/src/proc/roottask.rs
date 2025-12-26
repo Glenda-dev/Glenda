@@ -9,7 +9,7 @@ use crate::dtb;
 use crate::ipc::UTCB_VA;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{KernelStack, PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::mem::{KernelStack, PGSIZE, PageTable, PteFlags, VirtAddr};
 use crate::printk;
 
 pub const VSPACE_SLOT: usize = 1;
@@ -154,11 +154,11 @@ fn populate_root_cnode(cnode: &mut CNode, bootinfo: &mut BootInfo) {
 
     let mmio_range = dtb::mmio_range();
     if let Some(mmio) = mmio_range {
-        let cap = Capability::create_untyped(PhysAddr::from(mmio.start), mmio.size, rights::ALL);
+        let cap = Capability::create_untyped(mmio.start, mmio.size, rights::ALL);
         cnode.insert(slot, &cap);
 
         bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
-            paddr: PhysAddr::from(mmio.start),
+            paddr: mmio.start,
             size_bits: (size.ilog2() as u8),
             is_device: true,
             padding: [0; 6],
