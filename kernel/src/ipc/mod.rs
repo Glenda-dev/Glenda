@@ -59,7 +59,7 @@ fn set_badge(tcb: &TCB, badge: usize) {
 /// * `cap`: 可选的要传递的能力
 pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待 (Rendezvous)
-    if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
+    if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
 
         // --- 快速路径: 匹配成功 ---
@@ -70,9 +70,11 @@ pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capa
     } else {
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedSend;
+        current.ipc_badge = badge;
+        current.ipc_cap = cap;
 
         // 将自己加入 Endpoint 的发送队列，同时保存 Badge 和要传递的能力
-        ep.send_queue.push_back((current as *mut _, badge, cap));
+        ep.enqueue_send(current as *mut _);
 
         // 让出 CPU，触发调度
         scheduler::block_current_thread();
@@ -82,13 +84,13 @@ pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capa
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
 pub fn notify(ep: &mut Endpoint, badge: usize) {
     // 如果有接收者在等，直接交付并唤醒
-    if let Some(receiver_ptr) = ep.recv_queue.pop_front() {
+    if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
         set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
         // 否则把通知放入 pending 队列，等待将来 recv
-        ep.pending_notifs.push_back(badge);
+        ep.notification_word |= badge;
     }
 }
 
@@ -98,15 +100,18 @@ pub fn notify(ep: &mut Endpoint, badge: usize) {
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
-    if let Some(badge) = ep.pending_notifs.pop_front() {
+    if ep.notification_word != 0 {
         // 将 badge 放到接收者上下文并返回（无数据拷贝）
-        set_badge(current, badge);
+        set_badge(current, ep.notification_word);
+        ep.notification_word = 0;
         return;
     }
 
     // 1. 检查是否有发送者在等待
-    if let Some((sender_ptr, badge, cap)) = ep.send_queue.pop_front() {
+    if let Some(sender_ptr) = ep.dequeue_send() {
         let sender = unsafe { &mut *sender_ptr };
+        let badge = sender.ipc_badge;
+        let cap = sender.ipc_cap.take();
 
         // --- 快速路径: 匹配成功 ---
         // 从等待的发送者那里拷贝数据
@@ -121,7 +126,7 @@ pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
         current.state = ThreadState::BlockedRecv;
 
         // 将自己加入 Endpoint 的接收队列
-        ep.recv_queue.push_back(current as *mut _);
+        ep.enqueue_recv(current as *mut _);
 
         // 让出 CPU，触发调度
         scheduler::block_current_thread();

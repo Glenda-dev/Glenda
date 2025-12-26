@@ -2,8 +2,6 @@
 #![no_main]
 #![allow(dead_code)]
 
-extern crate alloc;
-
 mod cap;
 mod dtb;
 mod hart;
@@ -19,12 +17,8 @@ mod trap;
 
 use core::panic::PanicInfo;
 use init::init;
-use mem::alloc::Allocator;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::{ebreak, wfi};
-
-#[global_allocator]
-static GLOBAL_ALLOCATOR: Allocator = Allocator::new();
 
 /*
  为了便捷，M-mode 固件与 M->S 的降权交给 OpenSBI，程序只负责 S-mode 下的内核

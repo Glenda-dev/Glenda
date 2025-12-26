@@ -2,24 +2,61 @@ use super::context::ProcContext;
 use super::thread::{TCB, ThreadState};
 use crate::hart;
 use crate::hart::MAX_HARTS;
-use alloc::collections::VecDeque;
 use spin::Mutex;
 
 // 最大优先级数量 (0-255)
 const MAX_PRIORITY: usize = 256;
 
-// Wrapper to make *mut TCB Send + Sync
-#[derive(Copy, Clone)]
-struct TcbPtr(*mut TCB);
+struct TcbQueue {
+    head: Option<*mut TCB>,
+    tail: Option<*mut TCB>,
+}
 
-unsafe impl Send for TcbPtr {}
-unsafe impl Sync for TcbPtr {}
+unsafe impl Send for TcbQueue {}
+
+impl TcbQueue {
+    const fn new() -> Self {
+        Self { head: None, tail: None }
+    }
+
+    fn push_back(&mut self, tcb: *mut TCB) {
+        unsafe {
+            (*tcb).prev = self.tail;
+            (*tcb).next = None;
+            if let Some(tail) = self.tail {
+                (*tail).next = Some(tcb);
+            } else {
+                self.head = Some(tcb);
+            }
+            self.tail = Some(tcb);
+        }
+    }
+
+    fn pop_front(&mut self) -> Option<*mut TCB> {
+        if let Some(head) = self.head {
+            unsafe {
+                let next = (*head).next;
+                if let Some(next_ptr) = next {
+                    (*next_ptr).prev = None;
+                } else {
+                    self.tail = None;
+                }
+                self.head = next;
+                (*head).next = None;
+                (*head).prev = None;
+            }
+            Some(head)
+        } else {
+            None
+        }
+    }
+}
 
 // 全局调度队列：每个优先级一个队列
 // 注意：在 SMP 环境下，这应该是一个 Per-CPU 的结构，或者加全局锁
 // 这里为了简化，使用全局锁保护所有队列
-static READY_QUEUES: Mutex<[VecDeque<TcbPtr>; MAX_PRIORITY]> =
-    Mutex::new([const { VecDeque::new() }; MAX_PRIORITY]);
+static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
+    Mutex::new([const { TcbQueue::new() }; MAX_PRIORITY]);
 
 static mut CURRENT_TCB: [Option<*mut TCB>; MAX_HARTS] = [None; MAX_HARTS];
 
@@ -34,7 +71,7 @@ pub fn add_thread(tcb: &mut TCB) {
 
     // 确保状态正确
     if tcb.state == ThreadState::Ready {
-        queues[prio].push_back(TcbPtr(tcb as *mut _));
+        queues[prio].push_back(tcb as *mut _);
     }
 }
 
@@ -53,7 +90,7 @@ pub fn scheduler() -> ! {
             let mut queues = READY_QUEUES.lock();
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
-                if let Some(TcbPtr(tcb_ptr)) = queues[prio].pop_front() {
+                if let Some(tcb_ptr) = queues[prio].pop_front() {
                     next_thread = Some(tcb_ptr);
                     break;
                 }

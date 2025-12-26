@@ -4,15 +4,13 @@ use crate::cap;
 use crate::cap::Capability;
 use crate::ipc;
 use crate::printk;
-use alloc::vec::Vec;
-use core::default::Default;
-use spin::{Mutex, Once};
+use spin::Mutex;
 
 const MAX_IRQS: usize = 64;
 
 pub fn init() {
     // 初始化 IRQ 表与定时器
-    init_table();
+    // init_table(); // No longer needed
     printk!("irq: Initialized global IRQs\n");
 }
 
@@ -28,30 +26,18 @@ pub struct IrqSlot {
     pub enabled: bool,
 }
 
-impl Default for IrqSlot {
-    fn default() -> Self {
+impl IrqSlot {
+    const fn new() -> Self {
         Self { notification: None, enabled: false }
     }
 }
 
-static IRQ_TABLE: Once<Mutex<Vec<IrqSlot>>> = Once::new();
-
-/// 初始化 IRQ 表（在 init() 被调用一次）
-fn init_table() {
-    IRQ_TABLE.call_once(|| {
-        Mutex::new({
-            let mut v = Vec::with_capacity(MAX_IRQS);
-            v.resize(MAX_IRQS, IrqSlot::default());
-            v
-        })
-    });
-}
+static IRQ_TABLE: Mutex<[IrqSlot; MAX_IRQS]> = Mutex::new([const { IrqSlot::new() }; MAX_IRQS]);
 
 /// 绑定通知对象到 IRQ（通常是 Endpoint Cap）
 pub fn bind_notification(irq: usize, cap: Capability) -> bool {
-    let table = IRQ_TABLE.get().expect("IRQ_TABLE not initialized");
-    let mut tbl = table.lock();
-    if irq >= tbl.len() {
+    let mut tbl = IRQ_TABLE.lock();
+    if irq >= MAX_IRQS {
         return false;
     }
     tbl[irq].notification = Some(cap);
@@ -60,9 +46,8 @@ pub fn bind_notification(irq: usize, cap: Capability) -> bool {
 }
 
 pub fn clear_notification(irq: usize) -> bool {
-    let table = IRQ_TABLE.get().expect("IRQ_TABLE not initialized");
-    let mut tbl = table.lock();
-    if irq >= tbl.len() {
+    let mut tbl = IRQ_TABLE.lock();
+    if irq >= MAX_IRQS {
         return false;
     }
     tbl[irq].notification = None;
@@ -74,9 +59,8 @@ pub fn clear_notification(irq: usize) -> bool {
 pub fn handle_claimed(hartid: usize, id: usize) {
     // 先屏蔽该 IRQ，交给驱动通过 Ack 重新打开
     plic::set_enable_s(hartid, id, false);
-    let table = IRQ_TABLE.get().expect("IRQ_TABLE not initialized");
-    let tbl = table.lock();
-    if id >= tbl.len() {
+    let tbl = IRQ_TABLE.lock();
+    if id >= MAX_IRQS {
         // still complete the IRQ
         plic::set_claim_s(hartid, id);
         return;

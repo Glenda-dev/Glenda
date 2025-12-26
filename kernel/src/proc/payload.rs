@@ -1,8 +1,7 @@
 use crate::mem::pte::perms;
-use crate::mem::{PGSIZE, PhysFrame, PteFlags, VirtAddr};
+use crate::mem::{PGSIZE, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
-use alloc::vec::Vec;
 use spin::Once;
 
 /*
@@ -25,6 +24,7 @@ struct Header {
 }
 
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PayloadType {
     RootTask = 0,
     Driver = 1,
@@ -34,6 +34,7 @@ enum PayloadType {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct Entry {
     info: PayloadType,
     offset: u32,
@@ -42,14 +43,16 @@ pub struct Entry {
     _padding: [u8; 7],
 }
 
+const MAX_ENTRIES: usize = 16;
+
 pub struct ProcBinary {
-    num_entries: u32,
-    entries: Vec<ProcPayload>,
+    num_entries: usize,
+    entries: [Option<ProcPayload>; MAX_ENTRIES],
 }
 
 pub struct ProcPayload {
     pub metadata: Entry,
-    pub data: Vec<u8>,
+    pub data: &'static [u8],
 }
 
 const PAYLOAD_MAGIC: u32 = 0x99999999;
@@ -84,7 +87,8 @@ pub fn init() {
     }
     printk!("proc: Loading process binary with {} entries\n", count);
 
-    let mut parsed = ProcBinary { num_entries: count, entries: Vec::new() };
+    let mut parsed =
+        ProcBinary { num_entries: count as usize, entries: [const { None }; MAX_ENTRIES] };
 
     // Entries start at offset 12, each ENTRY is 48 bytes
     let entry_base = 12usize;
@@ -95,7 +99,21 @@ pub fn init() {
         printk!("{}[WARN] payload total_size too small: {}{}\n", ANSI_RED, total_size, ANSI_RESET);
         return;
     }
-    for i in 0..(count as usize) {
+
+    let loop_count = if (count as usize) > MAX_ENTRIES {
+        printk!(
+            "{}[WARN] Too many entries: {}, truncating to {}{}\n",
+            ANSI_RED,
+            count,
+            MAX_ENTRIES,
+            ANSI_RESET
+        );
+        MAX_ENTRIES
+    } else {
+        count as usize
+    };
+
+    for i in 0..loop_count {
         let ent_off = entry_base + i * 48;
         // read fields from payload_ptr + ent_off
         let t = unsafe { *payload_ptr.add(ent_off) };
@@ -122,9 +140,8 @@ pub fn init() {
 
         printk!("proc: entry {} type={} offset={} size={} name={}\n", i, t, offset, size, name);
 
-        // copy data with bounds check using total_size
-        let mut data = Vec::new();
-        if size > 0 {
+        // create slice
+        let data = if size > 0 {
             let data_start = offset as usize;
             let end = data_start.checked_add(size as usize).unwrap_or(usize::MAX);
             if end > total_size_usize {
@@ -137,13 +154,13 @@ pub fn init() {
                     total_size,
                     ANSI_RESET
                 );
-                continue;
+                &[]
+            } else {
+                unsafe { core::slice::from_raw_parts(payload_ptr.add(data_start), size as usize) }
             }
-            for k in 0..(size as usize) {
-                let v = unsafe { *payload_ptr.add(data_start + k) };
-                data.push(v);
-            }
-        }
+        } else {
+            &[]
+        };
 
         // construct Entry metadata (packed interpretation)
         let metadata = Entry {
@@ -161,7 +178,7 @@ pub fn init() {
             _padding: [0u8; 7],
         };
 
-        parsed.entries.push(ProcPayload { metadata, data });
+        parsed.entries[i] = Some(ProcPayload { metadata, data });
     }
 
     // initialize static once with parsed payload
@@ -170,9 +187,11 @@ pub fn init() {
 
 pub fn get_root_task() -> Option<&'static ProcPayload> {
     let payload = PAYLOAD.get().expect("Payload not initialized");
-    for entry in &payload.entries {
-        if let PayloadType::RootTask = entry.metadata.info {
-            return Some(entry);
+    for entry_opt in &payload.entries {
+        if let Some(entry) = entry_opt {
+            if let PayloadType::RootTask = entry.metadata.info {
+                return Some(entry);
+            }
         }
     }
     None
@@ -229,8 +248,8 @@ impl ProcPayload {
 
                 let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;
                 for j in 0..num_pages {
-                    let mut frame = PhysFrame::alloc().expect("Failed to alloc frame for segment");
-                    frame.zero();
+                    let frame_cap = crate::mem::pmem::alloc_frame_cap()
+                        .expect("Failed to alloc frame for segment");
 
                     let va = VirtAddr::from(p_vaddr) + j * PGSIZE;
                     let copy_size = if (j + 1) * PGSIZE <= p_filesz {
@@ -247,7 +266,7 @@ impl ProcPayload {
                         unsafe {
                             core::ptr::copy_nonoverlapping(
                                 src.as_ptr(),
-                                frame.va().as_mut_ptr::<u8>(),
+                                frame_cap.obj_ptr().as_mut_ptr::<u8>(),
                                 copy_size,
                             );
                         }
@@ -259,17 +278,18 @@ impl ProcPayload {
                     // 或者我们应该在 map 内部自动处理 (但微内核原则是不自动处理)
                     // 为了 Root Task 启动，我们在这里手动处理一下
                     for level in (1..3).rev() {
-                        let _ = vspace.map_table(
-                            va,
-                            PhysFrame::alloc()
-                                .expect("Failed to alloc frame for page table")
-                                .leak(),
-                            level,
-                        );
+                        let pt_cap = crate::mem::pmem::alloc_pagetable_cap()
+                            .expect("Failed to alloc frame for page table");
+                        let pt_paddr = pt_cap.obj_ptr().to_pa();
+                        core::mem::forget(pt_cap);
+
+                        let _ = vspace.map_table(va, pt_paddr, level);
                     }
 
-                    vspace.map(va, frame.addr(), PGSIZE, flags).expect("Failed to map segment");
-                    frame.leak();
+                    vspace
+                        .map(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags)
+                        .expect("Failed to map segment");
+                    core::mem::forget(frame_cap);
                 }
             }
         }

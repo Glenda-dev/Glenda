@@ -3,7 +3,6 @@ use crate::cap::{CapType, Capability};
 use crate::ipc::{UTCB, UTCB_SIZE};
 use crate::mem::{KernelStack, PhysAddr, VSpace, VirtAddr};
 use crate::trap::TrapFrame;
-use alloc::collections::VecDeque;
 use core::mem::size_of;
 use core::sync::atomic::AtomicUsize;
 
@@ -47,10 +46,19 @@ pub struct TCB {
 
     // IPC 等待队列：当此线程处于 BlockedRecv 状态时，
     // 试图向此线程发送消息的其他线程会挂入此队列
-    pub send_queue: VecDeque<*mut TCB>,
+    pub send_queue_head: Option<*mut TCB>,
+    pub send_queue_tail: Option<*mut TCB>,
+
+    // Intrusive list node (for Ready Queue or other's Send Queue)
+    pub prev: Option<*mut TCB>,
+    pub next: Option<*mut TCB>,
 
     // 正在与之通信的目标线程 (用于 Send/Recv 握手)
     pub ipc_partner: Option<*mut TCB>,
+
+    // IPC state when blocked
+    pub ipc_badge: usize,
+    pub ipc_cap: Option<Capability>,
 
     // --- UTCB (User Thread Control Block) ---
     pub utcb_frame: Option<Capability>, // UTCB 所在的物理帧 (以 Capability 形式存储)
@@ -72,8 +80,13 @@ impl TCB {
             vspace: None,
             fault_handler: None,
             ipc_buffer: VirtAddr::null(),
-            send_queue: VecDeque::new(),
+            send_queue_head: None,
+            send_queue_tail: None,
+            prev: None,
+            next: None,
             ipc_partner: None,
+            ipc_badge: 0,
+            ipc_cap: None,
             utcb_frame: None,
             utcb_base: VirtAddr::null(),
         }

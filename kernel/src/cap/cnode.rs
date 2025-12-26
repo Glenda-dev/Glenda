@@ -1,5 +1,5 @@
 use super::{CapType, Capability};
-use crate::mem::{PhysAddr, PhysFrame};
+use crate::mem::PhysAddr;
 use core::sync::atomic::AtomicUsize;
 
 /// CNode 在物理内存中的布局头
@@ -61,10 +61,6 @@ impl CNode {
             }
         }
         Self { paddr, bits }
-    }
-
-    pub fn from_frame(frame: &PhysFrame, bits: u8) -> Self {
-        Self { paddr: frame.addr(), bits }
     }
 
     pub fn from_addr(paddr: PhysAddr, bits: u8) -> Self {

@@ -2,7 +2,7 @@ use crate::mem::pte::PteFlags;
 
 use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
-use super::{PhysFrame, Pte};
+use super::Pte;
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
@@ -16,9 +16,9 @@ impl PageTable {
         PageTable { entries: [Pte::null(); PGNUM] }
     }
 
-    /// 从物理帧获取页表的可变引用
-    pub fn from_frame(frame: &PhysFrame) -> &'static mut Self {
-        let vaddr = frame.va();
+    /// 从物理地址获取页表的可变引用
+    pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
+        let vaddr = paddr.to_va();
         vaddr.as_mut::<PageTable>()
     }
 

@@ -1,4 +1,4 @@
-use crate::mem::{PhysAddr, PhysFrame};
+use crate::mem::PhysAddr;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Mutex;
@@ -58,9 +58,9 @@ pub struct VSpace {
 
 impl VSpace {
     /// 创建一个新的 VSpace (通常由 Retype 调用)
-    pub fn new(root_frame: PhysFrame) -> Self {
+    pub fn new(root_paddr: PhysAddr) -> Self {
         Self {
-            root_paddr: root_frame.addr(),
+            root_paddr,
             asid: 0,
             asid_generation: 0, // 0 表示无效/未分配
         }

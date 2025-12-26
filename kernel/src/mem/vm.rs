@@ -1,10 +1,11 @@
 use super::PGSIZE;
 use super::pte::perms;
-use super::{PageTable, PhysAddr, PhysFrame, Pte, PteFlags, VirtAddr};
+use super::{PageTable, PhysAddr, Pte, PteFlags, VirtAddr};
 use crate::dtb;
 use crate::printk;
 use crate::printk::uart;
 use crate::trap::vector;
+use crate::mem::pmem;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Once;
@@ -50,10 +51,10 @@ unsafe fn boot_map(
 
             if !entry.is_valid() {
                 // 分配新的页表页
-                let frame = PhysFrame::alloc().expect("Boot OOM: Failed to allocate page table");
-                // pmem::allocate 已经清零了内存，这里不需要再次 zero()
+                let frame_cap = pmem::alloc_pagetable_cap().expect("Boot OOM: Failed to allocate page table");
+                let frame_pa = frame_cap.obj_ptr().to_pa();
                 // 必须 leak，否则 frame 在作用域结束时会被释放，导致页表损坏
-                let frame_pa = frame.leak();
+                core::mem::forget(frame_cap);
 
                 // 建立中间层级映射 (V=1, 无 R/W/X)
                 *entry = Pte::from(frame_pa, PteFlags::from(perms::VALID));

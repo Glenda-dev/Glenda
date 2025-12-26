@@ -1,6 +1,6 @@
-use super::frame::PhysFrame;
 use super::{PGSIZE, VirtAddr};
-use alloc::vec::Vec;
+use crate::cap::Capability;
+use crate::mem::pmem;
 use riscv::asm::sfence_vma_all;
 use spin::Mutex;
 
@@ -11,33 +11,45 @@ pub const KSTACK_VA_BASE: usize = VA_MAX - KSTACK_REGION_SIZE;
 
 // Increase kernel stack to 4 pages (16KB)
 pub const KSTACK_SIZE: usize = PGSIZE * 4;
+const KSTACK_PAGES: usize = KSTACK_SIZE / PGSIZE;
+const SLOT_SIZE: usize = KSTACK_SIZE + PGSIZE;
+const MAX_SLOTS: usize = KSTACK_REGION_SIZE / SLOT_SIZE;
+const BITMAP_SIZE: usize = (MAX_SLOTS + 63) / 64;
 
 static KSTACK_ALLOCATOR: Mutex<KStackAllocator> = Mutex::new(KStackAllocator::new());
 
 struct KStackAllocator {
-    max_slot: usize,
-    free_slots: Vec<usize>,
+    bitmap: [u64; BITMAP_SIZE],
+    hint: usize,
 }
 
 impl KStackAllocator {
     const fn new() -> Self {
-        Self { max_slot: 0, free_slots: Vec::new() }
+        Self { bitmap: [0; BITMAP_SIZE], hint: 0 }
     }
 
     fn alloc(&mut self) -> Option<usize> {
-        if let Some(slot) = self.free_slots.pop() {
-            return Some(slot);
+        for i in 0..MAX_SLOTS {
+            let idx = (self.hint + i) % MAX_SLOTS;
+            let word_idx = idx / 64;
+            let bit_idx = idx % 64;
+
+            if (self.bitmap[word_idx] & (1 << bit_idx)) == 0 {
+                self.bitmap[word_idx] |= 1 << bit_idx;
+                self.hint = idx + 1;
+                return Some(idx);
+            }
         }
-        let slot = self.max_slot;
-        if slot * KSTACK_SIZE >= KSTACK_REGION_SIZE {
-            return None;
-        }
-        self.max_slot += 1;
-        Some(slot)
+        None
     }
 
     fn free(&mut self, slot: usize) {
-        self.free_slots.push(slot);
+        if slot < MAX_SLOTS {
+            let word_idx = slot / 64;
+            let bit_idx = slot % 64;
+            self.bitmap[word_idx] &= !(1 << bit_idx);
+            self.hint = slot;
+        }
     }
 }
 
@@ -45,8 +57,8 @@ impl KStackAllocator {
 pub struct KernelStack {
     base: VirtAddr,
     slot: usize,
-    // 持有 PhysFrame 的所有权，Drop 时自动释放物理内存
-    frames: Vec<PhysFrame>,
+    // 持有 Capability 的所有权，Drop 时自动释放物理内存
+    frames: [Option<Capability>; KSTACK_PAGES],
 }
 
 impl KernelStack {
@@ -55,26 +67,22 @@ impl KernelStack {
         let slot = KSTACK_ALLOCATOR.lock().alloc()?;
 
         // 计算虚拟地址基址 (包含 1 页 Guard Page)
-        let slot_size = KSTACK_SIZE + PGSIZE;
-        let base = VirtAddr::from(KSTACK_VA_BASE + slot * slot_size + PGSIZE);
+        let base = VirtAddr::from(KSTACK_VA_BASE + slot * SLOT_SIZE + PGSIZE);
 
-        let mut frames = Vec::new();
+        let mut frames: [Option<Capability>; KSTACK_PAGES] = [const { None }; KSTACK_PAGES];
 
-        for _ in 0..(KSTACK_SIZE / PGSIZE) {
-            // 2. 分配物理帧
-            let mut frame = match PhysFrame::alloc() {
-                Some(f) => f,
+        for i in 0..KSTACK_PAGES {
+            // 2. 分配物理帧 Capability
+            let frame_cap = match pmem::alloc_frame_cap() {
+                Some(c) => c,
                 None => {
+                    // 回滚：释放已分配的帧和槽位
+                    // frames 数组会被 Drop，其中的 Option<Capability> 会自动释放
                     KSTACK_ALLOCATOR.lock().free(slot);
                     return None;
                 }
             };
-
-            // 3. 安全初始化：清零栈空间
-            frame.zero();
-
-            // 5. 保存帧所有权
-            frames.push(frame);
+            frames[i] = Some(frame_cap);
         }
 
         sfence_vma_all();
