@@ -1,3 +1,4 @@
+use crate::dtb;
 use crate::mem::pte::perms;
 use crate::mem::{PGSIZE, PteFlags, VirtAddr};
 use crate::printk;
@@ -59,12 +60,18 @@ const PAYLOAD_MAGIC: u32 = 0x99999999;
 
 static PAYLOAD: Once<ProcBinary> = Once::new();
 
-unsafe extern "C" {
-    static __payload_start: u8;
-}
-
 pub fn init() {
-    let payload_ptr = unsafe { &__payload_start as *const u8 };
+    let initrd = dtb::initrd_range();
+    if initrd.is_none() {
+        printk!(
+            "{}[WARN] No initrd found in DTB, skipping payload parsing.{}\n",
+            ANSI_RED,
+            ANSI_RESET
+        );
+        return;
+    }
+
+    let payload_ptr = initrd.unwrap().start.as_ptr::<u8>();
     // Read header bytes (safely, avoid alignment assumptions)
     let b0 = unsafe { *payload_ptr.add(0) };
     let b1 = unsafe { *payload_ptr.add(1) };

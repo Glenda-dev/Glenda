@@ -39,6 +39,9 @@ pub struct BootInfo {
     /// List of untyped memory regions available to the system
     /// The i-th entry here corresponds to the capability at `untyped.start + i`
     pub untyped_list: [UntypedDesc; MAX_UNTYPED_REGIONS],
+
+    /// Command line arguments passed to the kernel
+    pub cmdline: [u8; 128],
 }
 
 #[repr(C)]
@@ -79,6 +82,7 @@ impl BootInfo {
                 is_device: false,
                 padding: [0; 6],
             }; MAX_UNTYPED_REGIONS],
+            cmdline: [0; 128],
         }
     }
 }

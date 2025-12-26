@@ -177,6 +177,26 @@ pub fn init_kernel_vm(hartid: usize) {
         }
     }
 
+    // 映射initrd
+    if let Some(initrd) = dtb::initrd_range() {
+        let initrd_start = initrd.start;
+        let initrd_end = initrd.start + initrd.size;
+        printk!(
+            "vm: Map initrd [{:#x}, {:#x}) R\n",
+            initrd_start.as_usize(),
+            initrd_end.as_usize()
+        );
+        unsafe {
+            boot_map(
+                &mut kpt,
+                initrd_start.to_va(),
+                initrd_start,
+                (initrd_end - initrd_start).as_usize(),
+                PteFlags::from(perms::READ | perms::ACCESSED),
+            );
+        }
+    }
+
     printk!("vm: Root page table built by hart {}\n", hartid);
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }

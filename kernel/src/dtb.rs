@@ -25,6 +25,8 @@ pub struct DeviceTreeInfo {
     hart_count: usize,
     memory: Option<MemoryRange>,
     plic_base: Option<usize>,
+    initrd: Option<MemoryRange>,
+    bootargs: Option<&'static str>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
 }
@@ -35,8 +37,10 @@ impl DeviceTreeInfo {
         let uart = parse_uart(fdt);
         let memory = parse_memory(fdt);
         let plic_base = parse_plic_base(fdt);
+        let initrd = parse_initrd(fdt);
+        let bootargs = parse_bootargs(fdt);
         let dtb_size = fdt.total_size();
-        Self { uart, hart_count, memory, plic_base, dtb_paddr, dtb_size }
+        Self { uart, hart_count, memory, plic_base, dtb_paddr, dtb_size, initrd, bootargs }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -53,6 +57,14 @@ impl DeviceTreeInfo {
 
     fn plic_base(&self) -> Option<usize> {
         self.plic_base
+    }
+
+    fn initrd(&self) -> Option<MemoryRange> {
+        self.initrd
+    }
+
+    fn bootargs(&self) -> Option<&'static str> {
+        self.bootargs
     }
 }
 
@@ -155,6 +167,22 @@ pub fn plic_base() -> Option<usize> {
     DEVICE_TREE.get().and_then(DeviceTreeInfo::plic_base)
 }
 
+pub fn initrd_range() -> Option<MemoryRange> {
+    DEVICE_TREE.get().and_then(DeviceTreeInfo::initrd)
+}
+
+pub fn bootargs() -> Option<&'static str> {
+    DEVICE_TREE.get().and_then(|info| info.bootargs)
+}
+
+fn parse_u64(data: &[u8]) -> u64 {
+    let mut res = 0;
+    for &b in data {
+        res = (res << 8) | (b as u64);
+    }
+    res
+}
+
 pub fn soc_mmio_range() -> Option<(usize, usize)> {
     let info = DEVICE_TREE.get()?;
     let fdt = unsafe { fdt::Fdt::from_ptr(info.dtb_paddr as *const u8) }.ok()?;
@@ -253,6 +281,32 @@ fn parse_plic_base(fdt: &Fdt) -> Option<usize> {
         }
     }
     None
+}
+
+fn parse_initrd(fdt: &Fdt) -> Option<MemoryRange> {
+    let chosen = fdt.find_node("/chosen")?;
+    let initrd_start = parse_u64(chosen.property("linux,initrd-start")?.value) as usize;
+    let initrd_end = parse_u64(chosen.property("linux,initrd-end")?.value) as usize;
+    if initrd_end > initrd_start {
+        Some(MemoryRange { start: PhysAddr::from(initrd_start), size: initrd_end - initrd_start })
+    } else {
+        None
+    }
+}
+
+static mut BOOTARGS_BUF: [u8; 256] = [0; 256];
+
+fn parse_bootargs(fdt: &Fdt) -> Option<&'static str> {
+    let chosen = fdt.find_node("/chosen")?;
+    let s = chosen.property("bootargs")?.as_str()?;
+
+    let bytes = s.as_bytes();
+    let len = core::cmp::min(bytes.len(), 255);
+    unsafe {
+        BOOTARGS_BUF[..len].copy_from_slice(&bytes[..len]);
+        BOOTARGS_BUF[len] = 0; // Null terminator for safety if needed
+        Some(core::str::from_utf8_unchecked(&BOOTARGS_BUF[..len]))
+    }
 }
 
 pub fn init(dtb: *const u8) {

@@ -34,6 +34,8 @@ pub fn qemu_run(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     }
     cmd.arg("-drive").arg("file=disk.img,if=none,format=raw,id=x0");
     cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
+    cmd.arg("-initrd").arg("target/modules.bin");
+    cmd.arg("-append").arg("console=ttyS0 loglevel=7");
     cmd.arg("-bios").arg("default").arg("-kernel").arg(elf.to_str().unwrap());
     run(&mut cmd)
 }
@@ -62,6 +64,8 @@ pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     }
     cmd.arg("-drive").arg("file=disk.img,if=none,format=raw,id=x0");
     cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
+    cmd.arg("-initrd").arg("target/modules.bin");
+    cmd.arg("-append").arg("console=ttyS0 loglevel=7");
     cmd.arg("-bios").arg("default").arg("-S").arg("-s").arg("-kernel").arg(elf.to_str().unwrap());
     eprintln!("QEMU started. In another shell:");
     if which("gdb").is_ok() {

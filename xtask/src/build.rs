@@ -1,14 +1,15 @@
-use std::path::PathBuf;
-use std::process::Command;
-
-use crate::pack;
+use crate::config::Config;
 use crate::util::run;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::Path;
+use std::process::Command;
 
 pub fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     // Build libraries
-    build_lib(mode, features)?;
+    build_libraries(mode, features)?;
     // Process workspace services and generate modules blob for kernel embedding
-    pack::process_services()?;
+    build_services()?;
     // Build the kernel
     build_kernel(mode, features)?;
     Ok(())
@@ -27,7 +28,7 @@ pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-pub fn build_lib(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+pub fn build_libraries(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.arg("build")
         .arg("-p")
@@ -42,4 +43,96 @@ pub fn build_lib(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
         cmd.arg("--features").arg(joined);
     }
     run(&mut cmd)
+}
+
+const ENTRY_SIZE: usize = 48; // as in design
+
+pub fn build_services() -> anyhow::Result<()> {
+    let cfg_path = Path::new("config.toml");
+    if !cfg_path.exists() {
+        eprintln!("[ WARN ] config.toml not found, skipping pack step");
+        return Ok(());
+    }
+    let cfg = Config::from_path(cfg_path)?;
+
+    // Ensure target dir
+    fs::create_dir_all("target")?;
+
+    // collect binaries
+    let mut entries: Vec<(u8, String, Vec<u8>)> = Vec::new();
+    for c in cfg.services.iter() {
+        if let Some(cmd_str) = &c.build_cmd {
+            eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);
+            // run via shell so build_cmd can be arbitrary
+            let status = Command::new("sh").arg("-c").arg(cmd_str).current_dir(&c.path).status()?;
+            if !status.success() {
+                return Err(anyhow::anyhow!("build command failed for {}", c.name));
+            }
+        }
+        let out_path = Path::new(&(c.path)).join(&c.output_bin);
+        if !out_path.exists() {
+            return Err(anyhow::anyhow!("output binary not found: {}", c.output_bin));
+        }
+        let data = fs::read(&out_path)?;
+        // kind mapping
+        let t: u8 = match c.kind.as_deref().unwrap_or("root_task") {
+            "root_task" => 0,
+            "driver" => 1,
+            "server" => 2,
+            "test" => 3,
+            "file" => 4,
+            _ => 4,
+        };
+        entries.push((t, c.name.clone(), data));
+    }
+
+    // build modules.bin in target/modules.bin
+    let modules_path = Path::new("target").join("modules.bin");
+    let mut file = File::create(&modules_path)?;
+
+    // header: magic + count + total_size
+    const MAGIC: u32 = 0x99999999;
+    let count = entries.len() as u32;
+
+    // compute sizes to populate header
+    let header_size = 4 + 4 + 4; // magic + count + total_size
+    let entries_size = (entries.len() * ENTRY_SIZE) as u32;
+    let data_size: u32 = entries.iter().map(|(_t, _n, d)| d.len() as u32).sum();
+    let total_size = header_size as u32 + entries_size + data_size;
+
+    file.write_all(&MAGIC.to_le_bytes())?;
+    file.write_all(&count.to_le_bytes())?;
+    file.write_all(&total_size.to_le_bytes())?;
+
+    // compute offsets: header + entries
+    let mut offset = header_size as u32 + entries_size;
+
+    // write metadata entries
+    for (t, name, data) in entries.iter() {
+        // type
+        file.write_all(&[*t])?;
+        // offset
+        file.write_all(&offset.to_le_bytes())?;
+        // size
+        let size = data.len() as u32;
+        file.write_all(&size.to_le_bytes())?;
+        // name (32 bytes, null padded)
+        let mut name_buf = [0u8; 32];
+        let bytes = name.as_bytes();
+        let len = bytes.len().min(32);
+        name_buf[..len].copy_from_slice(&bytes[..len]);
+        file.write_all(&name_buf)?;
+        // padding 7 bytes
+        file.write_all(&[0u8; 7])?;
+        offset += size;
+    }
+
+    // write data
+    for (_t, _name, data) in entries.into_iter() {
+        file.write_all(&data)?;
+    }
+
+    eprintln!("[ INFO ] Wrote modules blob to {}", modules_path.display());
+
+    Ok(())
 }

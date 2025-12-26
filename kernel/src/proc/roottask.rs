@@ -66,9 +66,17 @@ pub fn init() {
     *bootinfo = BootInfo::new();
 
     // 填充 DTB 信息
-    if let Some((dtb_paddr, dtb_size)) = crate::dtb::dtb_info() {
+    if let Some((dtb_paddr, dtb_size)) = dtb::dtb_info() {
         bootinfo.dtb_paddr = dtb_paddr;
         bootinfo.dtb_size = dtb_size;
+    }
+
+    // 填充启动参数
+    if let Some(args) = dtb::bootargs() {
+        let bytes = args.as_bytes();
+        let len = core::cmp::min(bytes.len(), bootinfo.cmdline.len() - 1);
+        bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
+        bootinfo.cmdline[len] = 0;
     }
 
     // 4. 构建 Root CSpace (CNode)
