@@ -24,16 +24,21 @@ pub struct DeviceTreeInfo {
     hart_count: usize,
     memory: Option<MemoryRange>,
     plic_base: Option<usize>,
+    mmio: Option<MemoryRange>,
+    pub dtb_paddr: usize,
+    pub dtb_size: usize,
 }
 
 impl DeviceTreeInfo {
-    fn new(fdt: &Fdt) -> Self {
+    fn new(fdt: &Fdt, dtb_paddr: usize) -> Self {
         let hart_count = parse_hart_count(fdt);
         let uart = parse_uart(fdt);
         let memory = parse_memory(fdt);
         let plic_base = parse_plic_base(fdt);
+        let mmio = parse_mmio(fdt);
+        let dtb_size = fdt.total_size();
 
-        Self { uart, hart_count, memory, plic_base }
+        Self { uart, hart_count, memory, plic_base, mmio, dtb_paddr, dtb_size }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -50,6 +55,9 @@ impl DeviceTreeInfo {
 
     fn plic_base(&self) -> Option<usize> {
         self.plic_base
+    }
+    fn mmio(&self) -> Option<MemoryRange> {
+        self.mmio
     }
 }
 
@@ -127,8 +135,13 @@ unsafe impl Sync for DeviceTreeCell {}
 static DEVICE_TREE: DeviceTreeCell = DeviceTreeCell::new();
 
 fn _init(dtb: *const u8) -> Result<&'static DeviceTreeInfo, fdt::FdtError> {
-    DEVICE_TREE
-        .get_or_try_init(|| unsafe { Fdt::from_ptr(dtb) }.map(|fdt| DeviceTreeInfo::new(&fdt)))
+    DEVICE_TREE.get_or_try_init(|| {
+        unsafe { Fdt::from_ptr(dtb) }.map(|fdt| DeviceTreeInfo::new(&fdt, dtb as usize))
+    })
+}
+
+pub fn dtb_info() -> Option<(usize, usize)> {
+    DEVICE_TREE.get().map(|info| (info.dtb_paddr, info.dtb_size))
 }
 
 pub fn hart_count() -> usize {
@@ -145,6 +158,10 @@ pub fn memory_range() -> Option<MemoryRange> {
 
 pub fn plic_base() -> Option<usize> {
     DEVICE_TREE.get().and_then(DeviceTreeInfo::plic_base)
+}
+
+pub fn mmio_range() -> Option<MemoryRange> {
+    DEVICE_TREE.get().and_then(DeviceTreeInfo::mmio)
 }
 
 fn parse_uart(fdt: &Fdt) -> Option<UartConfig> {
@@ -198,6 +215,10 @@ fn parse_plic_base(fdt: &Fdt) -> Option<usize> {
         }
     }
     None
+}
+
+fn parse_mmio(_fdt: &Fdt) -> Option<MemoryRange> {
+    unimplemented!()
 }
 
 pub fn init(dtb: *const u8) {

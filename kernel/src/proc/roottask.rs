@@ -1,24 +1,26 @@
 use super::payload;
 use super::scheduler;
 use super::{TCB, ThreadState};
+use crate::boot::{BootInfo, MAX_UNTYPED_REGIONS, UntypedDesc};
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
+use crate::dtb;
 use crate::ipc::UTCB_VA;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{PGSIZE, PageTable, PteFlags};
+use crate::mem::{KernelStack, PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 
 pub const VSPACE_SLOT: usize = 1;
 pub const CSPACE_SLOT: usize = 0;
 pub const TCB_SLOT: usize = 2;
 pub const UTCB_SLOT: usize = 3;
+pub const BOOTINFO_SLOT: usize = 4;
 
-pub const MEM_SLOT: usize = 4;
-pub const MMIO_SLOT: usize = 5;
-pub const IRQ_SLOT: usize = 6;
-pub const FAULT_SLOT: usize = 7;
+pub const MEM_SLOT_START: usize = 5;
+
+pub const BOOTINFO_VA: usize = 0x8000_1000;
 
 /// 初始化进程子系统并创建 Root Task
 pub fn init() {
@@ -31,6 +33,7 @@ pub fn init() {
     let root_cspace_cap = pmem::alloc_cnode_cap(12).expect("Failed to alloc root CSpace");
     let root_tcb_cap = pmem::alloc_tcb_cap().expect("Failed to alloc root TCB");
     let root_utcb_cap = pmem::alloc_frame_cap().expect("Failed to alloc root UTCB");
+    let root_bootinfo_cap = pmem::alloc_frame_cap().expect("Failed to alloc root BootInfo");
 
     // 3. 构建 Root VSpace (页表)
     // 必须映射内核空间和 Root Task 自身的代码/数据段
@@ -48,16 +51,39 @@ pub fn init() {
         )
         .expect("Failed to map UTCB");
 
+    // 映射 BootInfo 到固定位置
+    vspace
+        .map(
+            VirtAddr::from(BOOTINFO_VA),
+            root_bootinfo_cap.obj_ptr().to_pa(),
+            PGSIZE,
+            PteFlags::from(perms::READ), // 只读
+        )
+        .expect("Failed to map BootInfo");
+
+    // 初始化 BootInfo
+    let bootinfo = root_bootinfo_cap.obj_ptr().as_mut::<BootInfo>();
+    *bootinfo = BootInfo::new();
+
+    // 填充 DTB 信息
+    if let Some((dtb_paddr, dtb_size)) = crate::dtb::dtb_info() {
+        bootinfo.dtb_paddr = dtb_paddr;
+        bootinfo.dtb_size = dtb_size;
+    }
+
     // 4. 构建 Root CSpace (CNode)
     // 这是 Root Task 权力的来源。我们需要把所有剩余的物理内存
     // 转化为 Untyped Capability 并放入这个 CNode。
     let mut cspace = CNode::from_addr(root_cspace_cap.obj_ptr().to_pa(), 12);
-    populate_root_cnode(&mut cspace);
+    populate_root_cnode(&mut cspace, bootinfo);
 
     // 5. 初始化 TCB
     // 这里我们将物理帧转换为内核对象引用
     let tcb = root_tcb_cap.obj_ptr().as_mut::<TCB>();
     // TCB 已经在 alloc_tcb_cap 中初始化
+
+    // 分配内核栈
+    tcb.kstack = Some(KernelStack::alloc().expect("Failed to alloc kernel stack for Root Task"));
 
     // 6. 配置 TCB (绑定资源)
     tcb.configure(
@@ -71,6 +97,11 @@ pub fn init() {
     // 7. 设置初始寄存器
     tcb.set_registers(entry_point, stack_top);
 
+    // 设置 BootInfo 指针到 a1
+    if let Some(tf) = tcb.get_trapframe() {
+        tf.a1 = BOOTINFO_VA;
+    }
+
     // 8. 激活线程
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
@@ -81,23 +112,74 @@ pub fn init() {
     cspace.insert(VSPACE_SLOT, &root_vspace_cap);
     cspace.insert(TCB_SLOT, &root_tcb_cap);
     cspace.insert(UTCB_SLOT, &root_utcb_cap);
+    cspace.insert(BOOTINFO_SLOT, &root_bootinfo_cap);
 
     printk!("Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
 }
 
 /// 填充 Root CNode
 /// 将所有空闲物理内存作为 Untyped Capability 授予 Root Task
-fn populate_root_cnode(cnode: &mut CNode) {
-    let free_regions = pmem::get_untyped();
+fn populate_root_cnode(cnode: &mut CNode, bootinfo: &mut BootInfo) {
+    let free_region = pmem::get_untyped();
+    let mut slot = MEM_SLOT_START;
 
-    let cap = Capability::create_untyped(
-        free_regions.start,
-        (free_regions.end - free_regions.start).as_usize(),
-        rights::ALL,
-    );
-    cnode.insert(MEM_SLOT, &cap);
+    // 记录 Untyped 区域的起始槽位
+    bootinfo.untyped.start = slot;
 
-    // TODO: 还需要插入设备内存 (MMIO) 和 IRQ Capability
-    // ...
-    unimplemented!()
+    // 目前 pmem::get_untyped 返回单个区域，但 BootInfo 支持列表
+    // 我们将其作为一个条目添加
+    let size = (free_region.end - free_region.start).as_usize();
+    // 简单起见，我们假设这是一个 2^N 大小的块，或者我们只给出一个大块
+    // 实际上 Untyped 应该是 2^N 对齐的。
+    // 这里我们简化处理，直接创建一个覆盖该区域的 Untyped Cap
+    // 注意：Capability::create_untyped 需要 size_bits 吗？
+    // 查看 pmem.rs: Capability::create_untyped(paddr, size, rights)
+    // 它是 size (bytes)。
+
+    let cap = Capability::create_untyped(free_region.start, size, rights::ALL);
+    cnode.insert(slot, &cap);
+
+    // 填充 BootInfo
+    if bootinfo.untyped_count < MAX_UNTYPED_REGIONS {
+        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
+            paddr: free_region.start,
+            size_bits: (size.ilog2() as u8), // 近似
+            is_device: false,
+            padding: [0; 6],
+        };
+        bootinfo.untyped_count += 1;
+    }
+
+    slot += 1;
+
+    let mmio_range = dtb::mmio_range();
+    if let Some(mmio) = mmio_range {
+        let cap = Capability::create_untyped(PhysAddr::from(mmio.start), mmio.size, rights::ALL);
+        cnode.insert(slot, &cap);
+
+        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
+            paddr: PhysAddr::from(mmio.start),
+            size_bits: (size.ilog2() as u8),
+            is_device: true,
+            padding: [0; 6],
+        };
+        bootinfo.untyped_count += 1;
+        slot += 1;
+    }
+
+    bootinfo.untyped.end = slot;
+
+    // 插入 IRQ Handler Capabilities
+    // 假设系统支持 64 个中断 (与 IRQ_TABLE 大小一致)
+    bootinfo.irq.start = slot;
+    for irq in 0..64 {
+        let cap = Capability::new(crate::cap::CapType::IrqHandler { irq }, rights::ALL);
+        cnode.insert(slot, &cap);
+        slot += 1;
+    }
+    bootinfo.irq.end = slot;
+
+    // 记录空闲槽位
+    bootinfo.empty.start = slot;
+    bootinfo.empty.end = 1 << 12; // CNode size bits = 12
 }

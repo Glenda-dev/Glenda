@@ -2,6 +2,7 @@
 #![no_main]
 #![allow(dead_code)]
 
+mod boot;
 mod cap;
 mod dtb;
 mod hart;
