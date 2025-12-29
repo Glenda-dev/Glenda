@@ -102,7 +102,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     }
     // 将 stvec 切换到用户态向量入口
     let tramp_base_va = VA_MAX - PGSIZE;
-    let user_vec_off = (vector::user_vector as usize) - (vector::trampoline as usize);
+    let user_vec_off = (vector::user_vector as usize) & (PGSIZE - 1);
     let user_vec_addr = tramp_base_va + user_vec_off;
     unsafe {
         stvec::write(Stvec::new(user_vec_addr, stvec::TrapMode::Direct));
@@ -137,7 +137,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
     let user_satp = tcb.get_satp().expect("Failed to get satp") as u64;
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
-    let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);
+    let user_ret_off = (vector::user_return as usize) & (PGSIZE - 1);
     let user_ret_addr = tramp_base_va + user_ret_off;
     let user_return_fn: extern "C" fn(u64, u64) -> ! = unsafe { mem::transmute(user_ret_addr) };
     user_return_fn(user_tf_va.as_usize() as u64, user_satp)

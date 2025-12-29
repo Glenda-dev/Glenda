@@ -8,8 +8,5 @@ riscv = "0.15"
 fdt = "0.1.5"
 spin = "0.10.0"
 
-[build-dependencies]
-cc = "1.2.38"
-
 [features]
 default = []

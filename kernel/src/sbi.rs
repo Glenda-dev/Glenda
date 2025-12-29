@@ -1,10 +1,31 @@
-// TODO: Refactor this
+use core::arch::asm;
 
-unsafe extern "C" {
-    fn sbi_set_timer_asm(stime_value: u64) -> isize;
+const SBI_EXT_HSM: usize = 0x48534d;
+const SBI_EXT_TIME: usize = 0x54494D45;
+
+#[inline(always)]
+unsafe fn sbi_call(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> isize {
+    let error;
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") eid,
+            in("a6") fid,
+            inlateout("a0") arg0 => error,
+            inlateout("a1") arg1 => _,
+            in("a2") arg2,
+            options(nostack)
+        );
+    }
+    error
 }
 
 pub fn set_timer(stime_value: u64) -> Result<(), isize> {
-    let error = unsafe { sbi_set_timer_asm(stime_value) };
+    let error = unsafe { sbi_call(SBI_EXT_TIME, 0, stime_value as usize, 0, 0) };
+    if error == 0 { Ok(()) } else { Err(error) }
+}
+
+pub fn hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Result<(), isize> {
+    let error = unsafe { sbi_call(SBI_EXT_HSM, 0, hartid, start_addr, opaque) };
     if error == 0 { Ok(()) } else { Err(error) }
 }

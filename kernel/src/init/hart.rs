@@ -1,6 +1,7 @@
 use crate::hart;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
+use crate::sbi;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
@@ -8,20 +9,15 @@ static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
  由主 hart 通过 HSM 启动次级 hart 的入口
 
  Also see:
- Glenda/kernel/src/boot.S
+ Glenda/kernel/src/boot.rs
 */
 unsafe extern "C" {
     fn secondary_start(hartid: usize, dtb: *const u8) -> !;
 }
 
-unsafe extern "C" {
-    fn sbi_hart_start_asm(hartid: usize, start_addr: usize, opaque: usize) -> isize;
-}
-
 #[inline(always)]
 unsafe fn sbi_hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Result<(), isize> {
-    let err = unsafe { sbi_hart_start_asm(hartid, start_addr, opaque) };
-    if err == 0 { Ok(()) } else { Err(err) }
+    sbi::hart_start(hartid, start_addr, opaque)
 }
 
 // 由第一个进来的 hart 调用一次，启动其余参与测试的次级 hart

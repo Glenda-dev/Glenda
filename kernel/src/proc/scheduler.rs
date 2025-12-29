@@ -1,7 +1,8 @@
-use super::context::ProcContext;
+use super::context::switch_context;
 use super::thread::{TCB, ThreadState};
 use crate::hart;
 use crate::hart::MAX_HARTS;
+use riscv::register::sstatus;
 use spin::Mutex;
 
 // 最大优先级数量 (0-255)
@@ -60,10 +61,6 @@ static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
 
 static mut CURRENT_TCB: [Option<*mut TCB>; MAX_HARTS] = [None; MAX_HARTS];
 
-unsafe extern "C" {
-    fn switch_context(old_ctx: &mut ProcContext, new_ctx: &mut ProcContext);
-}
-
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
     let mut queues = READY_QUEUES.lock();
@@ -81,7 +78,7 @@ pub fn scheduler() -> ! {
     loop {
         // 1. 关闭中断以保护调度逻辑
         // 在 RISC-V 中，这通常在进入异常处理时自动完成，但在 idle loop 中需要手动管理
-        unsafe { riscv::register::sstatus::clear_sie() };
+        unsafe { sstatus::clear_sie() };
 
         let mut next_thread: Option<*mut TCB> = None;
 

@@ -134,7 +134,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // .data 和 .bss 已经是 RW 了，不需要额外重映射，但为了逻辑完整也可以做
 
     // 3. 映射 Trampoline (高地址)
-    let tramp_pa = PhysAddr::from(vector::trampoline as usize).align_down(PGSIZE);
+    let tramp_pa = PhysAddr::from(vector::user_vector as usize).align_down(PGSIZE);
     let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
     printk!(
         "vm: Map TRAMPOLINE [{:#x}, {:#x}) RX\n",
