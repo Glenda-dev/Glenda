@@ -107,7 +107,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
     let text_start = PhysAddr::from(unsafe { &__text_start as *const u8 as usize });
     let text_end = PhysAddr::from(unsafe { &__text_end as *const u8 as usize });
-    printk!("vm: Remap .text [{:#x}, {:#x}) RX\n", text_start.as_usize(), text_end.as_usize());
+    printk!("vm: Map .text [{:#x}, {:#x}) RX\n", text_start.as_usize(), text_end.as_usize());
     unsafe {
         boot_map(
             &mut kpt,
@@ -120,7 +120,7 @@ pub fn init_kernel_vm(hartid: usize) {
 
     let rodata_start = PhysAddr::from(unsafe { &__rodata_start as *const u8 as usize });
     let rodata_end = PhysAddr::from(unsafe { &__rodata_end as *const u8 as usize });
-    printk!("vm: Remap .rodata [{:#x}, {:#x}) R\n", rodata_start.as_usize(), rodata_end.as_usize());
+    printk!("vm: Map .rodata [{:#x}, {:#x}) R\n", rodata_start.as_usize(), rodata_end.as_usize());
     unsafe {
         boot_map(
             &mut kpt,
@@ -137,7 +137,7 @@ pub fn init_kernel_vm(hartid: usize) {
     let tramp_pa = PhysAddr::from(vector::trampoline as usize).align_down(PGSIZE);
     let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
     printk!(
-        "vm: Remap TRAMPOLINE [{:#x}, {:#x}) RX\n",
+        "vm: Map TRAMPOLINE [{:#x}, {:#x}) RX\n",
         tramp_pa.as_usize(),
         (tramp_pa + PGSIZE).as_usize()
     );
@@ -154,7 +154,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 4. 映射 MMIO (UART, PLIC)
     let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
     printk!(
-        "vm: Remap UART [{:#x}, {:#x}) RW\n",
+        "vm: Map UART [{:#x}, {:#x}) RW\n",
         uart_base.as_usize(),
         (uart_base + PGSIZE).as_usize()
     );
@@ -173,7 +173,7 @@ pub fn init_kernel_vm(hartid: usize) {
     if let Some(plic_range) = dtb::plic() {
         let plic_pa = plic_range.start;
         printk!(
-            "vm: Remap PLIC [{:#x}, {:#x}) RW\n",
+            "vm: Map PLIC [{:#x}, {:#x}) RW\n",
             plic_pa.as_usize(),
             (plic_pa + plic_range.size).as_usize()
         );
@@ -196,7 +196,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let initrd_start = initrd.start;
         let initrd_end = initrd.start + initrd.size;
         printk!(
-            "vm: Remap initrd [{:#x}, {:#x}) R\n",
+            "vm: Map initrd [{:#x}, {:#x}) R\n",
             initrd_start.as_usize(),
             initrd_end.as_usize()
         );
