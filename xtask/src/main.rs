@@ -74,6 +74,16 @@ enum Cmd {
     Size,
     /// Generate disk.img
     Mkfs,
+    /// Dump QEMU DTB to target/virt.dtb
+    DumpDtb {
+        /// Number of virtual CPUs
+        #[arg(long, default_value_t = 4)]
+        cpus: u32,
+
+        /// Memory for QEMU
+        #[arg(long, default_value = "128M")]
+        mem: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -110,6 +120,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Objdump => util::objdump(mode)?,
         Cmd::Size => util::size(mode)?,
         Cmd::Mkfs => fs::mkfs()?,
+        Cmd::DumpDtb { cpus, mem } => qemu::qemu_dump_dtb(cpus, &mem)?,
     }
     Ok(())
 }

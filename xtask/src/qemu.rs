@@ -75,3 +75,26 @@ pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     }
     run(&mut cmd)
 }
+
+pub fn qemu_dump_dtb(cpus: u32, mem: &str) -> anyhow::Result<()> {
+    let qemu = qemu_cmd()?;
+    let mut cmd = Command::new(&qemu);
+    let dtb_path = "target/virt.dtb";
+    cmd.arg("-machine").arg(format!("virt,dumpdtb={}", dtb_path));
+    // CPUs
+    if cpus > 1 {
+        cmd.arg("-smp").arg(cpus.to_string());
+    }
+    // Memory
+    cmd.arg("-m").arg(mem);
+    cmd.arg("-display").arg("none");
+
+    eprintln!("[ INFO ] Dumping DTB to {}...", dtb_path);
+    run(&mut cmd)?;
+    eprintln!("[ INFO ] DTB dumped successfully.");
+    eprintln!(
+        "[ INFO ] You can decompile it with: dtc -I dtb -O dts -o target/virt.dts {}",
+        dtb_path
+    );
+    Ok(())
+}
