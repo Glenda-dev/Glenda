@@ -1,6 +1,12 @@
 pub mod ipcmethod {
     pub const SEND: usize = 1;
     pub const RECV: usize = 2;
+    pub const CALL: usize = 3;
+    pub const NOTIFY: usize = 4;
+}
+
+pub mod replymethod {
+    pub const REPLY: usize = 1;
 }
 
 pub mod tcbmethod {

@@ -1,4 +1,6 @@
-use super::method::{cnodemethod, ipcmethod, irqmethod, pagetablemethod, tcbmethod, untypedmethod};
+use super::method::{
+    cnodemethod, ipcmethod, irqmethod, pagetablemethod, replymethod, tcbmethod, untypedmethod,
+};
 use crate::cap::captype::types;
 use crate::cap::cnode;
 use crate::cap::{CNode, CapType, Capability, rights};
@@ -20,6 +22,7 @@ pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
         CapType::CNode { paddr, bits, .. } => invoke_cnode(paddr, bits, method, &args),
         CapType::Untyped { start_paddr, size } => invoke_untyped(start_paddr, size, method, &args),
         CapType::IrqHandler { irq } => invoke_irq_handler(irq, method, &args),
+        CapType::Reply { tcb_ptr } => invoke_reply(tcb_ptr, method, &args),
         _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
     }
 }
@@ -50,6 +53,38 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
         }
         ipcmethod::RECV => {
             ipc::recv(tcb, ep);
+            errcode::SUCCESS
+        }
+        ipcmethod::CALL => {
+            let msg_info = args[0];
+            let mut cap_to_send = None;
+            let tag = ipc::MsgTag(msg_info);
+            if tag.has_cap() {
+                if let Some(utcb) = tcb.get_utcb() {
+                    if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+                        if (cap.rights & rights::GRANT) != 0 {
+                            cap_to_send = Some(cap);
+                        }
+                    }
+                }
+            }
+            ipc::call(tcb, ep, badge, cap_to_send);
+            errcode::SUCCESS
+        }
+        ipcmethod::NOTIFY => {
+            ipc::notify(ep, badge);
+            errcode::SUCCESS
+        }
+        _ => errcode::INVALID_METHOD,
+    }
+}
+
+fn invoke_reply(tcb_ptr: VirtAddr, method: usize, _args: &Args) -> usize {
+    let target_tcb = tcb_ptr.as_mut::<TCB>();
+    let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    match method {
+        replymethod::REPLY => {
+            ipc::reply(current_tcb, target_tcb);
             errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,

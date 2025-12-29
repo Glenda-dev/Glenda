@@ -13,6 +13,7 @@ pub enum ThreadState {
     Running,
     BlockedSend,
     BlockedRecv,
+    BlockedCall,
 }
 
 #[repr(C)]
