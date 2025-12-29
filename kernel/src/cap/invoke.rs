@@ -332,12 +332,7 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> u
                         // PageTable
                         types::PAGETABLE => {
                             // 初始化页表 (清零已在上面完成)
-                            Capability::create_pagetable(
-                                obj_paddr,
-                                VirtAddr::null(),
-                                0,
-                                rights::ALL,
-                            )
+                            Capability::create_pagetable(obj_paddr, 0, rights::ALL)
                         }
                         _ => return errcode::INVALID_OBJ_TYPE,
                     };

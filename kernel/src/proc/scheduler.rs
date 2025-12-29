@@ -96,6 +96,7 @@ pub fn scheduler() -> ! {
 
         if let Some(tcb_ptr) = next_thread {
             let tcb = unsafe { &mut *tcb_ptr };
+            tcb.vspace.activate();
 
             // 更新状态
             tcb.state = ThreadState::Running;

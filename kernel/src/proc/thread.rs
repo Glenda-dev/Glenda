@@ -39,7 +39,7 @@ pub struct TCB {
     pub vspace_root: Capability, // Root PageTable (VSpace)
 
     // 地址空间
-    pub vspace: Option<VSpace>,
+    pub vspace: VSpace,
 
     // --- IPC State ---
     pub fault_handler: Option<Capability>, // 异常处理 Endpoint
@@ -81,7 +81,7 @@ impl TCB {
             kstack: None,
             cspace_root: Capability::empty(),
             vspace_root: Capability::empty(),
-            vspace: None,
+            vspace: VSpace::empty(),
             fault_handler: None,
             ipc_buffer: VirtAddr::null(),
             send_queue_head: None,
@@ -125,6 +125,8 @@ impl TCB {
     ) {
         self.cspace_root = cspace.clone();
         self.vspace_root = vspace.clone();
+        // 初始化 VSpace 对象
+        self.vspace.configure(vspace);
         self.utcb_frame = utcb_frame.cloned();
         self.fault_handler = fault_ep.cloned();
         self.utcb_base = utcb_vaddr;
@@ -187,16 +189,8 @@ impl TCB {
         }
     }
 
-    pub fn get_satp(&self) -> Option<usize> {
-        if let CapType::PageTable { paddr, .. } = self.vspace_root.object {
-            // Mode: Sv39 (8)
-            // PPN: paddr >> 12
-            let mode = 8usize << 60;
-            let ppn = paddr.as_usize() >> 12;
-            Some(mode | ppn)
-        } else {
-            None
-        }
+    pub fn get_satp(&self) -> usize {
+        self.vspace.get_satp()
     }
 
     pub fn cap_lookup(&self, cptr: usize) -> Option<Capability> {

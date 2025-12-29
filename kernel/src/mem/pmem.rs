@@ -95,7 +95,7 @@ pub fn alloc_pagetable_cap() -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE).map(|paddr| {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
-        Capability::create_pagetable(paddr, paddr.to_va(), 0, rights::ALL)
+        Capability::create_pagetable(paddr, 0, rights::ALL)
     })
 }
 

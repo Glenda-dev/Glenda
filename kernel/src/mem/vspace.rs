@@ -1,4 +1,6 @@
-use crate::mem::PhysAddr;
+use crate::cap::CapType;
+use crate::cap::Capability;
+use crate::mem::{PGSIZE, PhysAddr};
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Mutex;
@@ -66,9 +68,32 @@ impl VSpace {
         }
     }
 
+    pub const fn empty() -> Self {
+        Self { root_paddr: PhysAddr::null(), asid: 0, asid_generation: 0 }
+    }
+
+    pub fn get_satp(&self) -> usize {
+        // Mode: Sv39 (8)
+        // PPN: paddr >> 12
+        let mode = 8usize << 60;
+        let ppn = self.root_paddr.as_usize() >> 12;
+        let asid = self.asid as usize;
+        mode | (asid << 44) | ppn
+    }
+
     /// 激活此地址空间 (上下文切换时调用)
     /// 返回需要写入 satp 的值 (包含 ASID)
-    pub fn activate(&self) {
+    pub fn activate(&mut self) {
+        // 检查 ASID 是否有效且属于当前代际
+        let mut manager = ASID_MANAGER.lock();
+        if self.asid == 0 || self.asid_generation != manager.generation {
+            let (asid, generation) = manager.alloc();
+            self.asid = asid;
+            self.asid_generation = generation;
+        }
+        drop(manager);
+
+        assert!(self.root_paddr.is_aligned(PGSIZE), "Root page table address must be page-aligned");
         unsafe {
             satp::set(satp::Mode::Sv39, self.asid as usize, self.root_paddr.to_ppn().as_usize());
         }
@@ -81,5 +106,16 @@ impl VSpace {
 
     pub fn asid(&self) -> u16 {
         self.asid
+    }
+
+    pub fn configure(&mut self, cap: &Capability) {
+        match cap.object {
+            CapType::PageTable { paddr, level } => {
+                assert!(level == 2, "Root page table must be level 2");
+                assert!(paddr.is_aligned(PGSIZE), "Page table address must be page-aligned");
+                self.root_paddr = paddr;
+            }
+            _ => return,
+        }
     }
 }
