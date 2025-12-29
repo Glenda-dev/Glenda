@@ -116,3 +116,9 @@ pub fn get_untyped() -> UntypedRegion {
     let pmem = PMEM.lock();
     UntypedRegion { start: pmem.current, end: pmem.end }
 }
+
+/// 获取保留的未分配内存区域
+pub fn get_preserved_untyped() -> UntypedRegion {
+    let pmem = PMEM.lock();
+    UntypedRegion { start: PhysAddr::null(), end: pmem.start - 1 }
+}
