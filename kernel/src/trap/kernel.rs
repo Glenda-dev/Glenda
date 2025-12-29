@@ -50,38 +50,52 @@ fn exception_handler(
 ) {
     // 其他同步异常交给 handle_exception 处理
     let sc = scause::read().bits();
-    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    if let Some(ptr) = scheduler::current() {
+        let tcb = unsafe { &mut *ptr };
 
-    if let Some(handler_cap) = tcb.fault_handler.clone() {
-        // 1. 将异常详情写入 UTCB (IPC Buffer)
-        // 消息格式: [scause, stval, sepc]
-        if let Some(utcb) = tcb.get_utcb() {
-            utcb.mrs_regs[0] = sc;
-            utcb.mrs_regs[1] = tval;
-            utcb.mrs_regs[2] = epc;
-            utcb.msg_tag = MsgTag::new(ipc::label::FAULT, 3); // Label: 0xFFFF (Fault), Length: 3
-        }
+        if let Some(handler_cap) = tcb.fault_handler.clone() {
+            // 1. 将异常详情写入 UTCB (IPC Buffer)
+            // 消息格式: [scause, stval, sepc]
+            if let Some(utcb) = tcb.get_utcb() {
+                utcb.mrs_regs[0] = sc;
+                utcb.mrs_regs[1] = tval;
+                utcb.mrs_regs[2] = epc;
+                utcb.msg_tag = MsgTag::new(ipc::label::FAULT, 3); // Label: 0xFFFF (Fault), Length: 3
+            }
 
-        // 2. 提取 Endpoint
-        if let CapType::Endpoint { ep_ptr } = handler_cap.object {
-            let ep = ep_ptr.as_mut::<ipc::Endpoint>();
-            let badge = handler_cap.badge.unwrap_or(0);
+            // 2. 提取 Endpoint
+            if let CapType::Endpoint { ep_ptr } = handler_cap.object {
+                let ep = ep_ptr.as_mut::<ipc::Endpoint>();
+                let badge = handler_cap.badge.unwrap_or(0);
 
-            // 3. 执行发送 (这会阻塞当前线程)
-            ipc::send(tcb, ep, badge, None);
+                // 3. 执行发送 (这会阻塞当前线程)
+                ipc::send(tcb, ep, badge, None);
+            } else {
+                panic!("Fault handler is not an Endpoint");
+            }
         } else {
-            panic!("Fault handler is not an Endpoint");
+            // 8: Environment call from U-mode (syscall)
+            if e == 8 {
+                user::syscall_handler(ctx);
+                // advance sepc to next instruction
+                unsafe {
+                    sepc::write(epc.wrapping_add(4));
+                }
+                return;
+            }
+            printk!(
+                "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
+                ANSI_RED,
+                ANSI_RESET,
+                e,
+                EXCEPTION_INFO.get(e).unwrap_or(&"Unknown Exception"),
+                epc,
+                tval,
+                sstatus_bits
+            );
+            panic!("Kernel panic due to unhandled exception");
         }
     } else {
-        // 8: Environment call from U-mode (syscall)
-        if e == 8 {
-            user::syscall_handler(ctx);
-            // advance sepc to next instruction
-            unsafe {
-                sepc::write(epc.wrapping_add(4));
-            }
-            return;
-        }
         printk!(
             "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
             ANSI_RED,
