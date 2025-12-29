@@ -33,7 +33,7 @@ pub fn send_ipi(hart_mask: usize, hart_mask_base: usize) -> Result<(), isize> {
     if error == 0 { Ok(()) } else { Err(error) }
 }
 
-pub fn hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Result<(), isize> {
-    let error = unsafe { sbi_call(SBI_EXT_HSM, 0, hartid, start_addr, opaque) };
-    if error == 0 { Ok(()) } else { Err(error) }
+pub fn send_hsm(hartid: usize, command: usize, arg0: usize, opaque: usize) -> Result<usize, isize> {
+    let error = unsafe { sbi_call(SBI_EXT_HSM, command, hartid, arg0, opaque) };
+    if error >= 0 { Ok(error as usize) } else { Err(error) }
 }

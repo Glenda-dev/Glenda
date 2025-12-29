@@ -15,34 +15,27 @@ unsafe extern "C" {
     fn secondary_start(hartid: usize, dtb: *const u8) -> !;
 }
 
-#[inline(always)]
-unsafe fn sbi_hart_start(hartid: usize, start_addr: usize, opaque: usize) -> Result<(), isize> {
-    sbi::hart_start(hartid, start_addr, opaque)
-}
-
 // 由第一个进来的 hart 调用一次，启动其余参与测试的次级 hart
 pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
     if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return;
     }
-    unsafe {
-        let start_addr = secondary_start as usize;
-        let opaque = dtb as usize;
-        let harts = crate::dtb::hart_count();
-        for target in 0..harts {
-            if target == hartid {
-                continue;
-            }
-            match sbi_hart_start(target, start_addr, opaque) {
-                Ok(()) => printk!("HARTS: Started hart {} via SBI\n", target),
-                Err(err) => printk!(
-                    "{}HARTS: Failed to start hart {} via SBI: error {}{}\n",
-                    ANSI_RED,
-                    target,
-                    err,
-                    ANSI_RESET
-                ),
-            }
+    let start_addr = secondary_start as usize;
+    let opaque = dtb as usize;
+    let harts = crate::dtb::hart_count();
+    for target in 0..harts {
+        if target == hartid {
+            continue;
+        }
+        match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
+            Ok(()) => printk!("HARTS: Started hart {} via SBI\n", target),
+            Err(err) => printk!(
+                "{}HARTS: Failed to start hart {} via SBI: error {}{}\n",
+                ANSI_RED,
+                target,
+                err,
+                ANSI_RESET
+            ),
         }
     }
 }

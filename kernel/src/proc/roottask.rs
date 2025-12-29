@@ -1,7 +1,7 @@
 use super::payload;
 use super::scheduler;
 use super::{TCB, ThreadState};
-use crate::boot::{BootInfo, MAX_UNTYPED_REGIONS, UntypedDesc};
+use crate::boot::{BootInfo, UntypedDesc};
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
