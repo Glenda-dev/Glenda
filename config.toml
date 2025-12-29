@@ -1,6 +1,6 @@
 [[services]]
-name = "hello"
-path = "service/hello"
-build_cmd = "make"
-output_bin = "build/hello.bin"
-kind = "test"
+name = "9ball"
+path = "service/9ball"
+build_cmd = "echo Building 9ball..."
+output_bin = "build/9ball.bin"
+kind = "root_task"
