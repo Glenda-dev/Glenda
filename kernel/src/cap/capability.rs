@@ -50,18 +50,21 @@ impl Capability {
         Self { object: CapType::Empty, badge: None, rights: 0 }
     }
 
-    pub fn mint(&self, rights: u8, badge: Option<usize>) -> Self {
-        // 1. 使用 clone() 确保引用计数正确增加
+    pub fn mint(&self, badge: Option<usize>, rights: u8) -> Self {
         let mut new_cap = self.clone();
 
-        // 2. 权限只能缩小，不能放大 (Security: Masking)
-        new_cap.rights &= rights;
+        // 规范化：0 视为 None
+        let effective_badge = match badge {
+            Some(0) => None,
+            b => b,
+        };
 
-        // 3. Badge 逻辑：如果原 Cap 已经有 Badge，则不允许修改 (Immutable Identity)
-        // 如果原 Cap 没有 Badge，则可以赋予新的 Badge
-        if new_cap.badge.is_none() {
-            new_cap.badge = badge;
+        // 只有原始能力未标记，且新标记有效时，才允许注入
+        if self.badge.is_none() && effective_badge.is_some() {
+            new_cap.badge = effective_badge;
         }
+
+        new_cap.rights &= rights;
         new_cap
     }
 

@@ -138,13 +138,17 @@ pub fn reply(current: &mut TCB, target: &mut TCB) {
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
 pub fn notify(ep: &mut Endpoint, badge: usize) {
-    // 如果有接收者在等，直接交付并唤醒
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
+
+        // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
+        if let Some(utcb) = receiver.get_utcb() {
+            utcb.msg_tag = MsgTag::new(label::NOTIFY, 0);
+        }
+
         set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
-        // 否则把通知放入 pending 队列，等待将来 recv
         ep.notification_word |= badge;
     }
 }
@@ -156,7 +160,11 @@ pub fn notify(ep: &mut Endpoint, badge: usize) {
 pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     if ep.notification_word != 0 {
-        // 将 badge 放到接收者上下文并返回（无数据拷贝）
+        // 修复：主动检查时也要设置 MsgTag
+        if let Some(utcb) = current.get_utcb() {
+            utcb.msg_tag = MsgTag::new(label::NOTIFY, 0);
+        }
+
         set_badge(current, ep.notification_word);
         ep.notification_word = 0;
         return;

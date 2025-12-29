@@ -1,4 +1,3 @@
-
 /// 消息标签 (Message Tag) 结构
 /// 用于描述 IPC 消息的元数据
 #[derive(Debug, Clone, Copy)]

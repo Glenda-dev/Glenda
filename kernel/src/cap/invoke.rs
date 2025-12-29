@@ -203,12 +203,13 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
             // Mint: (src_cptr, dest_slot, badge, rights)
             let src_cptr = args[0];
             let dest_slot = args[1];
-            let badge = if args[2] != 0 { Some(args[2]) } else { None };
-            let rights = args[3] as u8;
+            let badge_val = args[2];
+            let rights = args[3];
+            let badge = if badge_val == 0 { None } else { Some(badge_val) };
 
             let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
-                let new_cap = src_cap.mint(rights, badge);
+                let new_cap = src_cap.mint(badge, rights as u8);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
@@ -226,7 +227,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
 
             let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
-                let new_cap = src_cap.mint(rights, None);
+                let new_cap = src_cap.mint(None, rights);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
