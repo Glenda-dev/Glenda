@@ -2,7 +2,6 @@ use super::method::{
     cnodemethod, ipcmethod, irqmethod, pagetablemethod, replymethod, tcbmethod, untypedmethod,
 };
 use crate::cap::captype::types;
-use crate::cap::cnode;
 use crate::cap::{CNode, CapType, Capability, rights};
 use crate::hart;
 use crate::ipc;
@@ -242,7 +241,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
-                cnode::delete_recursive(slot_addr);
+                cnode.delete(slot);
                 errcode::SUCCESS
             } else {
                 errcode::INVALID_SLOT
@@ -253,7 +252,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
             let slot = args[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
-                cnode::revoke_recursive(slot_addr);
+                cnode.revoke(slot);
                 errcode::SUCCESS
             } else {
                 errcode::INVALID_SLOT

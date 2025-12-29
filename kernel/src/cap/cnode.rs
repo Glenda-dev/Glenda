@@ -156,9 +156,25 @@ impl CNode {
             if let CapType::Empty = cap.object { None } else { Some(cap) }
         }
     }
+
+    pub fn revoke(&mut self, slot: usize) {
+        if slot >= self.size() {
+            return;
+        }
+        let slot_addr = self.get_slot_addr(slot);
+        revoke_recursive(slot_addr);
+    }
+
+    pub fn delete(&mut self, slot: usize) {
+        if slot >= self.size() {
+            return;
+        }
+        let slot_addr = self.get_slot_addr(slot);
+        delete_recursive(slot_addr);
+    }
 }
 
-pub fn revoke_recursive(slot_addr: PhysAddr) {
+fn revoke_recursive(slot_addr: PhysAddr) {
     let slot = slot_addr.as_mut::<Slot>();
     let mut child_addr = slot.cdt.first_child;
     while child_addr != PhysAddr::null() {
@@ -169,7 +185,7 @@ pub fn revoke_recursive(slot_addr: PhysAddr) {
     slot.cdt.first_child = PhysAddr::null();
 }
 
-pub fn delete_recursive(slot_addr: PhysAddr) {
+fn delete_recursive(slot_addr: PhysAddr) {
     // 1. 递归撤销所有子能力
     revoke_recursive(slot_addr);
 
