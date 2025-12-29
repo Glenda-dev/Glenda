@@ -87,7 +87,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
     let mem = dtb::memory_range().expect("Memory range not found in DTB");
     printk!(
-        "vm: Identity Map RAM [{:#x}, {:#x})\n",
+        "vm: Identity Map RAM [{:#x}, {:#x}) RW\n",
         mem.start.as_usize(),
         (mem.start + mem.size).as_usize()
     );
@@ -98,7 +98,9 @@ pub fn init_kernel_vm(hartid: usize) {
             mem_start.to_va(),
             mem_start,
             mem.size,
-            PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+            PteFlags::from(
+                perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL,
+            ),
         );
     }
 
@@ -112,7 +114,7 @@ pub fn init_kernel_vm(hartid: usize) {
             text_start.to_va(),
             text_start,
             (text_end - text_start).as_usize(),
-            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED),
+            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED | perms::GLOBAL),
         );
     }
 
@@ -125,7 +127,7 @@ pub fn init_kernel_vm(hartid: usize) {
             rodata_start.to_va(),
             rodata_start,
             (rodata_end - rodata_start).as_usize(),
-            PteFlags::from(perms::READ | perms::ACCESSED),
+            PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
         );
     }
 
@@ -135,7 +137,7 @@ pub fn init_kernel_vm(hartid: usize) {
     let tramp_pa = PhysAddr::from(vector::trampoline as usize).align_down(PGSIZE);
     let tramp_va = VirtAddr::from(super::VA_MAX - super::PGSIZE);
     printk!(
-        "vm: Map TRAMPOLINE [{:#x}, {:#x})\n",
+        "vm: Remap TRAMPOLINE [{:#x}, {:#x}) RX\n",
         tramp_pa.as_usize(),
         (tramp_pa + PGSIZE).as_usize()
     );
@@ -145,34 +147,46 @@ pub fn init_kernel_vm(hartid: usize) {
             tramp_va,
             tramp_pa,
             PGSIZE,
-            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED),
+            PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED | perms::GLOBAL),
         );
     }
 
     // 4. 映射 MMIO (UART, PLIC)
     let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
-    printk!("vm: Map UART [{:#x}, {:#x})\n", uart_base.as_usize(), (uart_base + PGSIZE).as_usize());
+    printk!(
+        "vm: Remap UART [{:#x}, {:#x}) RW\n",
+        uart_base.as_usize(),
+        (uart_base + PGSIZE).as_usize()
+    );
     unsafe {
         boot_map(
             &mut kpt,
             uart_base.to_va(),
             uart_base,
             PGSIZE,
-            PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+            PteFlags::from(
+                perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL,
+            ),
         );
     }
 
-    if let Some(plic_base) = dtb::plic_base() {
-        let plic_pa = PhysAddr::from(plic_base);
-        printk!("vm: Map PLIC [{:#x}, {:#x})\n", plic_pa.as_usize(), (plic_pa + 0x3000).as_usize());
+    if let Some(plic_range) = dtb::plic() {
+        let plic_pa = plic_range.start;
+        printk!(
+            "vm: Remap PLIC [{:#x}, {:#x}) RW\n",
+            plic_pa.as_usize(),
+            (plic_pa + plic_range.size).as_usize()
+        );
         // 映射整个 PLIC 区域 (简化处理，映射 4MB)
         unsafe {
             boot_map(
                 &mut kpt,
                 plic_pa.to_va(),
                 plic_pa,
-                0x3000,
-                PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY),
+                plic_range.size,
+                PteFlags::from(
+                    perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL,
+                ),
             );
         }
     }
@@ -182,7 +196,7 @@ pub fn init_kernel_vm(hartid: usize) {
         let initrd_start = initrd.start;
         let initrd_end = initrd.start + initrd.size;
         printk!(
-            "vm: Map initrd [{:#x}, {:#x}) R\n",
+            "vm: Remap initrd [{:#x}, {:#x}) R\n",
             initrd_start.as_usize(),
             initrd_end.as_usize()
         );
@@ -192,7 +206,7 @@ pub fn init_kernel_vm(hartid: usize) {
                 initrd_start.to_va(),
                 initrd_start,
                 (initrd_end - initrd_start).as_usize(),
-                PteFlags::from(perms::READ | perms::ACCESSED),
+                PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
             );
         }
     }

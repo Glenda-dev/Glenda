@@ -1,10 +1,9 @@
-
 use crate::dtb;
 use core::ptr::{read_volatile, write_volatile};
 
 #[inline(always)]
 fn plic_base() -> usize {
-    dtb::plic_base().expect("PLIC base not found in DTB")
+    dtb::plic().expect("PLIC base not found in DTB").start.as_usize()
 }
 
 #[inline(always)]
