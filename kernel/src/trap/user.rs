@@ -134,7 +134,7 @@ pub extern "C" fn trap_user_return(_ctx: &mut TrapFrame) {
         sscratch::write(user_tf_va.as_usize());
     }
 
-    let user_satp = tcb.get_satp().expect("Failed to get satp").as_usize() as u64;
+    let user_satp = tcb.get_satp().expect("Failed to get satp") as u64;
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
     let user_ret_off = (vector::user_return as usize) - (vector::trampoline as usize);

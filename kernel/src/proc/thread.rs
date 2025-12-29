@@ -64,6 +64,9 @@ pub struct TCB {
     // --- UTCB (User Thread Control Block) ---
     pub utcb_frame: Option<Capability>, // UTCB 所在的物理帧 (以 Capability 形式存储)
     pub utcb_base: VirtAddr,            // UTCB 在用户地址空间中的基址
+
+    // Priveleged Thread Indicator
+    pub privileged: bool, // 是否为内核线程
 }
 
 impl TCB {
@@ -90,7 +93,24 @@ impl TCB {
             ipc_cap: None,
             utcb_frame: None,
             utcb_base: VirtAddr::null(),
+            privileged: false,
         }
+    }
+
+    /// 创建一个内核线程
+    /// 内核线程运行在 S-Mode，共享内核地址空间
+    pub fn new_kthread(entry: usize) -> Self {
+        let mut tcb = Self::new();
+        tcb.privileged = true;
+        tcb.kstack = Some(KernelStack::alloc().expect("Failed to alloc kstack for kernel thread"));
+
+        // 设置上下文以跳转到入口函数
+        tcb.context.ra = entry;
+        tcb.context.sp = tcb.kstack.as_ref().unwrap().top().as_usize();
+        // s0 (fp) 设为 0，方便调试回溯终止
+        tcb.context.s0 = 0;
+
+        tcb
     }
 
     /// 配置线程的核心资源
@@ -134,6 +154,9 @@ impl TCB {
     /// 获取当前线程的 TrapFrame (用户态上下文)
     /// TrapFrame 总是位于内核栈的顶部
     pub fn get_trapframe(&self) -> Option<&mut TrapFrame> {
+        if self.privileged {
+            return None;
+        }
         if let Some(kstack) = &self.kstack {
             let top = kstack.top();
             // TrapFrame 位于栈顶下方
@@ -164,11 +187,13 @@ impl TCB {
         }
     }
 
-    pub fn get_satp(&self) -> Option<VirtAddr> {
-        // 假设 Capability 中存储了页表的物理地址
-        // 这里需要转换为虚拟地址
+    pub fn get_satp(&self) -> Option<usize> {
         if let CapType::PageTable { paddr, .. } = self.vspace_root.object {
-            Some(paddr.to_va())
+            // Mode: Sv39 (8)
+            // PPN: paddr >> 12
+            let mode = 8usize << 60;
+            let ppn = paddr.as_usize() >> 12;
+            Some(mode | ppn)
         } else {
             None
         }
