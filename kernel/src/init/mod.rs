@@ -14,6 +14,6 @@ pub fn init(hartid: usize, dtb: *const u8) {
     trap::init(hartid, dtb);
     irq::init(hartid, dtb);
     vm::init(hartid, dtb);
-    hart::init(hartid, dtb);
     proc::init(hartid, dtb);
+    hart::init(hartid, dtb);
 }
