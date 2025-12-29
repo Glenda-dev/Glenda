@@ -91,11 +91,14 @@ pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
     })
 }
 
-pub fn alloc_pagetable_cap() -> Option<Capability> {
+pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE).map(|paddr| {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
-        Capability::create_pagetable(paddr, 0, rights::ALL)
+        // 默认分配的是根页表 (Level 2 for Sv39)
+        // 如果用于中间页表，调用者需要手动修改 CapType 或者我们提供参数
+        // 但为了兼容现有代码，我们这里默认设为 2
+        Capability::create_pagetable(paddr, level, rights::ALL)
     })
 }
 

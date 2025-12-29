@@ -1,6 +1,8 @@
 use crate::dtb;
+use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{PGSIZE, PteFlags, VirtAddr};
+use crate::mem::{EMPTY_VA, PGSIZE};
+use crate::mem::{PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use spin::Once;
@@ -219,7 +221,7 @@ impl ProcPayload {
     }
 
     /// 遍历 ELF Program Headers 并映射 LOAD 段
-    pub fn map_segments(&self, vspace: &mut crate::mem::PageTable) {
+    pub fn map_segments(&self, vspace: &mut PageTable) {
         if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
             return;
         }
@@ -279,26 +281,41 @@ impl ProcPayload {
                         }
                     }
 
-                    // 建立中间页表 (如果需要)
-                    // 注意：vspace.map 假设中间页表已存在，所以我们需要先 map_table
-                    // 这里简化处理，假设 root task 的代码段在同一个 1GB/2MB 范围内
-                    // 或者我们应该在 map 内部自动处理 (但微内核原则是不自动处理)
-                    // 为了 Root Task 启动，我们在这里手动处理一下
-                    for level in (1..3).rev() {
-                        let pt_cap = crate::mem::pmem::alloc_pagetable_cap()
-                            .expect("Failed to alloc frame for page table");
-                        let pt_paddr = pt_cap.obj_ptr().to_pa();
-                        core::mem::forget(pt_cap);
-
-                        let _ = vspace.map_table(va, pt_paddr, level);
-                    }
-
-                    vspace
-                        .map(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags)
-                        .expect("Failed to map segment");
+                    vspace.map_with_alloc(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
                     core::mem::forget(frame_cap);
                 }
             }
+        }
+    }
+
+    // Map Flat Entire Binary
+    pub fn map(&self, vspace: &mut PageTable) {
+        // Copy data into newly allocated frames
+        let flags = PteFlags::from(perms::USER | perms::READ | perms::EXECUTE | perms::VALID);
+        let num_pages = (self.data.len() + PGSIZE - 1) / PGSIZE;
+        for j in 0..num_pages {
+            let frame_cap =
+                pmem::alloc_frame_cap().expect("Failed to alloc frame for flat mapping");
+            let va = VirtAddr::from(EMPTY_VA + j * PGSIZE);
+            let src_pa = PhysAddr::from(self.data.as_ptr() as usize + j * PGSIZE);
+            let src_va = src_pa.to_va();
+            let copy_size = if (j + 1) * PGSIZE <= self.data.len() {
+                PGSIZE
+            } else {
+                self.data.len() - j * PGSIZE
+            };
+            if copy_size > 0 {
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        src_va.as_ptr::<u8>(),
+                        frame_cap.obj_ptr().as_mut_ptr::<u8>(),
+                        copy_size,
+                    );
+                }
+            }
+
+            vspace.map_with_alloc(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
+            core::mem::forget(frame_cap);
         }
     }
 }

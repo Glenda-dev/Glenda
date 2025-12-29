@@ -1,7 +1,12 @@
+use super::PGSIZE;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
-pub const VA_MAX: usize = 1 << 38;
-
+pub const VA_MAX: usize = 1 << 38; // 256 GiB 虚拟地址空间上限
+pub const EMPTY_VA: usize = 0x0; // 空虚拟地址
+pub const TRAMPOLINE_VA: usize = VA_MAX - PGSIZE; // Trampoline 映射地址
+pub const TRAPFRAME_VA: usize = TRAMPOLINE_VA - PGSIZE; // Trapframe 映射地址
+pub const UTCB_VA: usize = TRAPFRAME_VA - PGSIZE; // UTCB 映射地址
+pub const BOOTINFO_VA: usize = UTCB_VA - PGSIZE; // BootInfo 映射地址
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub struct PhysAddr(usize);
 
@@ -115,6 +120,9 @@ impl VirtAddr {
     }
     pub fn align_up(&self, align: usize) -> Self {
         VirtAddr((self.0 + align - 1) & !(align - 1))
+    }
+    pub const fn max() -> Self {
+        Self(VA_MAX - 1)
     }
 }
 

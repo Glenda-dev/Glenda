@@ -1,8 +1,8 @@
-use crate::mem::pte::PteFlags;
-
+use super::Pte;
 use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
-use super::Pte;
+use crate::mem::pmem;
+use crate::mem::pte::PteFlags;
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
@@ -162,11 +162,50 @@ impl PageTable {
         Ok(())
     }
 
-    pub fn map_kernel(&mut self) {
-        if let Some(kpt) = crate::mem::vm::KERNEL_PAGE_TABLE.get() {
-            // 拷贝顶级页表的所有条目
-            // 在恒等映射模式下，这包含了内核代码、数据以及所有物理内存的映射
-            self.entries.copy_from_slice(&kpt.entries);
+    /// 映射并自动分配中间页表 (辅助函数)
+    ///
+    /// 如果中间页表不存在，则分配新的页表页。
+    /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
+    pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: PteFlags) {
+        let start = va.align_down(PGSIZE);
+        let end = (va + size).align_up(PGSIZE);
+
+        let mut va = start;
+        let mut pa = pa.align_down(PGSIZE);
+        while va < end {
+            // 手动遍历页表，如果中间层级缺失则分配
+            let mut table = self as *mut PageTable;
+            for level in (1..3).rev() {
+                let idx = va.vpn()[level].as_usize();
+                let entry = unsafe { &mut (*table).entries[idx] };
+
+                if !entry.is_valid() {
+                    // 分配新的页表页
+                    let frame_cap = pmem::alloc_pagetable_cap(level)
+                        .expect("Boot OOM: Failed to allocate page table");
+                    let frame_pa = frame_cap.obj_ptr().to_pa();
+                    // 必须 leak，否则 frame 在作用域结束时会被释放，导致页表损坏
+                    core::mem::forget(frame_cap);
+
+                    // 建立中间层级映射 (V=1, 无 R/W/X)
+                    *entry = Pte::from(frame_pa, PteFlags::from(perms::VALID));
+                }
+
+                // 进入下一级
+                let next_pa = entry.pa();
+                // 在恒等映射模式下，物理地址即为内核虚拟地址
+                let next_va = next_pa.to_va();
+                table = next_va.as_mut::<PageTable>();
+            }
+
+            // 设置最后一级 PTE
+            let idx = va.vpn()[0].as_usize();
+
+            let pte_ptr = unsafe { &mut (*table).entries[idx] };
+            // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
+            *pte_ptr = Pte::from(pa, flags | perms::VALID);
+            va += PGSIZE;
+            pa += PGSIZE;
         }
     }
 }

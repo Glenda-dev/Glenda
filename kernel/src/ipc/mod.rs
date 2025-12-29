@@ -3,7 +3,7 @@ pub mod message;
 pub mod utcb;
 
 pub use message::{MsgTag, label};
-pub use utcb::{UTCB, UTCB_SIZE, UTCB_VA};
+pub use utcb::{UTCB, UTCB_SIZE};
 
 use crate::cap::{CapType, Capability, Slot, rights};
 use crate::mem::VirtAddr;
