@@ -6,7 +6,7 @@ use crate::ipc;
 use crate::printk;
 use spin::Mutex;
 
-const MAX_IRQS: usize = 64;
+const MAX_IRQS: usize = 128;
 
 pub fn init() {
     // 初始化 IRQ 表与定时器
