@@ -101,11 +101,6 @@ pub fn init() {
     // 7. 设置初始寄存器
     tcb.set_registers(entry_point, stack_top);
 
-    // 设置 BootInfo 指针到 a1
-    if let Some(tf) = tcb.get_trapframe() {
-        tf.a1 = BOOTINFO_VA;
-    }
-
     // 8. 激活线程
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
@@ -118,7 +113,7 @@ pub fn init() {
     cspace.insert(UTCB_SLOT, &root_utcb_cap);
     cspace.insert(BOOTINFO_SLOT, &root_bootinfo_cap);
 
-    printk!("Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
+    printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
 }
 
 /// 填充 Root CNode

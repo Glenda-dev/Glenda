@@ -2,6 +2,7 @@ use super::CapType;
 use super::rights;
 use crate::cap::cnode::CNodeHeader;
 use crate::ipc::Endpoint;
+use crate::mem::PGSIZE;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::TCB;
 use core::sync::atomic::Ordering;
@@ -123,6 +124,7 @@ impl Capability {
     }
 
     pub fn create_frame(paddr: PhysAddr, rights: u8) -> Self {
+        assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
         Self::new(CapType::Frame { paddr }, rights)
     }
 

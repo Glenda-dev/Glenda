@@ -33,12 +33,12 @@ impl PmemManager {
         self.end = end;
     }
 
-    fn alloc_addr(&mut self, size: usize) -> Option<PhysAddr> {
+    fn alloc_addr(&mut self, size: usize, align: usize) -> Option<PhysAddr> {
         if self.current.as_usize() == 0 {
             return None;
         }
-        // Ensure 4K alignment for all allocations
-        let aligned_current = self.current.align_up(PGSIZE);
+        // Ensure alignment for allocations
+        let aligned_current = self.current.align_up(align);
         if aligned_current + size <= self.end {
             let paddr = aligned_current;
             self.current = aligned_current + size;
@@ -75,24 +75,27 @@ pub fn initialize_regions(_hartid: usize) {
 
 /// 分配一个物理页 Capability
 pub fn alloc_frame_cap() -> Option<Capability> {
-    PMEM.lock().alloc_addr(PGSIZE).map(|paddr| Capability::create_frame(paddr, rights::ALL))
+    PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| Capability::create_frame(paddr, rights::ALL))
 }
 
 /// 分配一个 Untyped Capability
 pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
-    PMEM.lock().alloc_addr(size).map(|paddr| Capability::create_untyped(paddr, size, rights::ALL))
+    PMEM.lock()
+        .alloc_addr(size, PGSIZE)
+        .map(|paddr| Capability::create_untyped(paddr, size, rights::ALL))
 }
 
 pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
     let size = (1 << bits) * core::mem::size_of::<Slot>() + core::mem::size_of::<CNodeHeader>();
-    PMEM.lock().alloc_addr(size).map(|paddr| {
+    let align = core::mem::align_of::<Slot>();
+    PMEM.lock().alloc_addr(size, align).map(|paddr| {
         CNode::new(paddr, bits);
         Capability::create_cnode(paddr, bits, rights::ALL)
     })
 }
 
 pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
-    PMEM.lock().alloc_addr(PGSIZE).map(|paddr| {
+    PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
         // 默认分配的是根页表 (Level 2 for Sv39)
@@ -103,7 +106,8 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
 }
 
 pub fn alloc_tcb_cap() -> Option<Capability> {
-    PMEM.lock().alloc_addr(core::mem::size_of::<TCB>()).map(|paddr| {
+    let align = core::mem::align_of::<TCB>();
+    PMEM.lock().alloc_addr(core::mem::size_of::<TCB>(), align).map(|paddr| {
         let tcb = paddr.to_va().as_mut::<TCB>();
         *tcb = TCB::new();
         Capability::create_thread(paddr.to_va(), rights::ALL)
