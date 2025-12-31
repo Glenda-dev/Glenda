@@ -2,6 +2,7 @@
 
 use crate::fs::buffer;
 use crate::fs::inode;
+use crate::fs::dentry;
 use crate::printk;
 use core::ptr::{self, addr_of, addr_of_mut};
 
@@ -133,6 +134,24 @@ fn fs_test() {
         if changed { inode::inode_rw(root_init, true); }
         inode::inode_put(root_init);
     }
+
+    // Test 3: Dentry
+    printk!("Test 3: Dentry...\n");
+    let root = inode::inode_get(inode::ROOT_INODE);
+    let name = b"test_file";
+    let target_inum = 100; // Arbitrary
+    dentry::dentry_create(root, target_inum, name);
+    let found = dentry::dentry_search(root, name);
+    if found != Some(target_inum) {
+         panic!("Test 3 failed: dentry not found");
+    }
+    dentry::dentry_print(root);
+    dentry::dentry_delete(root, name);
+    if dentry::dentry_search(root, name).is_some() {
+        panic!("Test 3 failed: dentry not deleted");
+    }
+    printk!("  Dentry passed.\n");
+    inode::inode_put(root);
 
     printk!("FS: All self-tests passed!\n");
 }
