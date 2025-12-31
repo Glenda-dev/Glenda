@@ -4,6 +4,9 @@
 #define NUM 20
 #define N_BUFFER_TEST 8
 #define BLOCK_BASE 5000
+#define INODE_TYPE_DIR  1
+#define INODE_TYPE_DATA 2
+#define MAXLEN_FILENAME 60
 
 static void test_helloworld(void) {
     syscall(SYS_helloworld);
@@ -253,6 +256,134 @@ void test_buffer() {
     syscall(SYS_print_str, (long)"\n[PASS] Buffer test done.\n");
 }
 
+static void test_fs_inodes(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] FS-1: inode alloc/dup/put/delete");
+
+    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
+    syscall(SYS_print_str, (long)"  created inode ");
+    syscall(SYS_print_int, inum);
+    syscall(SYS_print_str, (long)"\n");
+    syscall(SYS_inode_print, inum);
+
+    long rc = syscall(SYS_inode_dup, inum);
+    syscall(SYS_print_str, (long)"  after dup refcnt=");
+    syscall(SYS_print_int, rc);
+    syscall(SYS_print_str, (long)"\n");
+
+    syscall(SYS_inode_put, inum);
+    rc = syscall(SYS_inode_get_refcnt, inum);
+    syscall(SYS_print_str, (long)"  after put refcnt=");
+    syscall(SYS_print_int, rc);
+    syscall(SYS_print_str, (long)"\n");
+
+    // Simulate unlink then release to trigger free
+    syscall(SYS_inode_set_nlink, inum, 0);
+    syscall(SYS_inode_put, inum);
+
+    syscall(SYS_copyinstr, (long)"[PASS] FS-1 done.");
+}
+
+static void test_fs_rw(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] FS-2: inode write/read/size");
+    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
+
+    unsigned char wbuf[100];
+    unsigned char rbuf[100];
+    for (int i = 0; i < 100; i++) wbuf[i] = (unsigned char)i;
+
+    long written = syscall(SYS_inode_write_data, inum, 0, (long)wbuf, 100);
+    long read = syscall(SYS_inode_read_data, inum, 0, (long)rbuf, 100);
+
+    if (written != 100 || read != 100) {
+        syscall(SYS_copyinstr, (long)"[WARN] FS-2: length mismatch");
+    }
+    for (int i = 0; i < 100; i++) {
+        if (wbuf[i] != rbuf[i]) {
+            syscall(SYS_print_str, (long)"[FAIL] FS-2 byte mismatch at ");
+            syscall(SYS_print_int, i);
+            syscall(SYS_print_str, (long)"\n");
+            break;
+        }
+    }
+
+    // Cleanup
+    syscall(SYS_inode_set_nlink, inum, 0);
+    syscall(SYS_inode_put, inum);
+    syscall(SYS_copyinstr, (long)"[PASS] FS-2 done.");
+}
+
+static void test_fs_dentry(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] FS-3: dentry create/search/delete");
+    // Ensure root exists and sane
+    syscall(SYS_prepare_root);
+
+    const char *name = "test_file";
+    unsigned long target = 100; // arbitrary target inum for dentry test
+
+    long rc = syscall(SYS_dentry_create, 0, target, (long)name);
+    if (rc == -1) {
+        syscall(SYS_copyinstr, (long)"[WARN] FS-3: create failed");
+    }
+    long found = syscall(SYS_dentry_search, 0, (long)name);
+    if ((unsigned long)found != target) {
+        syscall(SYS_copyinstr, (long)"[FAIL] FS-3: search mismatch");
+    }
+    syscall(SYS_dentry_print, 0);
+    long removed = syscall(SYS_dentry_delete, 0, (long)name);
+    if ((unsigned long)removed != target) {
+        syscall(SYS_copyinstr, (long)"[WARN] FS-3: delete returned unexpected inum");
+    }
+    long again = syscall(SYS_dentry_search, 0, (long)name);
+    if (again != -1) {
+        syscall(SYS_copyinstr, (long)"[WARN] FS-3: entry still present");
+    }
+
+    syscall(SYS_copyinstr, (long)"[PASS] FS-3 done.");
+}
+
+static void test_fs_path(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] FS-4: path_to_inode/parent + data");
+    syscall(SYS_prepare_root);
+
+    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
+    const char *pname = "/test_path";
+    const char *leaf = "test_path";
+    const char *msg = "hello_path";
+    char out[32] = {0};
+    char tail[MAXLEN_FILENAME] = {0};
+
+    // Write content to the file's inode
+    syscall(SYS_inode_write_data, inum, 0, (long)msg, 10);
+    // Link into root directory
+    syscall(SYS_dentry_create, 0, inum, (long)leaf);
+
+    long finum = syscall(SYS_path_to_inode, (long)pname);
+    if (finum == -1) {
+        syscall(SYS_copyinstr, (long)"[FAIL] FS-4: path not found");
+    } else {
+        long r = syscall(SYS_inode_read_data, finum, 0, (long)out, 10);
+        (void)r;
+        // Compare
+        int ok = 1;
+        for (int i = 0; i < 10; i++) if (out[i] != msg[i]) ok = 0;
+        if (!ok) syscall(SYS_copyinstr, (long)"[FAIL] FS-4: data mismatch");
+
+        long parent = syscall(SYS_path_to_parent, (long)pname, (long)tail);
+        syscall(SYS_print_str, (long)"  parent inum=");
+        syscall(SYS_print_int, parent);
+        syscall(SYS_print_str, (long)", tail='");
+        syscall(SYS_print_str, (long)tail);
+        syscall(SYS_print_str, (long)"'\n");
+    }
+
+    // Cleanup
+    syscall(SYS_dentry_delete, 0, (long)leaf);
+    syscall(SYS_inode_set_nlink, inum, 0);
+    syscall(SYS_inode_put, inum);
+
+    syscall(SYS_copyinstr, (long)"[PASS] FS-4 done.");
+}
+
 int main(void)
 {
   test_helloworld();
@@ -265,6 +396,12 @@ int main(void)
 
   test_bitmap();
   test_buffer();
+
+  // Currently tests are verified in Rust API
+  /* test_fs_inodes(); */
+  /* test_fs_rw(); */
+  /* test_fs_dentry(); */
+  /* test_fs_path(); */
 
   test_sleep();
   test_fork_order();

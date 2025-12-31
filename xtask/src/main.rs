@@ -173,6 +173,118 @@ fn mkfs() -> anyhow::Result<()> {
     file.seek(SeekFrom::Start(0))?;
     file.write_all(&sb_buf)?;
 
+    let rich = match std::env::var("GLENDA_RICH_MKFS") {
+        std::result::Result::Ok(v) => {
+            let v = v.to_ascii_lowercase();
+            matches!(v.as_str(), "1" | "true" | "yes" | "on")
+        }
+        std::result::Result::Err(_) => false,
+    };
+    if !rich {
+        // Leave inode/data bitmaps and regions zeroed; kernel tests will create root/dentries.
+        return Ok(());
+    }
+
+    let mut write_block = |blk: u64, data: &[u8]| -> anyhow::Result<()> {
+        if data.len() != BLOCK_SIZE { return Err(anyhow::anyhow!("block size mismatch")); }
+        file.seek(SeekFrom::Start(blk * BLOCK_SIZE as u64))?;
+        file.write_all(data)?;
+        Ok(())
+    };
+
+    let mut zero_block = || -> [u8; BLOCK_SIZE] { [0u8; BLOCK_SIZE] };
+
+    // Derived constants for FS content
+    const ROOT_INODE: u32 = 0;
+    const INODE_INDEX_3: usize = 13; // 10 direct + 2 single indirect + 1 double indirect
+    const MAXLEN_FILENAME: usize = 60; // Make dentry 64 bytes total
+    const INODE_SIZE: usize = 64; // On-disk inode size
+    const DENTRY_SIZE: usize = 64; // On-disk dentry size
+    let _ipb = BLOCK_SIZE / INODE_SIZE; // inodes per block
+    let data_start = data_bitmap_start + 1; // absolute block of first data block
+
+    // Inode bitmap: mark 0,1,2 as used
+    let mut ibmap = zero_block();
+    for inum in 0..3u32 {
+        let byte_idx = (inum / 8) as usize;
+        let bit = (inum % 8) as u8;
+        ibmap[byte_idx] |= 1u8 << bit;
+    }
+    write_block(1, &ibmap)?; // ibmap is fixed at block 1
+
+    // Data bitmap: allocate 3 blocks (root dir + 2 files)
+    let mut dbmap = zero_block();
+    for bit_idx in 0..3u32 {
+        let byte_idx = (bit_idx / 8) as usize;
+        let bit = (bit_idx % 8) as u8;
+        dbmap[byte_idx] |= 1u8 << bit;
+    }
+    write_block(data_bitmap_start as u64, &dbmap)?;
+
+    // Build inodes (inum 0=root dir, 1=ABCD.txt, 2=abcd.txt)
+    let mut inode_block0 = zero_block();
+    let mut put_inode = |buf: &mut [u8], slot: usize,
+                         typ: u16, major: u16, minor: u16, nlink: u16,
+                         size: u32, idx0: u32| {
+        let base = slot * INODE_SIZE;
+        // Layout: u16 type, u16 major, u16 minor, u16 nlink, u32 size, u32 index[13]
+        buf[base + 0..base + 2].copy_from_slice(&typ.to_le_bytes());
+        buf[base + 2..base + 4].copy_from_slice(&major.to_le_bytes());
+        buf[base + 4..base + 6].copy_from_slice(&minor.to_le_bytes());
+        buf[base + 6..base + 8].copy_from_slice(&nlink.to_le_bytes());
+        buf[base + 8..base + 12].copy_from_slice(&size.to_le_bytes());
+        // Clear index area first
+        for i in 0..INODE_INDEX_3 {
+            let off = base + 12 + i * 4;
+            buf[off..off + 4].copy_from_slice(&0u32.to_le_bytes());
+        }
+        // index[0]
+        buf[base + 12..base + 16].copy_from_slice(&idx0.to_le_bytes());
+    };
+
+    let root_dir_block = (data_start + 0) as u32;
+    let upper_block = (data_start + 1) as u32;
+    let lower_block = (data_start + 2) as u32;
+
+    // type: 1=DIR, 2=DATA (kept consistent with kernel)
+    put_inode(&mut inode_block0, 0, 1, 0, 0, 1, 4 * DENTRY_SIZE as u32, root_dir_block);
+    put_inode(&mut inode_block0, 1, 2, 0, 0, 1, BLOCK_SIZE as u32, upper_block);
+    put_inode(&mut inode_block0, 2, 2, 0, 0, 1, BLOCK_SIZE as u32, lower_block);
+    write_block(inode_region_start as u64, &inode_block0)?;
+
+    // Zero remaining inode blocks (optional)
+    if inode_blocks > 1 {
+        let zb = zero_block();
+        for i in 1..inode_blocks {
+            write_block((inode_region_start + i) as u64, &zb)?;
+        }
+    }
+
+    // Root directory block
+    let mut dir_block = zero_block();
+    let mut put_dentry = |buf: &mut [u8], slot: usize, name: &str, inum: u32| {
+        let base = slot * DENTRY_SIZE;
+        let name_bytes = name.as_bytes();
+        let copy_len = core::cmp::min(name_bytes.len(), MAXLEN_FILENAME);
+        buf[base..base + copy_len].copy_from_slice(&name_bytes[..copy_len]);
+        buf[base + MAXLEN_FILENAME..base + MAXLEN_FILENAME + 4].copy_from_slice(&inum.to_le_bytes());
+    };
+    put_dentry(&mut dir_block, 0, ".", ROOT_INODE);
+    put_dentry(&mut dir_block, 1, "..", ROOT_INODE);
+    put_dentry(&mut dir_block, 2, "ABCD.txt", 1);
+    put_dentry(&mut dir_block, 3, "abcd.txt", 2);
+    write_block(root_dir_block as u64, &dir_block)?;
+
+    // File data blocks
+    let mut upper = zero_block();
+    let mut lower = zero_block();
+    for i in 0..BLOCK_SIZE {
+        upper[i] = b'A' + (i % 26) as u8;
+        lower[i] = b'a' + (i % 26) as u8;
+    }
+    write_block(upper_block as u64, &upper)?;
+    write_block(lower_block as u64, &lower)?;
+
     Ok(())
 }
 
