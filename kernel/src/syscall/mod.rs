@@ -57,6 +57,19 @@ pub const SYS_PATH_TO_PARENT: usize = 39;
 pub const SYS_PREPARE_ROOT: usize = 40;
 
 pub const SYS_EXEC: usize = 41;
+pub const SYS_OPEN: usize = 42;
+pub const SYS_CLOSE: usize = 43;
+pub const SYS_READ: usize = 44;
+pub const SYS_WRITE: usize = 45;
+pub const SYS_LSEEK: usize = 46;
+pub const SYS_DUP: usize = 47;
+pub const SYS_FSTAT: usize = 48;
+pub const SYS_GET_DENTRIES: usize = 49;
+pub const SYS_MKDIR: usize = 50;
+pub const SYS_CHDIR: usize = 51;
+pub const SYS_PRINT_CWD: usize = 52;
+pub const SYS_LINK: usize = 53;
+pub const SYS_UNLINK: usize = 54;
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {
@@ -106,6 +119,21 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_PATH_TO_INODE => fs::sys_path_to_inode(ctx),
         n if n == SYS_PATH_TO_PARENT => fs::sys_path_to_parent_inode(ctx),
         n if n == SYS_PREPARE_ROOT => fs::sys_prepare_root_dir(),
+
+        // LAB-9 Syscalls
+        n if n == SYS_OPEN => fs::sys_open(ctx),
+        n if n == SYS_CLOSE => fs::sys_close(ctx),
+        n if n == SYS_READ => fs::sys_read(ctx),
+        n if n == SYS_WRITE => fs::sys_write(ctx),
+        n if n == SYS_LSEEK => fs::sys_lseek(ctx),
+        n if n == SYS_DUP => fs::sys_dup(ctx),
+        n if n == SYS_FSTAT => fs::sys_fstat(ctx),
+        n if n == SYS_GET_DENTRIES => fs::sys_get_dentries(ctx),
+        n if n == SYS_MKDIR => fs::sys_mkdir(ctx),
+        n if n == SYS_CHDIR => fs::sys_chdir(ctx),
+        n if n == SYS_PRINT_CWD => fs::sys_print_cwd(),
+        n if n == SYS_LINK => fs::sys_link(ctx),
+        n if n == SYS_UNLINK => fs::sys_unlink(ctx),
 
         n => {
             printk!("{}[WARN] SYSCALL: unknown number {}{}\n", ANSI_YELLOW, n, ANSI_RESET);

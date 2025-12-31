@@ -46,5 +46,18 @@
 #define SYS_prepare_root      40
 
 #define SYS_exec              41
+#define SYS_open              42
+#define SYS_close             43
+#define SYS_read              44
+#define SYS_write             45
+#define SYS_lseek             46
+#define SYS_dup               47
+#define SYS_fstat             48
+#define SYS_get_dentries      49
+#define SYS_mkdir             50
+#define SYS_chdir             51
+#define SYS_print_cwd         52
+#define SYS_link              53
+#define SYS_unlink            54
 
 #endif // GLENDA_SYSCALL_NUM_H
