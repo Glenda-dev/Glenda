@@ -56,6 +56,8 @@ pub const SYS_PATH_TO_INODE: usize = 38;
 pub const SYS_PATH_TO_PARENT: usize = 39;
 pub const SYS_PREPARE_ROOT: usize = 40;
 
+pub const SYS_EXEC: usize = 41;
+
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {
         n if n == SYS_HELLOWORLD => helloworld::sys_helloworld(),
@@ -86,6 +88,7 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_WAIT => proc::sys_wait(ctx),
         n if n == SYS_EXIT => proc::sys_exit(ctx),
         n if n == SYS_SLEEP => proc::sys_sleep(ctx),
+        n if n == SYS_EXEC => proc::sys_exec(ctx),
 
         // FS extended API
         n if n == SYS_INODE_CREATE => fs::sys_inode_create(ctx),

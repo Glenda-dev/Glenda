@@ -1,6 +1,7 @@
 use super::ProcContext;
 use super::set_current_user_satp;
 use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
+use crate::fs::inode;
 use crate::hart;
 use crate::irq::TrapFrame;
 use crate::irq::vector;
@@ -43,6 +44,8 @@ pub enum ProcState {
     Running,
 }
 
+pub const NOFILE: usize = 32; // 每进程最大 FD
+
 pub struct Process {
     pub name: [u8; 16],                     // 进程名称
     pub state: ProcState,                   // 进程状态
@@ -63,6 +66,8 @@ pub struct Process {
     pub entry_va: VirtAddr,                 // 用户入口地址
     pub user_sp_va: VirtAddr,               // 用户栈顶 VA
     pub mmap_head: *mut MmapRegion,         // mmap 链表头
+    pub open_files: [Option<usize>; NOFILE], // 打开的文件表索引
+    pub cwd: u32,                           // 当前工作目录 inode 号
 }
 
 unsafe impl Send for Process {}
@@ -91,6 +96,8 @@ impl Process {
             entry_va: 0,
             user_sp_va: 0,
             mmap_head: core::ptr::null_mut(),
+            open_files: [None; NOFILE],
+            cwd: crate::fs::inode::ROOT_INODE,
         }
     }
 
@@ -170,6 +177,14 @@ impl Process {
         }
         self.state = ProcState::Dying;
 
+        // Close open files
+        for i in 0..NOFILE {
+            if let Some(f_idx) = self.open_files[i] {
+                crate::fs::file::file_close(f_idx);
+                self.open_files[i] = None;
+            }
+        }
+
         if sie_enabled { unsafe { sstatus::set_sie(); } }
     }
 
@@ -207,6 +222,20 @@ impl Process {
         child.heap_top = self.heap_top;
         // Copy stack size
         child.stack_pages = self.stack_pages;
+
+        // Copy FD table and increment refcnts
+        child.open_files = self.open_files;
+        for i in 0..NOFILE {
+            if let Some(f_idx) = child.open_files[i] {
+                let mut table = crate::fs::file::FILE_TABLE.lock();
+                table.files[f_idx].refcnt += 1;
+            }
+        }
+        child.cwd = self.cwd;
+        // Increment refcnt for cwd inode if we track it via file objects? 
+        // For now cwd is just an inum. In a full system, we might want to hold an Inode ref.
+        // If cwd is just inum, no refcnt to increment here unless we use inode_get/put.
+        // The design in STEPS.md says "cwd: u32 (inode_num)".
 
         // Allocate new TrapFrame page for child
         let child_tf_frame = PhysFrame::alloc().expect("Failed to alloc trapframe");
@@ -295,6 +324,195 @@ impl Process {
         self.entry_va = code_va;
         self.heap_top = align_down(code_va + ((mapped_len + PGSIZE - 1) & !(PGSIZE - 1)));
         self.heap_base = self.heap_top;
+    }
+
+    pub fn proc_exec(&mut self, path: &[u8], u_argv: &[usize]) -> Result<(), ()> {
+        crate::printk!("proc_exec: path='{}'\n", core::str::from_utf8(path).unwrap_or("?"));
+        let fd = crate::syscall::fs::fs_open(self, path, 0).map_err(|_| {
+            crate::printk!("proc_exec: failed to open path\n");
+        })?;
+        let f_idx = self.open_files[fd].ok_or_else(|| {
+            crate::printk!("proc_exec: invalid fd\n");
+        })?;
+        let inum = {
+            let table = crate::fs::file::FILE_TABLE.lock();
+            table.files[f_idx].inum
+        };
+        let ip = inode::inode_get(inum);
+
+        let mut elf_header = [0u8; 64];
+        if inode::inode_read_data(ip, 0, 64, &mut elf_header) != 64 {
+            crate::printk!("proc_exec: failed to read ELF header\n");
+            inode::inode_put(ip);
+            crate::syscall::fs::fs_close(self, fd)?;
+            return Err(());
+        }
+
+        // Check magic
+        if elf_header[0..4] != [0x7f, b'E', b'L', b'F'] {
+            crate::printk!("proc_exec: invalid ELF magic\n");
+            inode::inode_put(ip);
+            crate::syscall::fs::fs_close(self, fd)?;
+            return Err(());
+        }
+
+        // Setup NEW page table
+        let root_pt_frame = PhysFrame::alloc().ok_or_else(|| {
+            crate::printk!("proc_exec: failed to alloc root pt\n");
+        })?;
+        let root_pt_pa = root_pt_frame.addr();
+        let pt = unsafe { &mut *(root_pt_pa as *mut PageTable) };
+        unsafe { core::ptr::write_bytes(pt as *mut PageTable as *mut u8, 0, PGSIZE) };
+
+        // Map Trampoline
+        let tramp_pa = align_down(vector::trampoline as usize) as PhysAddr;
+        let tramp_va = VA_MAX - PGSIZE;
+        vm::mappages(pt, tramp_va, tramp_pa, PGSIZE, PTE_R | PTE_X | PTE_A);
+
+        // Setup NEW TrapFrame
+        let trapframe_frame = PhysFrame::alloc().ok_or_else(|| {
+            crate::printk!("proc_exec: failed to alloc trapframe\n");
+        })?;
+        let trapframe_pa = trapframe_frame.addr();
+        let trapframe_va = tramp_va - PGSIZE;
+        vm::mappages(pt, trapframe_va, trapframe_pa, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+
+        // Parse program headers
+        let phoff = u64::from_le_bytes(elf_header[32..40].try_into().unwrap()) as u32;
+        let phnum = u16::from_le_bytes(elf_header[56..58].try_into().unwrap()) as usize;
+        let phentsize = u16::from_le_bytes(elf_header[54..56].try_into().unwrap()) as usize;
+
+        let mut max_va = 0;
+
+        for i in 0..phnum {
+            let mut ph = [0u8; 56]; // Size of Phdr
+            if inode::inode_read_data(ip, phoff + (i * phentsize) as u32, 56, &mut ph) != 56 {
+                crate::printk!("proc_exec: failed to read phdr {}\n", i);
+                break;
+            }
+            let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+            if p_type == 1 { // PT_LOAD
+                let p_offset = u64::from_le_bytes(ph[8..16].try_into().unwrap()) as usize;
+                let p_vaddr = u64::from_le_bytes(ph[16..24].try_into().unwrap()) as usize;
+                let p_filesz = u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize;
+                let p_memsz = u64::from_le_bytes(ph[40..48].try_into().unwrap()) as usize;
+                let p_flags = u32::from_le_bytes(ph[4..8].try_into().unwrap());
+
+                // IMPORTANT: During loading, we must be able to write to the pages.
+                // We add PTE_W now, and ideally we should set final permissions later.
+                let mut perm = PTE_U | PTE_A | PTE_D | PTE_W; // Always add W for loading
+                if p_flags & 1 != 0 { perm |= PTE_X; }
+                if p_flags & 4 != 0 { perm |= PTE_R; }
+
+                // Map and Load
+                let start_va = align_down(p_vaddr);
+                let end_va = (p_vaddr + p_memsz + PGSIZE - 1) & !(PGSIZE - 1);
+                
+                let mut va = start_va;
+                while va < end_va {
+                    let pa = pmem::alloc(false) as PhysAddr;
+                    unsafe { core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE) };
+                    vm::mappages(pt, va, pa, PGSIZE, perm);
+                    va += PGSIZE;
+                }
+
+                let mut read_off = 0;
+                while read_off < p_filesz {
+                    let chunk = core::cmp::min(p_filesz - read_off, 512);
+                    let mut kbuf = [0u8; 512];
+                    if inode::inode_read_data(ip, (p_offset + read_off) as u32, chunk as u32, &mut kbuf[..chunk]) != chunk as u32 {
+                        crate::printk!("proc_exec: failed to read segment data\n");
+                        break;
+                    }
+                    if let Err(e) = uvm::copyout(pt, p_vaddr + read_off, &kbuf[..chunk]) {
+                        crate::printk!("proc_exec: copyout segment failed: {:?}\n", e);
+                        return Err(());
+                    }
+                    read_off += chunk;
+                }
+                max_va = core::cmp::max(max_va, end_va);
+            }
+        }
+        inode::inode_put(ip);
+        crate::syscall::fs::fs_close(self, fd)?;
+
+        // Setup Stack
+        let stack_base = 0x20000;
+        let stack_top = stack_base + 24576;
+        let mut va = stack_top - PGSIZE;
+        while va >= stack_base {
+            if pt.lookup(va).is_none() {
+                let pa = pmem::alloc(false) as PhysAddr;
+                unsafe { core::ptr::write_bytes(pa as *mut u8, 0, PGSIZE) };
+                vm::mappages(pt, va, pa, PGSIZE, PTE_U | PTE_R | PTE_W | PTE_A | PTE_D);
+            }
+            va -= PGSIZE;
+        }
+
+        // Copy arguments to stack
+        let mut sp = stack_top;
+        let mut stack_argv = [0usize; 16];
+        let old_pt = unsafe { &*(self.root_pt_pa as *const PageTable) };
+
+        for i in (0..u_argv.len()).rev() {
+            let mut arg_buf = [0u8; 128];
+            let len = uvm::copyin_str(old_pt, &mut arg_buf, u_argv[i]).map_err(|_| {
+                crate::printk!("proc_exec: failed to copyin argv[{}]\n", i);
+            })?;
+            sp -= len;
+            sp &= !7; // align 8
+            uvm::copyout(pt, sp, &arg_buf[..len]).map_err(|_| {
+                crate::printk!("proc_exec: failed to copyout argv[{}] string\n", i);
+            })?;
+            stack_argv[i] = sp;
+        }
+        
+        // Push argv pointers
+        sp -= u_argv.len() * 8;
+        sp &= !7;
+        for i in 0..u_argv.len() {
+            let bytes = stack_argv[i].to_ne_bytes();
+            uvm::copyout(pt, sp + i * 8, &bytes).map_err(|_| {
+                crate::printk!("proc_exec: failed to copyout argv[{}] pointer\n", i);
+            })?;
+        }
+        let argv_ptr = sp;
+
+        // Commit NEW state
+        let old_pt_frame = self.root_pt_frame.take();
+        if let Some(mut frame) = old_pt_frame {
+            unsafe { &mut *(frame.addr() as *mut PageTable) }.destroy();
+        }
+        self.root_pt_pa = root_pt_pa;
+        self.root_pt_frame = Some(root_pt_frame);
+        
+        let _old_tf_frame = self.trapframe_frame.take();
+        self.trapframe = trapframe_pa as *mut TrapFrame;
+        self.trapframe_frame = Some(trapframe_frame);
+        self.trapframe_va = trapframe_va;
+
+        self.heap_base = max_va;
+        self.heap_top = max_va;
+        self.stack_pages = 24576 / PGSIZE;
+        self.entry_va = u64::from_le_bytes(elf_header[24..32].try_into().unwrap()) as usize;
+        self.user_sp_va = sp;
+
+        // Init trapframe
+        let tf = unsafe { &mut *self.trapframe };
+        tf.sp = sp;
+        tf.kernel_epc = self.entry_va;
+        tf.a0 = u_argv.len();
+        tf.a1 = argv_ptr;
+        tf.kernel_satp = satp::read().bits();
+        tf.kernel_hartid = hart::getid();
+        tf.kernel_sp = self.kstack.as_ref().unwrap().top();
+
+        let satp_bits = self.root_satp();
+        set_current_user_satp(satp_bits);
+        unsafe { sscratch::write(self.trapframe_va) };
+
+        crate::printk!("proc_exec: success, entry=0x{:x}\n", self.entry_va);
+        Ok(())
     }
 }
 

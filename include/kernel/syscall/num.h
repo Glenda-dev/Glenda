@@ -45,4 +45,6 @@
 #define SYS_path_to_parent    39
 #define SYS_prepare_root      40
 
+#define SYS_exec              41
+
 #endif // GLENDA_SYSCALL_NUM_H
