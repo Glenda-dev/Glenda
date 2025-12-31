@@ -3,6 +3,7 @@
 use crate::fs::buffer;
 use crate::fs::inode;
 use crate::fs::dentry;
+use crate::fs::path;
 use crate::printk;
 use core::ptr::{self, addr_of, addr_of_mut};
 
@@ -153,6 +154,27 @@ fn fs_test() {
     printk!("  Dentry passed.\n");
     inode::inode_put(root);
 
+    // Test 4: Path
+    printk!("Test 4: Path resolution...\n");
+    let root = inode::inode_get(inode::ROOT_INODE);
+    let inode = inode::inode_create(inode::INODE_TYPE_DATA, 0, 0);
+    dentry::dentry_create(root, inode.inode_num, b"test_path");
+    inode::inode_put(root);
+    inode::inode_put(inode);
+
+    let found_inode = path::path_to_inode(b"/test_path");
+    if found_inode.is_none() {
+        panic!("Test 4 failed: /test_path not found");
+    }
+    printk!("  /test_path found: inode {}\n", found_inode.as_ref().unwrap().inode_num);
+    inode::inode_put(found_inode.unwrap());
+
+    // Cleanup
+    let root = inode::inode_get(inode::ROOT_INODE);
+    dentry::dentry_delete(root, b"test_path");
+    inode::inode_put(root);
+
+    printk!("  Path passed.\n");
     printk!("FS: All self-tests passed!\n");
 }
 

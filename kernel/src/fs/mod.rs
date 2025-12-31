@@ -3,3 +3,4 @@ pub mod buffer;
 pub mod dentry;
 pub mod fs;
 pub mod inode;
+pub mod path;
