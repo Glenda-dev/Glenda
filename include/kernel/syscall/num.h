@@ -29,4 +29,20 @@
 #define SYS_exit       24
 #define SYS_sleep      25
 
+#define SYS_inode_create      26
+#define SYS_inode_dup         27
+#define SYS_inode_put         28
+#define SYS_inode_set_nlink   29
+#define SYS_inode_get_refcnt  30
+#define SYS_inode_print       31
+#define SYS_inode_write_data  32
+#define SYS_inode_read_data   33
+#define SYS_dentry_create     34
+#define SYS_dentry_search     35
+#define SYS_dentry_delete     36
+#define SYS_dentry_print      37
+#define SYS_path_to_inode     38
+#define SYS_path_to_parent    39
+#define SYS_prepare_root      40
+
 #endif // GLENDA_SYSCALL_NUM_H

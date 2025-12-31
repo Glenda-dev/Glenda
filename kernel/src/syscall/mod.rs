@@ -39,6 +39,23 @@ pub const SYS_WAIT: usize = 23;
 pub const SYS_EXIT: usize = 24;
 pub const SYS_SLEEP: usize = 25;
 
+// FS API for C tests
+pub const SYS_INODE_CREATE: usize = 26;
+pub const SYS_INODE_DUP: usize = 27;
+pub const SYS_INODE_PUT: usize = 28;
+pub const SYS_INODE_SET_NLINK: usize = 29;
+pub const SYS_INODE_GET_REFCNT: usize = 30;
+pub const SYS_INODE_PRINT: usize = 31;
+pub const SYS_INODE_WRITE_DATA: usize = 32;
+pub const SYS_INODE_READ_DATA: usize = 33;
+pub const SYS_DENTRY_CREATE: usize = 34;
+pub const SYS_DENTRY_SEARCH: usize = 35;
+pub const SYS_DENTRY_DELETE: usize = 36;
+pub const SYS_DENTRY_PRINT: usize = 37;
+pub const SYS_PATH_TO_INODE: usize = 38;
+pub const SYS_PATH_TO_PARENT: usize = 39;
+pub const SYS_PREPARE_ROOT: usize = 40;
+
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
     match ctx.a7 {
         n if n == SYS_HELLOWORLD => helloworld::sys_helloworld(),
@@ -69,6 +86,23 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         n if n == SYS_WAIT => proc::sys_wait(ctx),
         n if n == SYS_EXIT => proc::sys_exit(ctx),
         n if n == SYS_SLEEP => proc::sys_sleep(ctx),
+
+        // FS extended API
+        n if n == SYS_INODE_CREATE => fs::sys_inode_create(ctx),
+        n if n == SYS_INODE_DUP => fs::sys_inode_dup(ctx),
+        n if n == SYS_INODE_PUT => fs::sys_inode_put(ctx),
+        n if n == SYS_INODE_SET_NLINK => fs::sys_inode_set_nlink(ctx),
+        n if n == SYS_INODE_GET_REFCNT => fs::sys_inode_get_refcnt(ctx),
+        n if n == SYS_INODE_PRINT => fs::sys_inode_print(ctx),
+        n if n == SYS_INODE_WRITE_DATA => fs::sys_inode_write_data(ctx),
+        n if n == SYS_INODE_READ_DATA => fs::sys_inode_read_data(ctx),
+        n if n == SYS_DENTRY_CREATE => fs::sys_dentry_create(ctx),
+        n if n == SYS_DENTRY_SEARCH => fs::sys_dentry_search(ctx),
+        n if n == SYS_DENTRY_DELETE => fs::sys_dentry_delete(ctx),
+        n if n == SYS_DENTRY_PRINT => fs::sys_dentry_print(ctx),
+        n if n == SYS_PATH_TO_INODE => fs::sys_path_to_inode(ctx),
+        n if n == SYS_PATH_TO_PARENT => fs::sys_path_to_parent_inode(ctx),
+        n if n == SYS_PREPARE_ROOT => fs::sys_prepare_root_dir(),
 
         n => {
             printk!("{}[WARN] SYSCALL: unknown number {}{}\n", ANSI_YELLOW, n, ANSI_RESET);
