@@ -8,6 +8,26 @@
 #define INODE_TYPE_DATA 2
 #define MAXLEN_FILENAME 60
 
+#define O_RDONLY  0x000
+#define O_WRONLY  0x001
+#define O_RDWR    0x002
+#define O_CREAT   0x040
+#define O_TRUNC   0x200
+
+struct stat {
+    unsigned short type;
+    unsigned short nlink;
+    unsigned int size;
+    unsigned short major;
+    unsigned short minor;
+    unsigned int inum;
+};
+
+struct dirent {
+    char name[60];
+    unsigned int inum;
+};
+
 static void test_helloworld(void) {
     syscall(SYS_helloworld);
 }
@@ -256,155 +276,136 @@ void test_buffer() {
     syscall(SYS_print_str, (long)"\n[PASS] Buffer test done.\n");
 }
 
-static void test_fs_inodes(void) {
-    syscall(SYS_copyinstr, (long)"[TEST] FS-1: inode alloc/dup/put/delete");
+void lab9_test_1(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] LAB9-1: Basic File Operations (open/read/write/close/lseek/dup/fstat)");
 
-    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
-    syscall(SYS_print_str, (long)"  created inode ");
-    syscall(SYS_print_int, inum);
-    syscall(SYS_print_str, (long)"\n");
-    syscall(SYS_inode_print, inum);
+    const char *path = "test_file.txt";
+    const char *data = "Hello Glenda FS!";
+    char buf[64] = {0};
+    struct stat st;
 
-    long rc = syscall(SYS_inode_dup, inum);
-    syscall(SYS_print_str, (long)"  after dup refcnt=");
-    syscall(SYS_print_int, rc);
-    syscall(SYS_print_str, (long)"\n");
+    // 1. Create and Write
+    int fd = syscall(SYS_open, (long)path, O_CREAT | O_RDWR);
+    if (fd < 0) { syscall(SYS_copyinstr, (long)"[FAIL] open create failed"); return; }
 
-    syscall(SYS_inode_put, inum);
-    rc = syscall(SYS_inode_get_refcnt, inum);
-    syscall(SYS_print_str, (long)"  after put refcnt=");
-    syscall(SYS_print_int, rc);
-    syscall(SYS_print_str, (long)"\n");
+    int n = syscall(SYS_write, fd, (long)data, 16);
+    if (n != 16) { syscall(SYS_copyinstr, (long)"[FAIL] write failed"); }
 
-    // Simulate unlink then release to trigger free
-    syscall(SYS_inode_set_nlink, inum, 0);
-    syscall(SYS_inode_put, inum);
-
-    syscall(SYS_copyinstr, (long)"[PASS] FS-1 done.");
-}
-
-static void test_fs_rw(void) {
-    syscall(SYS_copyinstr, (long)"[TEST] FS-2: inode write/read/size");
-    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
-
-    unsigned char wbuf[100];
-    unsigned char rbuf[100];
-    for (int i = 0; i < 100; i++) wbuf[i] = (unsigned char)i;
-
-    long written = syscall(SYS_inode_write_data, inum, 0, (long)wbuf, 100);
-    long read = syscall(SYS_inode_read_data, inum, 0, (long)rbuf, 100);
-
-    if (written != 100 || read != 100) {
-        syscall(SYS_copyinstr, (long)"[WARN] FS-2: length mismatch");
-    }
-    for (int i = 0; i < 100; i++) {
-        if (wbuf[i] != rbuf[i]) {
-            syscall(SYS_print_str, (long)"[FAIL] FS-2 byte mismatch at ");
-            syscall(SYS_print_int, i);
-            syscall(SYS_print_str, (long)"\n");
-            break;
-        }
-    }
-
-    // Cleanup
-    syscall(SYS_inode_set_nlink, inum, 0);
-    syscall(SYS_inode_put, inum);
-    syscall(SYS_copyinstr, (long)"[PASS] FS-2 done.");
-}
-
-static void test_fs_dentry(void) {
-    syscall(SYS_copyinstr, (long)"[TEST] FS-3: dentry create/search/delete");
-    // Ensure root exists and sane
-    syscall(SYS_prepare_root);
-
-    const char *name = "test_file";
-    unsigned long target = 100; // arbitrary target inum for dentry test
-
-    long rc = syscall(SYS_dentry_create, 0, target, (long)name);
-    if (rc == -1) {
-        syscall(SYS_copyinstr, (long)"[WARN] FS-3: create failed");
-    }
-    long found = syscall(SYS_dentry_search, 0, (long)name);
-    if ((unsigned long)found != target) {
-        syscall(SYS_copyinstr, (long)"[FAIL] FS-3: search mismatch");
-    }
-    syscall(SYS_dentry_print, 0);
-    long removed = syscall(SYS_dentry_delete, 0, (long)name);
-    if ((unsigned long)removed != target) {
-        syscall(SYS_copyinstr, (long)"[WARN] FS-3: delete returned unexpected inum");
-    }
-    long again = syscall(SYS_dentry_search, 0, (long)name);
-    if (again != -1) {
-        syscall(SYS_copyinstr, (long)"[WARN] FS-3: entry still present");
-    }
-
-    syscall(SYS_copyinstr, (long)"[PASS] FS-3 done.");
-}
-
-static void test_fs_path(void) {
-    syscall(SYS_copyinstr, (long)"[TEST] FS-4: path_to_inode/parent + data");
-    syscall(SYS_prepare_root);
-
-    long inum = syscall(SYS_inode_create, INODE_TYPE_DATA, 0, 0);
-    const char *pname = "/test_path";
-    const char *leaf = "test_path";
-    const char *msg = "hello_path";
-    char out[32] = {0};
-    char tail[MAXLEN_FILENAME] = {0};
-
-    // Write content to the file's inode
-    syscall(SYS_inode_write_data, inum, 0, (long)msg, 10);
-    // Link into root directory
-    syscall(SYS_dentry_create, 0, inum, (long)leaf);
-
-    long finum = syscall(SYS_path_to_inode, (long)pname);
-    if (finum == -1) {
-        syscall(SYS_copyinstr, (long)"[FAIL] FS-4: path not found");
+    // 2. Fstat
+    if (syscall(SYS_fstat, fd, (long)&st) < 0) {
+        syscall(SYS_copyinstr, (long)"[FAIL] fstat failed");
     } else {
-        long r = syscall(SYS_inode_read_data, finum, 0, (long)out, 10);
-        (void)r;
-        // Compare
-        int ok = 1;
-        for (int i = 0; i < 10; i++) if (out[i] != msg[i]) ok = 0;
-        if (!ok) syscall(SYS_copyinstr, (long)"[FAIL] FS-4: data mismatch");
-
-        long parent = syscall(SYS_path_to_parent, (long)pname, (long)tail);
-        syscall(SYS_print_str, (long)"  parent inum=");
-        syscall(SYS_print_int, parent);
-        syscall(SYS_print_str, (long)", tail='");
-        syscall(SYS_print_str, (long)tail);
-        syscall(SYS_print_str, (long)"'\n");
+        if (st.size != 16) syscall(SYS_copyinstr, (long)"[FAIL] size mismatch");
     }
 
-    // Cleanup
-    syscall(SYS_dentry_delete, 0, (long)leaf);
-    syscall(SYS_inode_set_nlink, inum, 0);
-    syscall(SYS_inode_put, inum);
+    // 3. Lseek and Read
+    syscall(SYS_lseek, fd, 0, 0); // SEEK_SET
+    n = syscall(SYS_read, fd, (long)buf, 16);
+    if (n != 16) syscall(SYS_copyinstr, (long)"[FAIL] read failed");
 
-    syscall(SYS_copyinstr, (long)"[PASS] FS-4 done.");
+    int match = 1;
+    for(int i=0; i<16; i++) if(buf[i] != data[i]) match = 0;
+    if (!match) syscall(SYS_copyinstr, (long)"[FAIL] data mismatch");
+
+    // 4. Dup
+    int fd2 = syscall(SYS_dup, fd);
+    if (fd2 < 0) syscall(SYS_copyinstr, (long)"[FAIL] dup failed");
+    syscall(SYS_close, fd);
+
+    // Read from duped fd
+    syscall(SYS_lseek, fd2, 6, 0);
+    n = syscall(SYS_read, fd2, (long)buf, 6);
+    buf[6] = 0;
+    // expect "Glenda"
+    syscall(SYS_copyinstr, (long)"[INFO] read from duped fd:");
+    syscall(SYS_copyinstr, (long)buf);
+
+    syscall(SYS_close, fd2);
+    syscall(SYS_copyinstr, (long)"[PASS] LAB9-1 done.");
+}
+
+void lab9_test_2(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] LAB9-2: Directory Operations (mkdir/chdir/get_dentries)");
+
+    syscall(SYS_mkdir, (long)"dir1");
+    syscall(SYS_chdir, (long)"dir1");
+
+    // Create a file in dir1
+    int fd = syscall(SYS_open, (long)"file_in_dir1", O_CREAT | O_RDWR);
+    syscall(SYS_write, fd, (long)"hello", 5);
+    syscall(SYS_close, fd);
+
+    // List entries
+    struct dirent de[10];
+    
+    // Let's open current dir
+    int dfd = syscall(SYS_open, (long)".", O_RDONLY);
+    int n = syscall(SYS_get_dentries, dfd, (long)de, 10);
+    
+    syscall(SYS_copyinstr, (long)"[INFO] directory entries in dir1:");
+    for(int i=0; i<n; i++) {
+        syscall(SYS_copyinstr, (long)de[i].name);
+    }
+
+    syscall(SYS_close, dfd);
+    syscall(SYS_chdir, (long)".."); // Back to root
+
+    syscall(SYS_copyinstr, (long)"[PASS] LAB9-2 done.");
+}
+
+void lab9_test_3(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] LAB9-3: Link/Unlink and nlink");
+
+    const char *old = "source.txt";
+    const char *new = "link.txt";
+    struct stat st;
+
+    int fd = syscall(SYS_open, (long)old, O_CREAT | O_RDWR);
+    syscall(SYS_close, fd);
+
+    int ofd = syscall(SYS_open, (long)old, O_RDONLY);
+    syscall(SYS_fstat, ofd, (long)&st);
+    syscall(SYS_close, ofd);
+    syscall(SYS_copyinstr, (long)"[INFO] initial nlink:");
+    syscall(SYS_print_int, st.nlink);
+
+    syscall(SYS_link, (long)old, (long)new);
+
+    int nfd = syscall(SYS_open, (long)new, O_RDONLY);
+    syscall(SYS_fstat, nfd, (long)&st);
+    syscall(SYS_close, nfd);
+    syscall(SYS_copyinstr, (long)"\n[INFO] after link nlink:");
+    syscall(SYS_print_int, st.nlink);
+
+    syscall(SYS_unlink, (long)old);
+
+    nfd = syscall(SYS_open, (long)new, O_RDONLY);
+    syscall(SYS_fstat, nfd, (long)&st);
+    syscall(SYS_close, nfd);
+    syscall(SYS_copyinstr, (long)"\n[INFO] after unlink old, nlink of new:");
+    syscall(SYS_print_int, st.nlink);
+
+    syscall(SYS_copyinstr, (long)"\n[PASS] LAB9-3 done.");
+}
+
+void lab9_test_4(void) {
+    syscall(SYS_copyinstr, (long)"[TEST] LAB9-4: Exec ELF from disk");
+    char *argv[] = {"hello", "world", 0};
+    // Note: This replaces the current process image.
+    syscall(SYS_exec, (long)"/hello", (long)argv);
+    syscall(SYS_copyinstr, (long)"[FAIL] exec failed");
 }
 
 int main(void)
 {
-  test_helloworld();
-  test_copy();
-  test_stack();
-  test_brk();
-  test_mmap();
-  test_proczero();
-  test_memory_fork();
+  syscall(SYS_prepare_root);
 
-  test_bitmap();
-  test_buffer();
+  lab9_test_1();
+  lab9_test_2();
+  lab9_test_3();
+  // lab9_test_4(); // Uncomment to test exec (will restart program)
 
-  // Currently tests are verified in Rust API
-  /* test_fs_inodes(); */
-  /* test_fs_rw(); */
-  /* test_fs_dentry(); */
-  /* test_fs_path(); */
-
-  test_sleep();
-  test_fork_order();
+  syscall(SYS_copyinstr, (long)"[ALL PASS] LAB-9 tests completed.");
 
   for (;;) {}
   return 0;

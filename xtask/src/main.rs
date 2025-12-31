@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use which::which;
@@ -185,14 +186,14 @@ fn mkfs() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut write_block = |blk: u64, data: &[u8]| -> anyhow::Result<()> {
+    let mut write_block = |file: &mut File, blk: u64, data: &[u8]| -> anyhow::Result<()> {
         if data.len() != BLOCK_SIZE { return Err(anyhow::anyhow!("block size mismatch")); }
         file.seek(SeekFrom::Start(blk * BLOCK_SIZE as u64))?;
         file.write_all(data)?;
         Ok(())
     };
 
-    let mut zero_block = || -> [u8; BLOCK_SIZE] { [0u8; BLOCK_SIZE] };
+    let zero_block = || -> [u8; BLOCK_SIZE] { [0u8; BLOCK_SIZE] };
 
     // Derived constants for FS content
     const ROOT_INODE: u32 = 0;
@@ -203,62 +204,76 @@ fn mkfs() -> anyhow::Result<()> {
     let _ipb = BLOCK_SIZE / INODE_SIZE; // inodes per block
     let data_start = data_bitmap_start + 1; // absolute block of first data block
 
-    // Inode bitmap: mark 0,1,2 as used
+    // Inode bitmap: mark 0,1,2,3 as used
     let mut ibmap = zero_block();
-    for inum in 0..3u32 {
+    for inum in 0..4u32 {
         let byte_idx = (inum / 8) as usize;
         let bit = (inum % 8) as u8;
         ibmap[byte_idx] |= 1u8 << bit;
     }
-    write_block(1, &ibmap)?; // ibmap is fixed at block 1
+    write_block(&mut file, 1, &ibmap)?; // ibmap is fixed at block 1
 
-    // Data bitmap: allocate 3 blocks (root dir + 2 files)
+    let service_elf = std::path::Path::new("target").join("service").join("hello").join("hello.elf");
+    let elf_data = if service_elf.exists() {
+        std::fs::read(&service_elf)?
+    } else {
+        Vec::new()
+    };
+    let elf_blocks = (elf_data.len() + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    // Data bitmap: allocate blocks (root dir + 2 files + hello.elf + possible indirect)
     let mut dbmap = zero_block();
-    for bit_idx in 0..3u32 {
+    let hello_start_block = data_bitmap_start + 4;
+    let mut total_data_blocks = 4 + elf_blocks;
+    let mut hello_indirect_block = 0;
+    if elf_blocks > 10 { // NINDIRECT is 1024, but let's stick to 10 direct for simplicity in mkfs
+         hello_indirect_block = data_bitmap_start + total_data_blocks;
+         total_data_blocks += 1;
+    }
+
+    for bit_idx in 0..total_data_blocks as u32 {
         let byte_idx = (bit_idx / 8) as usize;
         let bit = (bit_idx % 8) as u8;
         dbmap[byte_idx] |= 1u8 << bit;
     }
-    write_block(data_bitmap_start as u64, &dbmap)?;
+    write_block(&mut file, data_bitmap_start as u64, &dbmap)?;
 
-    // Build inodes (inum 0=root dir, 1=ABCD.txt, 2=abcd.txt)
+    // Build inodes (inum 0=root dir, 1=ABCD.txt, 2=abcd.txt, 3=hello)
     let mut inode_block0 = zero_block();
     let mut put_inode = |buf: &mut [u8], slot: usize,
                          typ: u16, major: u16, minor: u16, nlink: u16,
-                         size: u32, idx0: u32| {
+                         size: u32, indices: &[u32]| {
         let base = slot * INODE_SIZE;
-        // Layout: u16 type, u16 major, u16 minor, u16 nlink, u32 size, u32 index[13]
         buf[base + 0..base + 2].copy_from_slice(&typ.to_le_bytes());
         buf[base + 2..base + 4].copy_from_slice(&major.to_le_bytes());
         buf[base + 4..base + 6].copy_from_slice(&minor.to_le_bytes());
         buf[base + 6..base + 8].copy_from_slice(&nlink.to_le_bytes());
         buf[base + 8..base + 12].copy_from_slice(&size.to_le_bytes());
-        // Clear index area first
         for i in 0..INODE_INDEX_3 {
             let off = base + 12 + i * 4;
-            buf[off..off + 4].copy_from_slice(&0u32.to_le_bytes());
+            let val = if i < indices.len() { indices[i] } else { 0 };
+            buf[off..off + 4].copy_from_slice(&val.to_le_bytes());
         }
-        // index[0]
-        buf[base + 12..base + 16].copy_from_slice(&idx0.to_le_bytes());
     };
 
     let root_dir_block = (data_start + 0) as u32;
     let upper_block = (data_start + 1) as u32;
     let lower_block = (data_start + 2) as u32;
 
-    // type: 1=DIR, 2=DATA (kept consistent with kernel)
-    put_inode(&mut inode_block0, 0, 1, 0, 0, 1, 4 * DENTRY_SIZE as u32, root_dir_block);
-    put_inode(&mut inode_block0, 1, 2, 0, 0, 1, BLOCK_SIZE as u32, upper_block);
-    put_inode(&mut inode_block0, 2, 2, 0, 0, 1, BLOCK_SIZE as u32, lower_block);
-    write_block(inode_region_start as u64, &inode_block0)?;
-
-    // Zero remaining inode blocks (optional)
-    if inode_blocks > 1 {
-        let zb = zero_block();
-        for i in 1..inode_blocks {
-            write_block((inode_region_start + i) as u64, &zb)?;
-        }
+    put_inode(&mut inode_block0, 0, 1, 0, 0, 1, 5 * DENTRY_SIZE as u32, &[root_dir_block]);
+    put_inode(&mut inode_block0, 1, 2, 0, 0, 1, BLOCK_SIZE as u32, &[upper_block]);
+    put_inode(&mut inode_block0, 2, 2, 0, 0, 1, BLOCK_SIZE as u32, &[lower_block]);
+    
+    let mut hello_indices = Vec::new();
+    for i in 0..std::cmp::min(elf_blocks, 10) {
+        hello_indices.push((hello_start_block + i) as u32);
     }
+    if hello_indirect_block != 0 {
+        hello_indices.push(hello_indirect_block as u32);
+    }
+    put_inode(&mut inode_block0, 3, 2, 0, 0, 1, elf_data.len() as u32, &hello_indices);
+
+    write_block(&mut file, inode_region_start as u64, &inode_block0)?;
 
     // Root directory block
     let mut dir_block = zero_block();
@@ -273,7 +288,8 @@ fn mkfs() -> anyhow::Result<()> {
     put_dentry(&mut dir_block, 1, "..", ROOT_INODE);
     put_dentry(&mut dir_block, 2, "ABCD.txt", 1);
     put_dentry(&mut dir_block, 3, "abcd.txt", 2);
-    write_block(root_dir_block as u64, &dir_block)?;
+    put_dentry(&mut dir_block, 4, "hello", 3);
+    write_block(&mut file, root_dir_block as u64, &dir_block)?;
 
     // File data blocks
     let mut upper = zero_block();
@@ -282,8 +298,28 @@ fn mkfs() -> anyhow::Result<()> {
         upper[i] = b'A' + (i % 26) as u8;
         lower[i] = b'a' + (i % 26) as u8;
     }
-    write_block(upper_block as u64, &upper)?;
-    write_block(lower_block as u64, &lower)?;
+    write_block(&mut file, upper_block as u64, &upper)?;
+    write_block(&mut file, lower_block as u64, &lower)?;
+
+    // Hello ELF data
+    for i in 0..elf_blocks {
+        let mut b = zero_block();
+        let start = i * BLOCK_SIZE;
+        let end = std::cmp::min(start + BLOCK_SIZE, elf_data.len());
+        b[0..end - start].copy_from_slice(&elf_data[start..end]);
+        
+        if i < 10 {
+            write_block(&mut file, (hello_start_block + i) as u64, &b)?;
+        } else {
+            // Indirect logic
+            let idx_in_indirect = i - 10;
+            let indirect_off = hello_indirect_block as u64 * BLOCK_SIZE as u64 + idx_in_indirect as u64 * 4;
+            let data_blk = hello_start_block + i;
+            write_block(&mut file, data_blk as u64, &b)?;
+            file.seek(SeekFrom::Start(indirect_off))?;
+            file.write_all(&(data_blk as u32).to_le_bytes())?;
+        }
+    }
 
     Ok(())
 }
@@ -314,7 +350,7 @@ fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
 
 fn build_service(_mode: &str, _features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("make");
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| "xtask".to_string());
     std::fs::create_dir_all(format!("{}/../target/service/hello", manifest_dir)).unwrap();
     cmd.current_dir(format!("{}/../service/hello", manifest_dir));
     cmd.arg("CROSS_COMPILE=riscv64-unknown-elf-");

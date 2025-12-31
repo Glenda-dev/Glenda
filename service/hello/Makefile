@@ -7,7 +7,7 @@ CFLAGS = -nostdlib -ffreestanding -fno-builtin -fno-stack-protector -march=rv64g
 LDFLAGS = -Wl,-n -Wl,--build-id=none -Wl,-Tlink.ld
 INCLUDES = -I../../include/kernel
 
-SRCS = start.S hello.c
+SRCS = start.S hello.c string.c
 TARGET_DIR = $(CURDIR)/../../target/service/hello
 TARGET_ELF = $(TARGET_DIR)/hello.elf
 TARGET_BIN = $(TARGET_DIR)/hello.bin
