@@ -24,8 +24,14 @@ fn get_element(path: &[u8], mut pos: usize) -> Option<(&[u8], usize)> {
     Some((&path[start..pos], pos))
 }
 
-fn __path_to_inode(path: &[u8]) -> Option<&'static mut Inode> {
-    let mut inode = inode::inode_get(ROOT_INODE);
+fn __path_to_inode_at(cwd_inum: u32, path: &[u8]) -> Option<&'static mut Inode> {
+    let start_inum = if path.starts_with(b"/") {
+        inode::ROOT_INODE
+    } else {
+        cwd_inum
+    };
+
+    let mut inode = inode::inode_get(start_inum);
     let mut pos = 0;
 
     loop {
@@ -55,11 +61,21 @@ fn __path_to_inode(path: &[u8]) -> Option<&'static mut Inode> {
 }
 
 pub fn path_to_inode(path: &[u8]) -> Option<&'static mut Inode> {
-    __path_to_inode(path)
+    __path_to_inode_at(inode::ROOT_INODE, path)
 }
 
-pub fn path_to_parent_inode(path: &[u8], name_buf: &mut [u8]) -> Option<&'static mut Inode> {
-    let mut inode = inode::inode_get(ROOT_INODE);
+pub fn path_to_inode_at(cwd_inum: u32, path: &[u8]) -> Option<&'static mut Inode> {
+    __path_to_inode_at(cwd_inum, path)
+}
+
+pub fn path_to_parent_inode_at(cwd_inum: u32, path: &[u8], name_buf: &mut [u8]) -> Option<&'static mut Inode> {
+    let start_inum = if path.starts_with(b"/") {
+        inode::ROOT_INODE
+    } else {
+        cwd_inum
+    };
+
+    let mut inode = inode::inode_get(start_inum);
     let mut pos = 0;
 
     // Check if path is empty or just slashes
@@ -79,7 +95,7 @@ pub fn path_to_parent_inode(path: &[u8], name_buf: &mut [u8]) -> Option<&'static
                     name_buf[i] = name[i];
                 }
                 if len < name_buf.len() {
-                    name_buf[len] = 0;
+                    for i in len..name_buf.len() { name_buf[i] = 0; }
                 }
 
                 return Some(inode);
