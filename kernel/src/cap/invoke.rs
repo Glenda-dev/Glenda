@@ -36,6 +36,9 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
     let badge = cap.get_badge();
     match method {
         ipcmethod::SEND => {
+            if !cap.has_rights(rights::SEND) {
+                return errcode::PERMISSION_DENIED;
+            }
             let msg_info = args[0];
             // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
             let mut cap_to_send = None;
@@ -53,10 +56,16 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
             errcode::SUCCESS
         }
         ipcmethod::RECV => {
+            if !cap.has_rights(rights::RECV) {
+                return errcode::PERMISSION_DENIED;
+            }
             ipc::recv(tcb, ep);
             errcode::SUCCESS
         }
         ipcmethod::CALL => {
+            if !cap.has_rights(rights::CALL) {
+                return errcode::PERMISSION_DENIED;
+            }
             let msg_info = args[0];
             let mut cap_to_send = None;
             let tag = ipc::MsgTag(msg_info);
@@ -73,6 +82,9 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
             errcode::SUCCESS
         }
         ipcmethod::NOTIFY => {
+            if !cap.has_rights(rights::SEND) {
+                return errcode::PERMISSION_DENIED;
+            }
             ipc::notify(ep, badge);
             errcode::SUCCESS
         }

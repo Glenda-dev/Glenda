@@ -12,6 +12,15 @@ use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
 
+fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
+    if let Some(cap) = &tcb.utcb_frame {
+        if let CapType::Frame { paddr, .. } = cap.object {
+            return Some(paddr.to_va().as_mut_ptr::<UTCB>());
+        }
+    }
+    None
+}
+
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文，并可选地传递一个 Capability
 unsafe fn copy_msg(
@@ -21,8 +30,10 @@ unsafe fn copy_msg(
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
 ) {
-    let src = sender.get_utcb().expect("ipc: Sender has no UTCB");
-    let dst = receiver.get_utcb().expect("ipc: Receiver has no UTCB");
+    let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
+    let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
+    let src = &*src_ptr;
+    let dst = &mut *dst_ptr;
 
     // 1. 拷贝消息头和寄存器
     dst.msg_tag = src.msg_tag;
@@ -31,8 +42,8 @@ unsafe fn copy_msg(
 
     // 拷贝 IPC 缓冲区内容
     if dst.ipc_buffer_size > 0 {
-        let src_buf_ptr = sender.ipc_buffer.as_ptr::<u8>();
-        let dst_buf_ptr = receiver.ipc_buffer.as_mut::<u8>();
+        let src_buf_ptr = (src_ptr as usize + UTCB_SIZE) as *const u8;
+        let dst_buf_ptr = (dst_ptr as usize + UTCB_SIZE) as *mut u8;
         unsafe {
             core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
         }
@@ -66,7 +77,7 @@ fn set_badge(tcb: &TCB, badge: usize) {
 /// * `ep`: 目标 Endpoint 对象
 /// * `badge`: 发送 Capability 携带的身份标识
 /// * `cap`: 可选的要传递的能力
-pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capability>) {
+pub fn send(current: &mut TCB, ep: &Endpoint, badge: usize, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
@@ -92,7 +103,7 @@ pub fn send(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capa
 
 /// Call 操作 (sys_call)
 /// 发送消息并等待回复，是原子的 Send + Recv
-pub fn call(current: &mut TCB, ep: &mut Endpoint, badge: usize, cap: Option<Capability>) {
+pub fn call(current: &mut TCB, ep: &Endpoint, badge: usize, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
@@ -137,19 +148,19 @@ pub fn reply(current: &mut TCB, target: &mut TCB) {
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
-pub fn notify(ep: &mut Endpoint, badge: usize) {
+pub fn notify(ep: &Endpoint, badge: usize) {
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
-        if let Some(utcb) = receiver.get_utcb() {
-            utcb.msg_tag = MsgTag::new(label::NOTIFY, 0);
+        if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
+            unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
         }
 
         set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
-        ep.notification_word |= badge;
+        ep.notify(badge);
     }
 }
 
@@ -157,16 +168,16 @@ pub fn notify(ep: &mut Endpoint, badge: usize) {
 ///
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
-pub fn recv(current: &mut TCB, ep: &mut Endpoint) {
+pub fn recv(current: &mut TCB, ep: &Endpoint) {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
-    if ep.notification_word != 0 {
+    let pending = ep.poll_notification();
+    if pending != 0 {
         // 修复：主动检查时也要设置 MsgTag
-        if let Some(utcb) = current.get_utcb() {
-            utcb.msg_tag = MsgTag::new(label::NOTIFY, 0);
+        if let Some(utcb_ptr) = get_utcb_ptr(current) {
+            unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
         }
 
-        set_badge(current, ep.notification_word);
-        ep.notification_word = 0;
+        set_badge(current, pending);
         return;
     }
 
