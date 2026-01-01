@@ -2,6 +2,7 @@
 
 use crate::drivers::virtio;
 use crate::printk;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
 
 pub const BLOCK_SIZE: usize = 4096;
@@ -113,14 +114,12 @@ impl LRUCache {
     }
 }
 
-static mut STATE_COUNTER: usize = 1;
+static STATE_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 pub fn debug_state() {
     let c = CACHE.lock();
-    unsafe {
-        c.debug_print(STATE_COUNTER);
-        STATE_COUNTER += 1;
-    }
+    let state_num = STATE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    c.debug_print(state_num);
 }
 
 pub fn init() {
