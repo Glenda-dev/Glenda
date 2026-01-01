@@ -32,8 +32,8 @@ unsafe fn copy_msg(
 ) {
     let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
-    let src = &*src_ptr;
-    let dst = &mut *dst_ptr;
+    let src = unsafe { &*src_ptr };
+    let dst = unsafe { &mut *dst_ptr };
 
     // 1. 拷贝消息头和寄存器
     dst.msg_tag = src.msg_tag;

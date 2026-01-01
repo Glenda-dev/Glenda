@@ -24,12 +24,12 @@ pub fn init(hartid: usize, dtb: *const u8) {
     proc::init(hartid, dtb);
     hart::init(hartid, dtb);
     if hartid == 0 {
-        // 标记初始化完成，允许其他核心进入调度器
-        INIT_DONE.store(true, Ordering::Release);
         printk!("{}", logo::LOGO);
         if let Some(args) = crate::dtb::bootargs() {
             printk!("bootargs: {}\n", args);
         }
+        // 标记初始化完成，允许其他核心进入调度器
+        INIT_DONE.store(true, Ordering::Release);
     } else {
         while !INIT_DONE.load(Ordering::Acquire) {
             spin_loop();
