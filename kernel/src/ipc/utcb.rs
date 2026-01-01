@@ -1,8 +1,5 @@
-
 use super::MsgTag;
 use crate::mem::{PGSIZE, VirtAddr};
-
-pub const UTCB_VA: VirtAddr = VirtAddr::from(0x8000_0000);
 
 /// 用户线程控制块 (UTCB)
 /// 映射到用户地址空间，用于内核与用户态之间的高效数据交换
@@ -37,5 +34,12 @@ impl IPCBuffer {
     pub fn from_utcb(utcb: &UTCB) -> &mut Self {
         let buf_addr = (utcb as *const UTCB as usize) + UTCB_SIZE;
         unsafe { &mut *(buf_addr as *mut IPCBuffer) }
+    }
+
+    pub fn get_str(&self, offset: usize, len: usize) -> Option<&str> {
+        if offset.checked_add(len)? > IPC_BUFFER_SIZE {
+            return None;
+        }
+        core::str::from_utf8(&self.0[offset..offset + len]).ok()
     }
 }

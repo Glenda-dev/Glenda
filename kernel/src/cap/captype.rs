@@ -61,6 +61,10 @@ pub enum CapType {
     IrqHandler {
         irq: usize,
     },
+
+    /// 控制台 (Console)
+    /// 允许向内核控制台输出日志
+    Console,
 }
 
 pub mod types {

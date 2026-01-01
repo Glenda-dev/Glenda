@@ -39,3 +39,8 @@ pub mod irqmethod {
     pub const CLEAR_NOTIFICATION: usize = 3;
     pub const SET_PRIORITY: usize = 4;
 }
+
+pub mod consolemethod {
+    pub const PUT_CHAR: usize = 1;
+    pub const PUT_STR: usize = 2;
+}

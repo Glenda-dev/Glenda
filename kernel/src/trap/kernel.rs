@@ -60,7 +60,13 @@ fn exception_handler(
                 utcb.mrs_regs[0] = sc;
                 utcb.mrs_regs[1] = tval;
                 utcb.mrs_regs[2] = epc;
-                utcb.msg_tag = MsgTag::new(ipc::label::FAULT, 3); // Label: 0xFFFF (Fault), Length: 3
+
+                let label = match sc {
+                    12 | 13 | 15 => ipc::label::PAGE_FAULT,
+                    _ => ipc::label::EXCEPTION,
+                };
+
+                utcb.msg_tag = MsgTag::new(label, 3);
             }
 
             // 2. 提取 Endpoint

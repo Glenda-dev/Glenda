@@ -1,5 +1,6 @@
 use super::method::{
-    cnodemethod, ipcmethod, irqmethod, pagetablemethod, replymethod, tcbmethod, untypedmethod,
+    cnodemethod, consolemethod, ipcmethod, irqmethod, pagetablemethod, replymethod, tcbmethod,
+    untypedmethod,
 };
 use crate::cap::captype::types;
 use crate::cap::{CNode, CapType, Capability, rights};
@@ -22,6 +23,7 @@ pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
         CapType::Untyped { start_paddr, size } => invoke_untyped(start_paddr, size, method, &args),
         CapType::IrqHandler { irq } => invoke_irq_handler(irq, method, &args),
         CapType::Reply { tcb_ptr } => invoke_reply(tcb_ptr, method, &args),
+        CapType::Console => invoke_console(method, &args),
         _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
     }
 }
@@ -386,6 +388,33 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
             let priority = args[0];
             irq::plic::set_priority(irq, priority);
             errcode::SUCCESS
+        }
+        _ => errcode::INVALID_METHOD,
+    }
+}
+
+fn invoke_console(method: usize, args: &Args) -> usize {
+    match method {
+        consolemethod::PUT_CHAR => {
+            let c = args[0] as u8 as char;
+            crate::printk!("{}", c);
+            errcode::SUCCESS
+        }
+        consolemethod::PUT_STR => {
+            let offset = args[0];
+            let len = args[1];
+            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+            if let Some(utcb) = tcb.get_utcb() {
+                let ipc_buf = crate::ipc::utcb::IPCBuffer::from_utcb(utcb);
+                if let Some(s) = ipc_buf.get_str(offset, len) {
+                    crate::printk!("{}", s);
+                    errcode::SUCCESS
+                } else {
+                    errcode::INVALID_SLOT
+                }
+            } else {
+                errcode::MAPPING_FAILED
+            }
         }
         _ => errcode::INVALID_METHOD,
     }
