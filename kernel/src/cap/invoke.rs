@@ -172,21 +172,32 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &Args) -> usize {
     match method {
         pagetablemethod::MAP => {
             // Map: (frame_cap, vaddr, flags)
-            let paddr = PhysAddr::from(args[0]);
+            let frame_cptr = args[0];
             let vaddr = VirtAddr::from(args[1]);
             let flags = PteFlags::from(args[2]);
 
+            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+            let frame_cap = match tcb.cap_lookup(frame_cptr) {
+                Some(c) => c,
+                None => return errcode::INVALID_CAP,
+            };
+
+            let (frame_paddr, frame_size) = match frame_cap.object {
+                CapType::Frame { paddr, page_count } => (paddr, page_count * PGSIZE),
+                _ => return errcode::INVALID_OBJ_TYPE,
+            };
+
             // 执行映射
-            // pt.map(vaddr, paddr, flags)
-            match pt.map(vaddr, paddr, mem::PGSIZE, flags) {
+            match pt.map(vaddr, frame_paddr, frame_size, flags) {
                 Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
         pagetablemethod::UNMAP => {
-            // Unmap: (vaddr)
+            // Unmap: (vaddr, size)
             let vaddr = VirtAddr::from(args[0]);
-            match pt.unmap(vaddr, PGSIZE) {
+            let size = args[1];
+            match pt.unmap(vaddr, size) {
                 Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
@@ -330,7 +341,9 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> u
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
                         // Frame
-                        types::FRAME => Capability::create_frame(obj_paddr, rights::ALL),
+                        types::FRAME => {
+                            Capability::create_frame(obj_paddr, obj_size / PGSIZE, rights::ALL)
+                        }
                         // PageTable
                         types::PAGETABLE => {
                             // 初始化页表 (清零已在上面完成)

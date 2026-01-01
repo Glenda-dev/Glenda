@@ -40,6 +40,7 @@ pub enum CapType {
     /// 代表一块物理内存，可以被 Map 到 VSpace 中
     Frame {
         paddr: PhysAddr,
+        page_count: usize,
     },
 
     /// 页表对象 (PageTable)

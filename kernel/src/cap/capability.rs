@@ -123,9 +123,9 @@ impl Capability {
         Self::new(CapType::Reply { tcb_ptr: ro_ptr }, rights)
     }
 
-    pub fn create_frame(paddr: PhysAddr, rights: u8) -> Self {
+    pub fn create_frame(paddr: PhysAddr, page_count: usize, rights: u8) -> Self {
         assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
-        Self::new(CapType::Frame { paddr }, rights)
+        Self::new(CapType::Frame { paddr, page_count }, rights)
     }
 
     pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: u8) -> Self {
