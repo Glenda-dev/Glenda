@@ -5,13 +5,15 @@ use crate::fs::inode;
 use crate::fs::dentry;
 use crate::fs::path;
 use crate::printk;
-use core::ptr::{self, addr_of, addr_of_mut};
+use core::ptr;
+use spin::Once;
 
 // Filesystem constants
 pub const MAGIC: u32 = 0x10203040;
 pub const BSIZE: usize = 4096; // Block size = Page size
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct SuperBlock {
     pub magic: u32,
     pub size: u32,
@@ -21,35 +23,40 @@ pub struct SuperBlock {
     pub bmap_start: u32,
 }
 
-static mut SB: SuperBlock =
-    SuperBlock { magic: 0, size: 0, nblocks: 0, ninodes: 0, inode_start: 0, bmap_start: 0 };
+static SB: Once<SuperBlock> = Once::new();
 
 pub fn fs_init() {
     // Read superblock (block 0)
     let b = buffer::read(0, 0);
     let data = buffer::get_data_ptr(b);
 
-    unsafe {
-        ptr::copy_nonoverlapping(data as *const SuperBlock, addr_of_mut!(SB), 1);
-    }
+    // Read superblock from disk
+    let sb = unsafe {
+        ptr::read_unaligned(data as *const SuperBlock)
+    };
 
     buffer::release(b);
 
-    unsafe {
-        if (*addr_of!(SB)).magic != MAGIC {
-            panic!(
-                "fs_init: invalid file system magic {:#x} (expected {:#x})",
-                (*addr_of!(SB)).magic,
-                MAGIC
-            );
-        }
-        printk!(
-            "FS: Superblock read: size={} blocks, inodes={}, bmap_start={}\n",
-            (*addr_of!(SB)).size,
-            (*addr_of!(SB)).ninodes,
-            (*addr_of!(SB)).bmap_start
+    // Validate magic number
+    if sb.magic != MAGIC {
+        panic!(
+            "fs_init: invalid file system magic {:#x} (expected {:#x})",
+            sb.magic,
+            MAGIC
         );
     }
+
+    // Store superblock
+    SB.call_once(|| sb);
+
+    let sb = get_sb();
+    printk!(
+        "FS: Superblock read: size={} blocks, inodes={}, bmap_start={}\n",
+        sb.size,
+        sb.ninodes,
+        sb.bmap_start
+    );
+
     inode::inode_init();
     fs_test();
 }
@@ -179,5 +186,5 @@ fn fs_test() {
 }
 
 pub fn get_sb() -> &'static SuperBlock {
-    unsafe { &*addr_of!(SB) }
+    SB.get().expect("SuperBlock not initialized - call fs_init() first")
 }
