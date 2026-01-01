@@ -35,19 +35,8 @@ use riscv::asm::wfi;
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(hartid: usize, dtb: *const u8) -> ! {
     init(hartid, dtb);
-    if hartid == 0 {
-        printk!("{}", logo::LOGO);
-        if let Some(args) = dtb::bootargs() {
-            printk!("bootargs: {}\n", args);
-        }
-        printk!("Starting scheduler on hart 0...\n");
-        proc::scheduler::scheduler();
-    }
-
-    printk!("{}Hart {} entering main loop{}\n", ANSI_BLUE, hartid, ANSI_RESET);
-    loop {
-        wfi();
-    }
+    printk!("{}Hart {} entering scheduler{}\n", ANSI_BLUE, hartid, ANSI_RESET);
+    proc::scheduler::scheduler();
 }
 
 #[inline(always)]
