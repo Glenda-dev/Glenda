@@ -28,9 +28,9 @@ pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
             continue;
         }
         match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => printk!("HARTS: Started hart {} via SBI\n", target),
+            Ok(()) => printk!("harts: Started hart {} via SBI\n", target),
             Err(err) => printk!(
-                "{}HARTS: Failed to start hart {} via SBI: error {}{}\n",
+                "{}harts: Failed to start hart {} via SBI: error {}{}\n",
                 ANSI_RED,
                 target,
                 err,
