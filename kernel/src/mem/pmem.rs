@@ -74,8 +74,10 @@ pub fn initialize_regions(_hartid: usize) {
 }
 
 /// 分配一个物理页 Capability
-pub fn alloc_frame_cap() -> Option<Capability> {
-    PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| Capability::create_frame(paddr, rights::ALL))
+pub fn alloc_frame_cap(count: usize) -> Option<Capability> {
+    PMEM.lock()
+        .alloc_addr(PGSIZE * count, PGSIZE)
+        .map(|paddr| Capability::create_frame(paddr, count, rights::ALL))
 }
 
 /// 分配一个 Untyped Capability

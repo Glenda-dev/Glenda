@@ -75,7 +75,7 @@ impl Capability {
             CapType::Thread { tcb_ptr } => tcb_ptr,
             CapType::Endpoint { ep_ptr } => ep_ptr,
             CapType::Reply { tcb_ptr } => tcb_ptr,
-            CapType::Frame { paddr } => paddr.to_va(),
+            CapType::Frame { paddr, .. } => paddr.to_va(),
             CapType::PageTable { paddr, .. } => paddr.to_va(),
             CapType::CNode { paddr, .. } => paddr.to_va(),
             _ => VirtAddr::null(),

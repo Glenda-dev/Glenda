@@ -31,8 +31,8 @@ pub fn init() {
     let root_vspace_cap = pmem::alloc_pagetable_cap(2).expect("Failed to alloc root VSpace");
     let root_cspace_cap = pmem::alloc_cnode_cap(12).expect("Failed to alloc root CSpace");
     let root_tcb_cap = pmem::alloc_tcb_cap().expect("Failed to alloc root TCB");
-    let root_utcb_cap = pmem::alloc_frame_cap().expect("Failed to alloc root UTCB");
-    let root_bootinfo_cap = pmem::alloc_frame_cap().expect("Failed to alloc root BootInfo");
+    let root_utcb_cap = pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB");
+    let root_bootinfo_cap = pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo");
 
     // 3. 初始化 TCB (提前到这里是为了获取 TrapFrame 的物理地址)
     let tcb = root_tcb_cap.obj_ptr().as_mut::<TCB>();

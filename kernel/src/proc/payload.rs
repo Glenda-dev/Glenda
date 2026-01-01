@@ -257,8 +257,8 @@ impl ProcPayload {
 
                 let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;
                 for j in 0..num_pages {
-                    let frame_cap = crate::mem::pmem::alloc_frame_cap()
-                        .expect("Failed to alloc frame for segment");
+                    let frame_cap =
+                        pmem::alloc_frame_cap(1).expect("Failed to alloc frame for segment");
 
                     let va = VirtAddr::from(p_vaddr) + j * PGSIZE;
                     let copy_size = if (j + 1) * PGSIZE <= p_filesz {
@@ -295,7 +295,7 @@ impl ProcPayload {
         let num_pages = (self.data.len() + PGSIZE - 1) / PGSIZE;
         for j in 0..num_pages {
             let frame_cap =
-                pmem::alloc_frame_cap().expect("Failed to alloc frame for flat mapping");
+                pmem::alloc_frame_cap(1).expect("Failed to alloc frame for flat mapping");
             let va = VirtAddr::from(EMPTY_VA + j * PGSIZE);
             let src_pa = PhysAddr::from(self.data.as_ptr() as usize + j * PGSIZE);
             let src_va = src_pa.to_va();

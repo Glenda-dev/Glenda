@@ -73,7 +73,7 @@ impl KernelStack {
 
         for i in 0..KSTACK_PAGES {
             // 2. 分配物理帧 Capability
-            let frame_cap = match pmem::alloc_frame_cap() {
+            let frame_cap = match pmem::alloc_frame_cap(1) {
                 Some(c) => c,
                 None => {
                     // 回滚：释放已分配的帧和槽位

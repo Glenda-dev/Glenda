@@ -7,7 +7,6 @@ use crate::cap::{CNode, CapType, Capability, rights};
 use crate::hart;
 use crate::ipc;
 use crate::irq;
-use crate::mem;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::{Args, errcode};
