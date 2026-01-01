@@ -1,5 +1,6 @@
 use super::ProcContext;
 use super::set_current_user_satp;
+use super::runnable_queue;
 use super::table::{GLOBAL_PID, NPROC, PROC_TABLE};
 use crate::fs::inode;
 use crate::hart;
@@ -168,11 +169,20 @@ impl Process {
         {
             let mut table = PROC_TABLE.lock();
             let init_ptr: *mut Process = table.as_mut_ptr();
+            let mut self_idx = None;
             for i in 0..NPROC {
                 let p = &mut table[i];
                 if p.parent == (self as *mut Process) {
                     p.parent = init_ptr; // init process
                 }
+                // Find our own index
+                if &mut table[i] as *mut Process == self as *mut Process {
+                    self_idx = Some(i);
+                }
+            }
+            // Clear runnable bit if we were runnable
+            if let Some(idx) = self_idx {
+                runnable_queue::mark_not_runnable(idx);
             }
         }
         self.state = ProcState::Dying;
@@ -276,6 +286,8 @@ impl Process {
         parent_tf.a0 = child.pid;
         child.context.sp = kstack_top;
         child.context.ra = trap_user_return as usize;
+        // Note: child.state is already set to Runnable by alloc(), and bitmap is already updated
+        // This line is redundant but kept for clarity
         child.state = ProcState::Runnable;
         child
     }
@@ -550,6 +562,7 @@ pub fn alloc() -> Option<&'static mut Process> {
             p.context.ra = proc_return as usize;
             p.context.sp = 0;
             p.state = ProcState::Runnable;
+            runnable_queue::mark_runnable(i);
 
             if sie_enabled { unsafe { sstatus::set_sie(); } }
             return Some(p);
@@ -630,7 +643,8 @@ pub fn create(payload: &[u8]) -> &'static mut Process {
     // Set kernel stack pointer for context switch
     proc.context.sp = kstack_top;
 
-    // 设置进程状态为可运行
+    // Note: proc.state is already set to Runnable by alloc(), and bitmap is already updated
+    // This line is redundant but kept for clarity
     proc.state = ProcState::Runnable;
     proc
 }

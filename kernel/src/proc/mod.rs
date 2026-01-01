@@ -1,5 +1,6 @@
 pub mod context;
 pub mod process;
+pub mod runnable_queue;
 pub mod scheduler;
 pub mod table;
 pub use context::ProcContext;
