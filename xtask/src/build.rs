@@ -5,11 +5,11 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
-pub fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+pub fn build(mode: &str, features: &Vec<String>, config_path: Option<&str>) -> anyhow::Result<()> {
     // Build libraries
     build_libraries(mode, features)?;
     // Process workspace services and generate modules blob for kernel embedding
-    build_services()?;
+    build_services(config_path)?;
     // Build the kernel
     build_kernel(mode, features)?;
     Ok(())
@@ -60,10 +60,11 @@ pub fn build_libraries(mode: &str, features: &Vec<String>) -> anyhow::Result<()>
 
 const ENTRY_SIZE: usize = 48; // as in design
 
-pub fn build_services() -> anyhow::Result<()> {
-    let cfg_path = Path::new("config.toml");
+pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
+    let default_path = "config.toml";
+    let cfg_path = Path::new(config_path.unwrap_or(default_path));
     if !cfg_path.exists() {
-        eprintln!("[ WARN ] config.toml not found, skipping pack step");
+        eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
         return Ok(());
     }
     let cfg = Config::from_path(cfg_path)?;

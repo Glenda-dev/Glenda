@@ -11,6 +11,9 @@ struct Xtask {
     #[arg(long, global = true)]
     release: bool,
 
+    #[arg(short, long, global = true)]
+    config: Option<String>,
+
     #[arg(long = "features", value_delimiter = ',', num_args(0..), global = true)]
     features: Vec<String>,
 
@@ -91,9 +94,9 @@ fn main() -> anyhow::Result<()> {
     let mode = if xtask.release { "release" } else { "debug" };
 
     match xtask.cmd {
-        Cmd::Build => build::build(mode, &xtask.features)?,
+        Cmd::Build => build::build(mode, &xtask.features, xtask.config.as_deref())?,
         Cmd::Run { cpus, mem, display } => {
-            build::build(mode, &xtask.features)?;
+            build::build(mode, &xtask.features, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_run(mode, cpus, &mem, &display)?;
         }
@@ -104,7 +107,7 @@ fn main() -> anyhow::Result<()> {
                     feats.push(String::from("tests"));
                 }
             }
-            build::build(mode, &feats)?;
+            build::build(mode, &feats, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_gdb(mode, cpus, &mem, &display)?;
         }
@@ -113,7 +116,7 @@ fn main() -> anyhow::Result<()> {
             if !feats.iter().any(|f| f == "tests") {
                 feats.push(String::from("tests"));
             }
-            build::build(mode, &feats)?;
+            build::build(mode, &feats, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_run(mode, cpus, &mem, &display)?;
         }
