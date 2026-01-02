@@ -46,13 +46,6 @@ pub struct Entry {
     _padding: [u8; 7],
 }
 
-const MAX_ENTRIES: usize = 16;
-
-pub struct ProcBinary {
-    num_entries: usize,
-    entries: [Option<ProcPayload>; MAX_ENTRIES],
-}
-
 pub struct ProcPayload {
     pub metadata: Entry,
     pub data: &'static [u8],
@@ -60,7 +53,7 @@ pub struct ProcPayload {
 
 const PAYLOAD_MAGIC: u32 = 0x99999999;
 
-static PAYLOAD: Once<ProcBinary> = Once::new();
+static ROOT_TASK: Once<ProcPayload> = Once::new();
 
 pub fn init() {
     let initrd = dtb::initrd_range();
@@ -73,7 +66,10 @@ pub fn init() {
         return;
     }
 
-    let payload_ptr = initrd.unwrap().start.as_ptr::<u8>();
+    let range = initrd.unwrap();
+    let payload_ptr = range.start.as_ptr::<u8>();
+    let total_size = range.end().as_usize() - range.start.as_usize();
+
     // Read header bytes (safely, avoid alignment assumptions)
     let b0 = unsafe { *payload_ptr.add(0) };
     let b1 = unsafe { *payload_ptr.add(1) };
@@ -85,125 +81,85 @@ pub fn init() {
     let c2 = unsafe { *payload_ptr.add(6) };
     let c3 = unsafe { *payload_ptr.add(7) };
     let count = u32::from_le_bytes([c0, c1, c2, c3]);
-    let t0 = unsafe { *payload_ptr.add(8) };
-    let t1 = unsafe { *payload_ptr.add(9) };
-    let t2 = unsafe { *payload_ptr.add(10) };
-    let t3 = unsafe { *payload_ptr.add(11) };
-    let total_size = u32::from_le_bytes([t0, t1, t2, t3]);
 
     if magic != PAYLOAD_MAGIC {
         printk!("{}[WARN] Invalid payload magic: {:#x}{}\n", ANSI_RED, magic, ANSI_RESET);
+        return;
     }
-    printk!("proc: Loading process binary with {} entries\n", count);
+    printk!("proc: Initrd found, {} entries\n", count);
 
-    let mut parsed =
-        ProcBinary { num_entries: count as usize, entries: [const { None }; MAX_ENTRIES] };
-
-    // Entries start at offset 12, each ENTRY is 48 bytes
-    let entry_base = 12usize;
-    let total_size_usize = total_size as usize;
-
-    // basic sanity check
-    if (total_size as usize) < entry_base + (count as usize) * 48 {
-        printk!("{}[WARN] payload total_size too small: {}{}\n", ANSI_RED, total_size, ANSI_RESET);
+    if count == 0 {
+        printk!("{}[WARN] Initrd is empty{}\n", ANSI_RED, ANSI_RESET);
         return;
     }
 
-    let loop_count = if (count as usize) > MAX_ENTRIES {
-        printk!(
-            "{}[WARN] Too many entries: {}, truncating to {}{}\n",
-            ANSI_RED,
-            count,
-            MAX_ENTRIES,
-            ANSI_RESET
-        );
-        MAX_ENTRIES
-    } else {
-        count as usize
-    };
+    // Entries start at offset 12, each ENTRY is 48 bytes
+    let entry_base = 12usize;
 
-    for i in 0..loop_count {
-        let ent_off = entry_base + i * 48;
-        // read fields from payload_ptr + ent_off
-        let t = unsafe { *payload_ptr.add(ent_off) };
-        let o0 = unsafe { *payload_ptr.add(ent_off + 1) };
-        let o1 = unsafe { *payload_ptr.add(ent_off + 2) };
-        let o2 = unsafe { *payload_ptr.add(ent_off + 3) };
-        let o3 = unsafe { *payload_ptr.add(ent_off + 4) };
-        let offset = u32::from_le_bytes([o0, o1, o2, o3]);
+    // Parse ONLY the first entry (Root Task)
+    let ent_off = entry_base;
 
-        let s0 = unsafe { *payload_ptr.add(ent_off + 5) };
-        let s1 = unsafe { *payload_ptr.add(ent_off + 6) };
-        let s2 = unsafe { *payload_ptr.add(ent_off + 7) };
-        let s3 = unsafe { *payload_ptr.add(ent_off + 8) };
-        let size = u32::from_le_bytes([s0, s1, s2, s3]);
+    // read fields from payload_ptr + ent_off
+    let t = unsafe { *payload_ptr.add(ent_off) };
+    let o0 = unsafe { *payload_ptr.add(ent_off + 1) };
+    let o1 = unsafe { *payload_ptr.add(ent_off + 2) };
+    let o2 = unsafe { *payload_ptr.add(ent_off + 3) };
+    let o3 = unsafe { *payload_ptr.add(ent_off + 4) };
+    let offset = u32::from_le_bytes([o0, o1, o2, o3]);
 
-        // name: bytes 9..40 (32 bytes)
-        let mut name_buf = [0u8; 32];
-        for j in 0..32 {
-            name_buf[j] = unsafe { *payload_ptr.add(ent_off + 9 + j) };
-        }
-        // trim at first null
-        let name_end = name_buf.iter().position(|&c| c == 0).unwrap_or(32);
-        let name = core::str::from_utf8(&name_buf[..name_end]).unwrap_or("<invalid utf8>");
+    let s0 = unsafe { *payload_ptr.add(ent_off + 5) };
+    let s1 = unsafe { *payload_ptr.add(ent_off + 6) };
+    let s2 = unsafe { *payload_ptr.add(ent_off + 7) };
+    let s3 = unsafe { *payload_ptr.add(ent_off + 8) };
+    let size = u32::from_le_bytes([s0, s1, s2, s3]);
 
-        printk!("proc: entry {} type={} offset={} size={} name={}\n", i, t, offset, size, name);
+    // name: bytes 9..40 (32 bytes)
+    let mut name_buf = [0u8; 32];
+    for j in 0..32 {
+        name_buf[j] = unsafe { *payload_ptr.add(ent_off + 9 + j) };
+    }
+    // trim at first null
+    let name_end = name_buf.iter().position(|&c| c == 0).unwrap_or(32);
+    let name = core::str::from_utf8(&name_buf[..name_end]).unwrap_or("<invalid utf8>");
 
-        // create slice
-        let data = if size > 0 {
-            let data_start = offset as usize;
-            let end = data_start.checked_add(size as usize).unwrap_or(usize::MAX);
-            if end > total_size_usize {
-                printk!(
-                    "{}[WARN] entry {} data out of bounds: {} + {} > {}{}\n",
-                    ANSI_RED,
-                    i,
-                    data_start,
-                    size,
-                    total_size,
-                    ANSI_RESET
-                );
-                &[]
-            } else {
-                unsafe { core::slice::from_raw_parts(payload_ptr.add(data_start), size as usize) }
-            }
-        } else {
-            &[]
-        };
+    printk!("proc: Found Root Task: type={} offset={} size={} name={}\n", t, offset, size, name);
 
-        // construct Entry metadata (packed interpretation)
-        let metadata = Entry {
-            info: match t {
-                0 => PayloadType::RootTask,
-                1 => PayloadType::Driver,
-                2 => PayloadType::Server,
-                3 => PayloadType::Test,
-                4 => PayloadType::File,
-                _ => PayloadType::File,
-            },
-            offset,
-            size,
-            name: name_buf,
-            _padding: [0u8; 7],
-        };
-
-        parsed.entries[i] = Some(ProcPayload { metadata, data });
+    if t != 0 {
+        // 0 is RootTask
+        printk!("{}[WARN] First entry is not Root Task (type={}){}\n", ANSI_RED, t, ANSI_RESET);
     }
 
-    // initialize static once with parsed payload
-    let _ = PAYLOAD.call_once(|| parsed);
+    // create slice
+    let data = if size > 0 {
+        let data_start = offset as usize;
+        let end = data_start.checked_add(size as usize).unwrap_or(usize::MAX);
+        if end > total_size {
+            printk!(
+                "{}[WARN] Root Task data out of bounds: {} + {} > {}{}\n",
+                ANSI_RED,
+                data_start,
+                size,
+                total_size,
+                ANSI_RESET
+            );
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(payload_ptr.add(data_start), size as usize) }
+        }
+    } else {
+        &[]
+    };
+
+    // construct Entry metadata (packed interpretation)
+    let metadata =
+        Entry { info: PayloadType::RootTask, offset, size, name: name_buf, _padding: [0u8; 7] };
+
+    let root_task = ProcPayload { metadata, data };
+    let _ = ROOT_TASK.call_once(|| root_task);
 }
 
 pub fn get_root_task() -> Option<&'static ProcPayload> {
-    let payload = PAYLOAD.get().expect("Payload not initialized");
-    for entry_opt in &payload.entries {
-        if let Some(entry) = entry_opt {
-            if let PayloadType::RootTask = entry.metadata.info {
-                return Some(entry);
-            }
-        }
-    }
-    None
+    ROOT_TASK.get()
 }
 
 impl ProcPayload {

@@ -75,6 +75,12 @@ pub fn init() {
         bootinfo.dtb_size = dtb_size;
     }
 
+    // 填充 Initrd 信息
+    if let Some(range) = dtb::initrd_range() {
+        bootinfo.initrd_paddr = range.start;
+        bootinfo.initrd_size = range.size;
+    }
+
     // 填充启动参数
     if let Some(args) = dtb::bootargs() {
         let bytes = args.as_bytes();

@@ -60,7 +60,37 @@ pub fn build_services() -> anyhow::Result<()> {
 
     // collect binaries
     let mut entries: Vec<(u8, String, Vec<u8>)> = Vec::new();
+
+    // 1. Find and process Root Task first
+    if let Some(root_task_cfg) =
+        cfg.services.iter().find(|c| c.kind.as_deref() == Some("root_task"))
+    {
+        if let Some(cmd_str) = &root_task_cfg.build_cmd {
+            eprintln!("[ INFO ] Building Root Task {} with: {}", root_task_cfg.name, cmd_str);
+            let status = Command::new("sh")
+                .arg("-c")
+                .arg(cmd_str)
+                .current_dir(&root_task_cfg.path)
+                .status()?;
+            if !status.success() {
+                return Err(anyhow::anyhow!("build command failed for {}", root_task_cfg.name));
+            }
+        }
+        let out_path = Path::new(&(root_task_cfg.path)).join(&root_task_cfg.output_bin);
+        if !out_path.exists() {
+            return Err(anyhow::anyhow!("output binary not found: {}", root_task_cfg.output_bin));
+        }
+        let data = fs::read(&out_path)?;
+        entries.push((0, root_task_cfg.name.clone(), data));
+    } else {
+        eprintln!("[ WARN ] No root_task defined in config.toml");
+    }
+
+    // 2. Process other services
     for c in cfg.services.iter() {
+        if c.kind.as_deref() == Some("root_task") {
+            continue; // Already processed
+        }
         if let Some(cmd_str) = &c.build_cmd {
             eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);
             // run via shell so build_cmd can be arbitrary
@@ -75,8 +105,7 @@ pub fn build_services() -> anyhow::Result<()> {
         }
         let data = fs::read(&out_path)?;
         // kind mapping
-        let t: u8 = match c.kind.as_deref().unwrap_or("root_task") {
-            "root_task" => 0,
+        let t: u8 = match c.kind.as_deref().unwrap_or("file") {
             "driver" => 1,
             "server" => 2,
             "test" => 3,
