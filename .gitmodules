@@ -7,3 +7,6 @@
 [submodule "lib/libglenda-rs"]
 	path = lib/libglenda-rs
 	url = https://github.com/Glenda-dev/libglenda-rs.git
+[submodule "service/factotum"]
+	path = service/factotum
+	url = https://github.com/Glenda-dev/factotum

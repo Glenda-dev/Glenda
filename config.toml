@@ -1,6 +1,12 @@
 [[services]]
 name = "9ball"
 path = "service/9ball"
-build_cmd = "./build.sh"
+build_cmd = "bash build.sh"
 output_bin = "build/9ball.bin"
 kind = "root_task"
+[[services]]
+name = "factotum"
+path = "service/factotum"
+build_cmd = "bash build.sh"
+output_bin = "build/factotum.bin"
+kind = "server"

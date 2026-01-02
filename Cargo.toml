@@ -1,5 +1,11 @@
 [workspace]
-members = ["kernel", "xtask", "lib/libglenda-rs", "service/9ball"]
+members = [
+    "kernel",
+    "xtask",
+    "lib/libglenda-rs",
+    "service/9ball",
+    "service/factotum",
+]
 resolver = "2"
 
 [profile.dev]
