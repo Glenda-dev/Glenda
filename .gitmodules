@@ -10,3 +10,6 @@
 [submodule "service/factotum"]
 	path = service/factotum
 	url = https://github.com/Glenda-dev/factotum
+[submodule "service/unicorn"]
+	path = service/unicorn
+	url = https://github.com/Glenda-dev/unicorn.git

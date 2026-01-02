@@ -10,3 +10,10 @@ path = "service/factotum"
 build_cmd = "bash build.sh"
 output_bin = "build/factotum.bin"
 kind = "server"
+
+[[services]]
+name = "unicorn"
+path = "service/unicorn"
+build_cmd = "bash build.sh"
+output_bin = "build/unicorn.bin"
+kind = "server"

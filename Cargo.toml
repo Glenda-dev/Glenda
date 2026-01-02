@@ -5,6 +5,7 @@ members = [
     "lib/libglenda-rs",
     "service/9ball",
     "service/factotum",
+    "service/unicorn",
 ]
 resolver = "2"
 
