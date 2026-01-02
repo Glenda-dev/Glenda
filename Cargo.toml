@@ -6,6 +6,7 @@ members = [
     "service/9ball",
     "service/factotum",
     "service/unicorn",
+    "examples/hello",
 ]
 resolver = "2"
 
