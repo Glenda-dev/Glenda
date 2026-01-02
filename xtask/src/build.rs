@@ -17,7 +17,15 @@ pub fn build(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
 
 pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
-    cmd.arg("build").arg("-p").arg("kernel").arg("--target").arg("riscv64gc-unknown-none-elf");
+    cmd.current_dir("kernel");
+    cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
+
+    // Inject kernel linker script with absolute path
+    let cwd = std::env::current_dir()?;
+    let linker_script = cwd.join("kernel/src/linker.ld");
+    let rustflags = format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display());
+    cmd.env("RUSTFLAGS", rustflags);
+
     if mode == "release" {
         cmd.arg("--release");
     }
@@ -25,16 +33,21 @@ pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
         let joined = features.join(",");
         cmd.arg("--features").arg(joined);
     }
-    run(&mut cmd)
+    run(&mut cmd)?;
+
+    // Copy binary to root target
+    let profile = if mode == "release" { "release" } else { "debug" };
+    let src = Path::new("target/riscv64gc-unknown-none-elf").join(profile).join("kernel");
+    let dst = Path::new("target/kernel");
+    fs::create_dir_all("target")?;
+    fs::copy(src, dst)?;
+    Ok(())
 }
 
 pub fn build_libraries(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("-p")
-        .arg("libglenda-rs")
-        .arg("--target")
-        .arg("riscv64gc-unknown-none-elf");
+    cmd.current_dir("lib/libglenda-rs");
+    cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
     if mode == "release" {
         cmd.arg("--release");
     }
@@ -80,7 +93,12 @@ pub fn build_services() -> anyhow::Result<()> {
         if !out_path.exists() {
             return Err(anyhow::anyhow!("output binary not found: {}", root_task_cfg.output_bin));
         }
-        let data = fs::read(&out_path)?;
+
+        // Copy to root target
+        let dst = Path::new("target").join(format!("{}.bin", root_task_cfg.name));
+        fs::copy(&out_path, &dst)?;
+
+        let data = fs::read(&dst)?;
         entries.push((0, root_task_cfg.name.clone(), data));
     } else {
         eprintln!("[ WARN ] No root_task defined in config.toml");
@@ -103,7 +121,12 @@ pub fn build_services() -> anyhow::Result<()> {
         if !out_path.exists() {
             return Err(anyhow::anyhow!("output binary not found: {}", c.output_bin));
         }
-        let data = fs::read(&out_path)?;
+
+        // Copy to root target
+        let dst = Path::new("target").join(format!("{}.bin", c.name));
+        fs::copy(&out_path, &dst)?;
+
+        let data = fs::read(&dst)?;
         // kind mapping
         let t: u8 = match c.kind.as_deref().unwrap_or("file") {
             "driver" => 1,

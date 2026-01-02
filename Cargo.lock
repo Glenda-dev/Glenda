@@ -250,6 +250,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libglenda-rs"
+version = "0.1.0"
+source = "git+https://github.com/Glenda-dev/libglenda-rs#18c1ec4d51393f43cd50fa776a1e64b459c5ac53"
+dependencies = [
+ "buddy_system_allocator",
+ "spin 0.9.8",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -276,6 +285,13 @@ name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
+
+[[package]]
+name = "nineball"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs 0.1.0 (git+https://github.com/Glenda-dev/libglenda-rs)",
+]
 
 [[package]]
 name = "once_cell"

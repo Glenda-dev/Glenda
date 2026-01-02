@@ -18,8 +18,10 @@ pub const CSPACE_SLOT: usize = 0;
 pub const TCB_SLOT: usize = 2;
 pub const UTCB_SLOT: usize = 3;
 pub const BOOTINFO_SLOT: usize = 4;
+pub const CONSOLE_SLOT: usize = 5;
+pub const INITRD_SLOT: usize = 6;
 
-pub const MEM_SLOT_START: usize = 5;
+pub const MEM_SLOT_START: usize = 7;
 
 /// 初始化进程子系统并创建 Root Task
 pub fn init() {
@@ -75,12 +77,6 @@ pub fn init() {
         bootinfo.dtb_size = dtb_size;
     }
 
-    // 填充 Initrd 信息
-    if let Some(range) = dtb::initrd_range() {
-        bootinfo.initrd_paddr = range.start;
-        bootinfo.initrd_size = range.size;
-    }
-
     // 填充启动参数
     if let Some(args) = dtb::bootargs() {
         let bytes = args.as_bytes();
@@ -118,6 +114,17 @@ pub fn init() {
     cspace.insert(TCB_SLOT, &root_tcb_cap);
     cspace.insert(UTCB_SLOT, &root_utcb_cap);
     cspace.insert(BOOTINFO_SLOT, &root_bootinfo_cap);
+    cspace.insert(CONSOLE_SLOT, &Capability::new(crate::cap::CapType::Console, rights::ALL));
+
+    // 插入 Initrd Frame Capability
+    if let Some(range) = dtb::initrd_range() {
+        let page_count = (range.size + PGSIZE - 1) / PGSIZE;
+        let initrd_cap = Capability::new(
+            crate::cap::CapType::Frame { paddr: range.start, page_count },
+            rights::READ | rights::WRITE | rights::GRANT, // 允许读写和传递
+        );
+        cspace.insert(INITRD_SLOT, &initrd_cap);
+    }
 
     printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
 }

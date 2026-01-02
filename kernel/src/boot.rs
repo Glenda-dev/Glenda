@@ -83,12 +83,6 @@ pub struct BootInfo {
     /// The i-th entry here corresponds to the capability at `untyped.start + i`
     pub untyped_list: [UntypedDesc; MAX_UNTYPED_REGIONS],
 
-    /// Physical address of the Initrd (Ramdisk)
-    pub initrd_paddr: PhysAddr,
-
-    /// Size of the Initrd
-    pub initrd_size: usize,
-
     /// Command line arguments passed to the kernel
     pub cmdline: [u8; 128],
 }
@@ -132,8 +126,6 @@ impl BootInfo {
                 padding: [0; 6],
             }; MAX_UNTYPED_REGIONS],
             cmdline: [0; 128],
-            initrd_paddr: PhysAddr::null(),
-            initrd_size: 0,
         }
     }
 }
