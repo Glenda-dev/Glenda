@@ -1,7 +1,7 @@
 use crate::dtb;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{EMPTY_VA, PGSIZE};
+use crate::mem::{BOOTINFO_VA, PGSIZE};
 use crate::mem::{PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
@@ -166,13 +166,14 @@ impl ProcPayload {
     /// 简单的 ELF 解析 (Sv39)
     pub fn info(&self) -> (usize, usize) {
         if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
-            return (0, 0);
+            // Flat binary: entry at 0x10000, stack at BOOTINFO_VA
+            return (0x10000, BOOTINFO_VA);
         }
         // Entry point at offset 24 (64-bit ELF)
         let entry = u64::from_le_bytes(self.data[24..32].try_into().unwrap()) as usize;
 
-        // 默认栈顶 (Sv39 用户空间高地址)
-        let stack_top = 0x4000000000;
+        // 默认栈顶 (BootInfo 下方)
+        let stack_top = BOOTINFO_VA;
         (entry, stack_top)
     }
 
@@ -252,7 +253,7 @@ impl ProcPayload {
         for j in 0..num_pages {
             let frame_cap =
                 pmem::alloc_frame_cap(1).expect("Failed to alloc frame for flat mapping");
-            let va = VirtAddr::from(EMPTY_VA + j * PGSIZE);
+            let va = VirtAddr::from(0x10000 + j * PGSIZE);
             let src_pa = PhysAddr::from(self.data.as_ptr() as usize + j * PGSIZE);
             let src_va = src_pa.to_va();
             let copy_size = if (j + 1) * PGSIZE <= self.data.len() {

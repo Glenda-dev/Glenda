@@ -2,7 +2,7 @@ pub const PGSIZE: usize = 4096;
 pub const PGNUM: usize = PGSIZE / core::mem::size_of::<usize>(); // 2^9
 pub const KERN_PAGES: usize = 8192;
 
-pub use addr::{BOOTINFO_VA, EMPTY_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA, VA_MAX};
+pub use addr::{BOOTINFO_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA, VA_MAX};
 pub use addr::{PPN, PhysAddr, VirtAddr};
 pub use kstack::KernelStack;
 pub use pagetable::PageTable;

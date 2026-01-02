@@ -67,6 +67,39 @@ pub fn init() {
         PteFlags::from(perms::READ), // 只读
     );
 
+    // 映射用户栈 (16KB)
+    // Stack Top = BOOTINFO_VA
+    // Range: [BOOTINFO_VA - 16KB, BOOTINFO_VA)
+    for i in 1..=4 {
+        let frame = pmem::alloc_frame_cap(1).expect("Failed to alloc user stack");
+        let va = VirtAddr::from(BOOTINFO_VA - i * PGSIZE);
+        vspace.map_with_alloc(
+            va,
+            frame.obj_ptr().to_pa(),
+            PGSIZE,
+            PteFlags::from(perms::READ | perms::WRITE | perms::USER),
+        );
+        core::mem::forget(frame);
+    }
+
+    // 映射用户堆 (1MB)
+    // HEAP_VA = 0x2000_0000 (Defined in libglenda-rs/src/crt0.rs)
+    let heap_va_start = 0x2000_0000;
+    let heap_size = 1024 * 1024; // 1MB
+    let heap_pages = heap_size / PGSIZE;
+
+    for i in 0..heap_pages {
+        let frame = pmem::alloc_frame_cap(1).expect("Failed to alloc user heap");
+        let va = VirtAddr::from(heap_va_start + i * PGSIZE);
+        vspace.map_with_alloc(
+            va,
+            frame.obj_ptr().to_pa(),
+            PGSIZE,
+            PteFlags::from(perms::READ | perms::WRITE | perms::USER),
+        );
+        core::mem::forget(frame);
+    }
+
     // 初始化 BootInfo
     let bootinfo = root_bootinfo_cap.obj_ptr().as_mut::<BootInfo>();
     *bootinfo = BootInfo::new();
@@ -99,6 +132,8 @@ pub fn init() {
         utcb_base,
         None, // Root Task 暂时没有 Fault Handler，或者指向内核默认处理
     );
+
+    tcb.set_priority(255);
 
     // 7. 设置初始寄存器
     tcb.set_registers(entry_point, stack_top);
