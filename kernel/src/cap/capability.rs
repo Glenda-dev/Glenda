@@ -23,6 +23,8 @@ impl Clone for Capability {
     }
 }
 
+// TODO: Use template method to reduce code duplication
+
 impl Capability {
     fn inc_ref(&self) {
         match self.object {

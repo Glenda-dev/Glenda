@@ -109,38 +109,34 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
     let tcb = tcb_ptr.as_mut::<TCB>();
     match method {
         tcbmethod::CONFIGURE => {
-            // Configure: (cspace, vspace, utcb, fault_ep, utcb_frame)
-            // args: [cspace_cptr, vspace_cptr, utcb_addr, fault_ep_cptr, utcb_frame_cptr]
+            // args: [cspace_cptr, vspace_cptr, utcb_cptr, utcb_addr, tf_cptr, kstack_cptr]
             let cspace_cptr = args[0];
             let vspace_cptr = args[1];
-            let utcb_addr = args[2];
-            let fault_ep_cptr = args[3];
-            let utcb_frame_cptr = args[4];
-
+            let utcb_cptr = args[2];
+            let utcb_addr = args[3];
+            let tf_cptr = args[4];
+            let kstack_cptr = args[5];
             let current_tcb =
                 unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
 
             // 查找并验证能力
             let cspace_cap = current_tcb.cap_lookup(cspace_cptr);
             let vspace_cap = current_tcb.cap_lookup(vspace_cptr);
-            let fault_cap =
-                if fault_ep_cptr != 0 { current_tcb.cap_lookup(fault_ep_cptr) } else { None };
-            let utcb_frame_cap =
-                if utcb_frame_cptr != 0 { current_tcb.cap_lookup(utcb_frame_cptr) } else { None };
+            let utcb_cap = current_tcb.cap_lookup(utcb_cptr);
+            let tf_cap = current_tcb.cap_lookup(tf_cptr);
+            let kstack_cap = current_tcb.cap_lookup(kstack_cptr);
+            let utcb_va = if utcb_addr != 0 { Some(VirtAddr::from(utcb_addr)) } else { None };
 
             // 简化的配置逻辑
-            if let (Some(cs), Some(vs)) = (cspace_cap, vspace_cap) {
-                tcb.configure(
-                    &cs,
-                    &vs,
-                    utcb_frame_cap.as_ref(),
-                    VirtAddr::from(utcb_addr),
-                    fault_cap.as_ref(),
-                );
-                errcode::SUCCESS
-            } else {
-                errcode::INVALID_CAP
-            }
+            tcb.configure(
+                cspace_cap.as_ref(),
+                vspace_cap.as_ref(),
+                utcb_cap.as_ref(),
+                utcb_va,
+                tf_cap.as_ref(),
+                kstack_cap.as_ref(),
+            );
+            errcode::SUCCESS
         }
         tcbmethod::SET_PRIORITY => {
             // SetPriority: (prio)
@@ -157,6 +153,23 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
             let sp = args[1];
             tcb.set_registers(entry, sp);
             errcode::SUCCESS
+        }
+        tcbmethod::SET_FAULT_HANDLER => {
+            // SetFaultHandler: (ep_cptr)
+            let ep_cptr = args[0];
+            let current_tcb =
+                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
+            if let Some(ep_cap) = current_tcb.cap_lookup(ep_cptr) {
+                // Only accept ipc::Endpoint caps
+                if let CapType::Endpoint { .. } = ep_cap.object {
+                    tcb.set_fault_handler(ep_cap);
+                    errcode::SUCCESS
+                } else {
+                    errcode::INVALID_OBJ_TYPE
+                }
+            } else {
+                errcode::INVALID_CAP
+            }
         }
         tcbmethod::RESUME => {
             // Resume
@@ -431,8 +444,7 @@ fn invoke_console(method: usize, args: &Args) -> usize {
             let len = args[1];
             let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             if let Some(utcb) = tcb.get_utcb() {
-                let ipc_buf = crate::ipc::utcb::IPCBuffer::from_utcb(utcb);
-                if let Some(s) = ipc_buf.get_str(offset, len) {
+                if let Some(s) = utcb.get_str(offset, len) {
                     crate::printk!("{}", s);
                     errcode::SUCCESS
                 } else {

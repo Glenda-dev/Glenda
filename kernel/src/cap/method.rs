@@ -13,8 +13,9 @@ pub mod tcbmethod {
     pub const CONFIGURE: usize = 1;
     pub const SET_PRIORITY: usize = 2;
     pub const SET_REGISTERS: usize = 3;
-    pub const RESUME: usize = 4;
-    pub const SUSPEND: usize = 5;
+    pub const SET_FAULT_HANDLER: usize = 4;
+    pub const RESUME: usize = 5;
+    pub const SUSPEND: usize = 6;
 }
 
 pub mod pagetablemethod {
