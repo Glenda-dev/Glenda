@@ -32,6 +32,7 @@ pub mod cnodemethod {
 
 pub mod untypedmethod {
     pub const RETYPE: usize = 1;
+    pub const RETYPE_WITH_OFFSET: usize = 2;
 }
 
 pub mod irqmethod {

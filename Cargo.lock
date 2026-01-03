@@ -310,7 +310,7 @@ name = "ns16550a"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "volatile",
+ "spin 0.10.0",
 ]
 
 [[package]]

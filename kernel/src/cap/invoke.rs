@@ -320,8 +320,11 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize) -> usize {
 
     match method {
         untypedmethod::RETYPE => {
-            // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset)
-            let obj_type = utcb.mrs_regs[0];
+            // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset, offset)
+            let obj_type_raw = utcb.mrs_regs[0];
+            let obj_type = obj_type_raw & 0xFFFF;
+            let no_clear = (obj_type_raw & (1 << 31)) != 0;
+
             let obj_size_bits = utcb.mrs_regs[1];
             let n_objects = utcb.mrs_regs[2];
             let dest_cnode_cptr = utcb.mrs_regs[3];
@@ -345,8 +348,103 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize) -> usize {
                     let obj_paddr = PhysAddr::from(start.as_usize() + i * obj_size);
                     let obj_vaddr = obj_paddr.to_va();
 
-                    // 必须清零内存，防止旧数据残留
-                    unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size) };
+                    // 必须清零内存，防止旧数据残留 (除非是设备内存)
+                    if !no_clear {
+                        unsafe {
+                            core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size)
+                        };
+                    }
+
+                    let new_cap = match obj_type {
+                        // CNode
+                        types::CNODE => {
+                            // CNode 需要初始化 Header
+                            // obj_size_bits 是 CNode 的 slot 数量 log2
+                            // 实际上我们需要分配的空间 = Header + slots * sizeof(Cap)
+                            // 这里假设用户已经计算好了足够的 obj_size_bits 来容纳这一切
+
+                            // 采用 seL4 方式：obj_size_bits 指定 CNode 的 slot log2。
+                            // 对象实际大小 = 2^obj_size_bits * 16 bytes (slot size).
+                            // 我们忽略 Header 的开销 (假设它很小或者我们偷用第一个 slot?)
+                            // 为了正确性，我们使用 CNode::new 初始化 Header
+                            let _ = CNode::new(obj_paddr, obj_size_bits as u8);
+                            Capability::create_cnode(obj_paddr, obj_size_bits as u8, rights::ALL)
+                        }
+                        // TCB
+                        types::TCB => {
+                            if obj_size < size_of::<TCB>() {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
+                            let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
+                            unsafe { tcb_ptr.write(TCB::new()) };
+                            Capability::create_thread(obj_vaddr, rights::ALL)
+                        }
+                        // ipc::Endpoint
+                        types::ENDPOINT => {
+                            if obj_size < size_of::<ipc::Endpoint>() {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
+                            let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
+                            unsafe { ep_ptr.write(ipc::Endpoint::new()) };
+                            Capability::create_endpoint(obj_vaddr, rights::ALL)
+                        }
+                        // Frame
+                        types::FRAME => {
+                            Capability::create_frame(obj_paddr, obj_size / PGSIZE, rights::ALL)
+                        }
+                        // PageTable
+                        types::PAGETABLE => {
+                            // 初始化页表 (清零已在上面完成)
+                            Capability::create_pagetable(obj_paddr, 0, rights::ALL)
+                        }
+                        _ => return errcode::INVALID_OBJ_TYPE,
+                    };
+
+                    if !dest_cnode.insert(dest_slot_offset + i, &new_cap) {
+                        return errcode::INVALID_SLOT;
+                    }
+                }
+                errcode::SUCCESS
+            } else {
+                errcode::INVALID_OBJ_TYPE
+            }
+        }
+        untypedmethod::RETYPE_WITH_OFFSET => {
+            // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset, offset)
+            let obj_type_raw = utcb.mrs_regs[0];
+            let obj_type = obj_type_raw & 0xFFFF;
+            let no_clear = (obj_type_raw & (1 << 31)) != 0;
+
+            let obj_size_bits = utcb.mrs_regs[1];
+            let n_objects = utcb.mrs_regs[2];
+            let dest_cnode_cptr = utcb.mrs_regs[3];
+            let dest_slot_offset = utcb.mrs_regs[4];
+            let offset = utcb.mrs_regs[5];
+
+            let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
+                Some(c) => c,
+                None => return errcode::INVALID_CAP,
+            };
+
+            if let CapType::CNode { paddr: cn_paddr, bits: cn_bits } = dest_cnode_cap.object {
+                let mut dest_cnode = crate::cap::CNode::from_addr(cn_paddr, cn_bits);
+
+                let obj_size = 1 << obj_size_bits;
+                // 检查总大小
+                if offset + n_objects * obj_size > size {
+                    return errcode::UNTYPE_OOM;
+                }
+
+                for i in 0..n_objects {
+                    let obj_paddr = PhysAddr::from(start.as_usize() + offset + i * obj_size);
+                    let obj_vaddr = obj_paddr.to_va();
+
+                    // 必须清零内存，防止旧数据残留 (除非是设备内存)
+                    if !no_clear {
+                        unsafe {
+                            core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size)
+                        };
+                    }
 
                     let new_cap = match obj_type {
                         // CNode
