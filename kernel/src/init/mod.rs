@@ -5,6 +5,7 @@ mod pmem;
 mod proc;
 mod trap;
 mod uart;
+mod initrd;
 mod vm;
 
 use crate::logo;
@@ -21,6 +22,7 @@ pub fn init(hartid: usize, dtb: *const u8) {
     trap::init(hartid, dtb);
     irq::init(hartid, dtb);
     vm::init(hartid, dtb);
+    initrd::init(hartid, dtb);
     proc::init(hartid, dtb);
     hart::init(hartid, dtb);
     if hartid == 0 {

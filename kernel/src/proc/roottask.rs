@@ -6,6 +6,7 @@ use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
 use crate::dtb;
+use crate::initrd;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
 use crate::mem::{BOOTINFO_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
