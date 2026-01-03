@@ -189,3 +189,15 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+pub fn clean() -> anyhow::Result<()> {
+    // Remove target dir
+    let target_path = Path::new("target");
+    if target_path.exists() {
+        fs::remove_dir_all(target_path)?;
+    }
+
+    eprintln!("[ INFO ] Cleaned build artifacts");
+
+    Ok(())
+}

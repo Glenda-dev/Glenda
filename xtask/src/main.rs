@@ -90,6 +90,7 @@ enum Cmd {
         #[arg(long, default_value = "128M")]
         mem: String,
     },
+    Clean,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -127,6 +128,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Size => util::size(mode)?,
         Cmd::Mkfs => fs::mkfs()?,
         Cmd::DumpDtb { cpus, mem } => qemu::qemu_dump_dtb(cpus, &mem)?,
+        Cmd::Clean => build::clean()?,
     }
     Ok(())
 }
