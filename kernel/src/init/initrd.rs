@@ -1,4 +1,4 @@
-use crate::initrd;
+use crate::boot::initrd;
 use spin::Once;
 
 static INITRD_INIT: Once<()> = Once::new();

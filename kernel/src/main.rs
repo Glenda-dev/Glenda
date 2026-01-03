@@ -11,7 +11,6 @@ mod ipc;
 mod irq;
 mod logo;
 mod mem;
-mod initrd;
 mod printk;
 mod proc;
 mod sbi;
