@@ -128,13 +128,12 @@ pub unsafe extern "C" fn user_vector() {
         1. 内核栈指针
         2. hartid信息
         3. 内核页表
-        之后跳转到 trap_user_handler 
+        之后跳转到 trap_user_handler
         */
-        "ld sp, 8(a0)", // sp = tf->user_to_kern_sp
-        "ld tp, 32(a0)", // tp = tf->user_to_kern_hartid
-        "sd tp, 64(a0)",
-        "ld t0, 16(a0)",// t0 = tf->user_to_kern_trapvector
-        "ld t1, 0(a0)",// t1 = tf->user_to_kern_satp
+        "ld sp, 8(a0)",  // sp = tf->kernel_sp
+        "ld tp, 32(a0)", // tp = tf->kernel_hartid
+        "ld t0, 16(a0)", // t0 = tf->kernel_trapvector
+        "ld t1, 0(a0)",  // t1 = tf->kernel_satp
         "csrw satp, t1",
         "sfence.vma zero, zero",
         "mv a0, a3",

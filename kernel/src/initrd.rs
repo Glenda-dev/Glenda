@@ -171,6 +171,14 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
 
 impl ProcPayload {
     pub fn as_elf(&self) -> Option<ElfFile<'_>> {
+        // Check magic number
+        if self.data.len() < 4 {
+            return None;
+        }
+        let magic = &self.data[0..4];
+        if magic != b"\x7FELF" {
+            return None;
+        }
         ElfFile::new(self.data).ok()
     }
 

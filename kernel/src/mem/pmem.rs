@@ -101,18 +101,6 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
-
-        // 如果是根页表 (Level 2)，自动映射 Trampoline
-        // 这样用户态创建的每个 VSpace 都会自动包含 Trampoline 映射
-        if level == 2 {
-            if let Some(kpt) = crate::mem::vm::KERNEL_PAGE_TABLE.get() {
-                // 拷贝 Trampoline 所在的 Level 2 条目 (通常是最后一个条目)
-                // TRAMPOLINE_VA = 0x3ffffff000, VPN[2] = 255
-                let idx = (crate::mem::TRAMPOLINE_VA >> 30) & 0x1FF;
-                pt.entries[idx] = kpt.entries[idx];
-            }
-        }
-
         Capability::create_pagetable(paddr, level, rights::ALL)
     })
 }

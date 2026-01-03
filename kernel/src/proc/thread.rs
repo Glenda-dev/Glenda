@@ -5,9 +5,8 @@ use crate::ipc::UTCB;
 use crate::mem::pmem;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, VirtAddr};
 use crate::trap::TrapFrame;
-use crate::trap::user::trap_user_return;
+use crate::trap::user::{trap_user_handler, trap_user_return};
 use core::sync::atomic::AtomicUsize;
-use riscv::register::{satp, sscratch};
 
 pub const KSTACK_PAGES: usize = 4; // 16KB
 
@@ -175,27 +174,22 @@ impl TCB {
     }
 
     pub fn set_registers(&mut self, entry_point: usize, stack_top: usize) {
-        // 1. 获取内核栈顶
+        // 1. 获取内核栈顶和 SATP
         let kstack_top = self.get_kstack_top().as_usize();
+        let satp = self.get_satp();
 
         // 2. 获取 TrapFrame
         let tf = self.get_tf();
-        let tf_va = tf as *mut TrapFrame as usize;
 
         // 3. 设置用户态初始状态
         tf.sp = stack_top; // 用户栈顶
         tf.kernel_epc = entry_point; // sepc
-        tf.kernel_satp = satp::read().bits(); // sstatus
+        tf.kernel_satp = satp; // 使用该线程自己的页表
         tf.kernel_hartid = hart::get().id; // hartid
         tf.kernel_sp = kstack_top; // 内核栈顶
-        tf.a0 = tf_va; // sscratch 指向 TrapFrame 的虚拟地址
-        unsafe {
-            sscratch::write(tf_va);
-        }
+        tf.kernel_trapvector = trap_user_handler as usize;
 
-        // 4. 设置内核上下文，使其在被调度时跳转到 trap_return_wrapper
-        // 由于 switch_context 只恢复 Callee-Saved 寄存器，无法直接传递参数 a0
-        // 我们利用 s0 寄存器来传递 TrapFrame 指针，并使用一个 wrapper 函数
+        // 4. 设置内核上下文，使其在被调度时跳转到 trap_user_return
         self.context.ra = trap_user_return as usize;
         self.context.sp = kstack_top;
     }
