@@ -11,6 +11,7 @@ SECTIONS
 
   .text : ALIGN(4) {
     __text_start = .;
+    KEEP(*(.multiboot2_header))
     KEEP(*(.text.start))
     *(.text .text.*)
     . = ALIGN(0x1000);

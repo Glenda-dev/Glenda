@@ -8,6 +8,10 @@ use crate::printk::{ANSI_RED, ANSI_RESET};
 use crate::proc::ElfFile;
 use spin::Once;
 
+use super::{BOOT_LOADER_TYPE, BootLoaderType};
+#[cfg(feature = "multiboot2")]
+use super::multiboot2;
+
 /*
 Payload结构体
 0x00 - 0x03: magic number (0x99999999)
@@ -59,7 +63,24 @@ static ROOT_TASK: Once<ProcPayload> = Once::new();
 static INITRD_RANGE: Once<dtb::MemoryRange> = Once::new();
 
 pub fn init() {
-    let initrd = dtb::initrd_range();
+    let initrd = unsafe {
+        match BOOT_LOADER_TYPE {
+            BootLoaderType::OpenSBI => dtb::initrd_range(),
+            #[cfg(feature = "multiboot2")]
+            BootLoaderType::Multiboot2 => {
+                let (start, end) = multiboot2::MULTIBOOT_INITRD;
+                if start != 0 && end != 0 {
+                    Some(dtb::MemoryRange {
+                        start: crate::mem::PhysAddr::from(start),
+                        size: end - start,
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+    };
+
     if initrd.is_none() {
         printk!(
             "{}[WARN] No initrd found in DTB, skipping payload parsing.{}\n",

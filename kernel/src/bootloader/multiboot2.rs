@@ -1,4 +1,25 @@
+#![cfg(feature = "multiboot2")]
+
 use crate::printk;
+use core::arch::global_asm;
+
+global_asm!(
+    r#"
+    .section .multiboot2_header
+    .align 8
+multiboot2_header_start:
+    .long 0xe85250d6                // magic
+    .long 0                         // architecture (0 for i386)
+    .long multiboot2_header_end - multiboot2_header_start // header_length
+    .long -(0xe85250d6 + 0 + (multiboot2_header_end - multiboot2_header_start)) // checksum
+
+    // End tag
+    .short 0
+    .short 0
+    .long 8
+multiboot2_header_end:
+    "#
+);
 
 #[repr(C)]
 struct MbiHeader {

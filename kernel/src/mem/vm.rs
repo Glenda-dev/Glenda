@@ -1,7 +1,7 @@
 use super::PGSIZE;
 use super::pte::perms;
 use super::{PageTable, PhysAddr, PteFlags, VirtAddr};
-use crate::boot::initrd;
+use crate::bootloader::initrd;
 use crate::dtb;
 use crate::mem::TRAMPOLINE_VA;
 use crate::printk;

@@ -1,7 +1,9 @@
+use crate::hart;
 use core::arch::global_asm;
 
 pub mod info;
 pub mod initrd;
+#[cfg(feature = "multiboot2")]
 pub mod multiboot2;
 
 pub use info::BootInfo;
@@ -60,8 +62,37 @@ pub const MAX_UNTYPED_REGIONS: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootLoaderType {
-    Dtb,
+    OpenSBI,
+    #[cfg(feature = "multiboot2")]
     Multiboot2,
 }
 
-pub static mut BOOT_LOADER_TYPE: BootLoaderType = BootLoaderType::Dtb;
+pub static mut BOOT_LOADER_TYPE: BootLoaderType = BootLoaderType::OpenSBI;
+
+pub fn detect(a0: usize, a1: usize) -> (usize, *const u8) {
+    let mut hartid = a0;
+    let mut dtb = a1 as *const u8;
+
+    #[cfg(feature = "multiboot2")]
+    {
+        // Check for Multiboot2 magic
+        if a0 == multiboot2::MULTIBOOT2_MAGIC as usize {
+            let info = multiboot2::parse(a0, a1);
+            if let Some(new_dtb) = info.dtb {
+                dtb = new_dtb;
+            }
+            if let (Some(start), Some(end)) = (info.initrd_start, info.initrd_end) {
+                unsafe {
+                    multiboot2::MULTIBOOT_INITRD = (start, end);
+                }
+            }
+            // If we are in Multiboot2, we might not know the hartid.
+            // Assume 0 for the boot hart if not provided.
+            hartid = hart::getid();
+            unsafe {
+                BOOT_LOADER_TYPE = BootLoaderType::Multiboot2;
+            }
+        }
+    }
+    (hartid, dtb)
+}

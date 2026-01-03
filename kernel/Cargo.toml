@@ -10,3 +10,4 @@ spin = "0.10.0"
 
 [features]
 default = []
+multiboot2 = []

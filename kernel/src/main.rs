@@ -2,7 +2,7 @@
 #![no_main]
 #![allow(dead_code)]
 
-mod boot;
+mod bootloader;
 mod cap;
 mod dtb;
 mod hart;
@@ -17,7 +17,6 @@ mod sbi;
 mod trap;
 
 use core::panic::PanicInfo;
-use init::init;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 use riscv::asm::wfi;
 
@@ -34,29 +33,8 @@ use riscv::asm::wfi;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(a0: usize, a1: usize) -> ! {
-    let mut hartid = a0;
-    let mut dtb = a1 as *const u8;
-
-    // Check for Multiboot2 magic
-    if a0 == boot::multiboot2::MULTIBOOT2_MAGIC as usize {
-        let info = boot::multiboot2::parse(a0, a1);
-        if let Some(new_dtb) = info.dtb {
-            dtb = new_dtb;
-        }
-        if let (Some(start), Some(end)) = (info.initrd_start, info.initrd_end) {
-            unsafe {
-                boot::multiboot2::MULTIBOOT_INITRD = (start, end);
-            }
-        }
-        // If we are in Multiboot2, we might not know the hartid.
-        // Assume 0 for the boot hart if not provided.
-        hartid = hart::getid();
-        unsafe {
-            boot::BOOT_LOADER_TYPE = boot::BootLoaderType::Multiboot2;
-        }
-    }
-
-    init(hartid, dtb);
+    let (hartid, dtb) = bootloader::detect(a0, a1);
+    init::init(hartid, dtb);
     printk!("{}Hart {} entering scheduler{}\n", ANSI_BLUE, hartid, ANSI_RESET);
     proc::scheduler::scheduler();
 }

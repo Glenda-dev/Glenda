@@ -1,8 +1,8 @@
 use super::KSTACK_PAGES;
 use super::scheduler;
 use super::{TCB, ThreadState};
-use crate::boot::initrd;
-use crate::boot::{BootInfo, UntypedDesc};
+use crate::bootloader::initrd;
+use crate::bootloader::{BootInfo, UntypedDesc};
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
