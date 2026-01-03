@@ -77,11 +77,12 @@ impl PageTable {
         size: usize,
         flags: PteFlags,
     ) -> Result<(), ()> {
-        let start_va = va.align_down(PGSIZE);
-        let end_va = (va + size).align_up(PGSIZE);
+        assert!(va.is_aligned(PGSIZE));
+        assert!(pa.is_aligned(PGSIZE));
 
-        let mut current_va = start_va;
-        let mut current_pa = pa.align_down(PGSIZE);
+        let mut current_va = va;
+        let mut current_pa = pa;
+        let end_va = va + size;
         while current_va < end_va {
             let pte_ptr = self.walk(current_va).ok_or(())?;
 
@@ -167,8 +168,10 @@ impl PageTable {
     /// 如果中间页表不存在，则分配新的页表页。
     /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
     pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: PteFlags) {
-        let start = va.align_down(PGSIZE);
-        let end = (va + size).align_up(PGSIZE);
+        assert!(va.is_aligned(PGSIZE));
+        assert!(pa.is_aligned(PGSIZE));
+        let start = va;
+        let end = va + size;
 
         let mut va = start;
         let mut pa = pa.align_down(PGSIZE);
@@ -206,6 +209,75 @@ impl PageTable {
             *pte_ptr = Pte::from(pa, flags | perms::VALID);
             va += PGSIZE;
             pa += PGSIZE;
+        }
+    }
+    pub fn debug_print(&self) {
+        use crate::printk;
+
+        #[inline(always)]
+        fn sv39_canon(va: usize) -> usize {
+            // sign-extend bit 38
+            let sign = (va >> 38) & 1;
+            if sign == 1 { va | (!0usize << 39) } else { va & ((1usize << 39) - 1) }
+        }
+
+        let pgtbl_2 = self as *const PageTable as usize;
+        printk!("L2 PT @ 0x{:x}\n", pgtbl_2);
+
+        for i in 0..PGNUM {
+            let pte2 = self.entries[i];
+            if !pte2.is_valid() {
+                continue;
+            }
+            if pte2.is_leaf() {
+                printk!("ASSERT: L2 entry is leaf (Huge Page), i={}\n", i);
+                continue;
+            }
+
+            let pgtbl_1_pa = pte2.pa();
+            let pgtbl_1_va = pgtbl_1_pa.to_va();
+            printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa.as_usize());
+
+            let pgtbl_1 = pgtbl_1_va.as_ref::<PageTable>();
+            for j in 0..PGNUM {
+                let pte1 = pgtbl_1.entries[j];
+                if !pte1.is_valid() {
+                    continue;
+                }
+                if pte1.is_leaf() {
+                    printk!("ASSERT: L1 entry is leaf (Large Page), j={}\n", j);
+                    continue;
+                }
+
+                let pgtbl_0_pa = pte1.pa();
+                let pgtbl_0_va = pgtbl_0_pa.to_va();
+                printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa.as_usize());
+
+                let pgtbl_0 = pgtbl_0_va.as_ref::<PageTable>();
+                for k in 0..PGNUM {
+                    let pte0 = pgtbl_0.entries[k];
+                    if !pte0.is_valid() {
+                        continue;
+                    }
+                    if !pte0.is_leaf() {
+                        printk!("ASSERT: L0 entry not leaf, k={}\n", k);
+                        continue;
+                    }
+
+                    let pa = pte0.pa();
+                    let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
+                    let va = sv39_canon(va_raw);
+                    let flags = pte0.get_flags();
+
+                    printk!(
+                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags={:?}\n",
+                        k,
+                        va,
+                        pa.as_usize(),
+                        flags
+                    );
+                }
+            }
         }
     }
 }

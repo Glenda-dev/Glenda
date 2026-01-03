@@ -1,10 +1,15 @@
 use super::ProcContext;
 use crate::cap::{CapType, Capability};
-use crate::ipc::{UTCB, UTCB_SIZE};
-use crate::mem::{KernelStack, PhysAddr, VSpace, VirtAddr};
+use crate::hart;
+use crate::ipc::UTCB;
+use crate::mem::pmem;
+use crate::mem::{PGSIZE, PageTable, PhysAddr, VirtAddr};
 use crate::trap::TrapFrame;
-use core::mem::size_of;
+use crate::trap::user::trap_user_return;
 use core::sync::atomic::AtomicUsize;
+use riscv::register::{satp, sscratch};
+
+pub const KSTACK_PAGES: usize = 4; // 16KB
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -30,20 +35,17 @@ pub struct TCB {
     pub affinity: usize,      // CPU 亲和性
 
     // --- Kernel Stack ---
-    // 线程必须拥有内核栈才能在内核态运行
-    // 使用 Option 是为了处理分配失败的情况，但在 Ready 状态前必须为 Some
-    pub kstack: Option<KernelStack>,
+    pub kstack: Option<Capability>, // 内核栈的物理帧 (以 Capability 形式存储)
+
+    // TrapFrame
+    pub trapframe: Option<Capability>, // 用户态上下文所在的物理帧 (以 Capability 形式存储)
 
     // --- Resource Containers (Capabilities) ---
-    pub cspace_root: Capability, // Root CNode (CSpace)
-    pub vspace_root: Capability, // Root PageTable (VSpace)
-
-    // 地址空间
-    pub vspace: VSpace,
+    pub cspace_root: Option<Capability>, // Root CNode (CSpace)
+    pub vspace_root: Option<Capability>, // Root PageTable (VSpace)
 
     // --- IPC State ---
     pub fault_handler: Option<Capability>, // 异常处理 Endpoint
-    pub ipc_buffer: VirtAddr,              // IPC 消息缓冲区 (UTCB的一部分)
 
     // IPC 等待队列：当此线程处于 BlockedRecv 状态时，
     // 试图向此线程发送消息的其他线程会挂入此队列
@@ -79,11 +81,10 @@ impl TCB {
             state: ThreadState::Inactive,
             affinity: 0,
             kstack: None,
-            cspace_root: Capability::empty(),
-            vspace_root: Capability::empty(),
-            vspace: VSpace::empty(),
+            trapframe: None,
+            cspace_root: None,
+            vspace_root: None,
             fault_handler: None,
-            ipc_buffer: VirtAddr::null(),
             send_queue_head: None,
             send_queue_tail: None,
             prev: None,
@@ -97,41 +98,82 @@ impl TCB {
         }
     }
 
+    pub fn get_kstack_top(&self) -> VirtAddr {
+        self.kstack.as_ref().expect("Kernel stack not configured").obj_ptr()
+            + (KSTACK_PAGES * PGSIZE)
+    }
+
+    pub fn get_tf(&mut self) -> &mut TrapFrame {
+        let tf_cap = self.trapframe.as_ref().expect("TrapFrame not configured");
+        tf_cap.obj_ptr().as_mut::<TrapFrame>()
+    }
+
+    pub fn get_tf_va(&self) -> VirtAddr {
+        let tf_cap = self.trapframe.as_ref().expect("TrapFrame not configured");
+        tf_cap.obj_ptr()
+    }
+
+    pub fn get_pt(&self) -> &PageTable {
+        let vspace_cap = self.vspace_root.as_ref().expect("VSpace root not configured");
+        vspace_cap.obj_ptr().as_ref::<PageTable>()
+    }
+
+    pub fn get_satp(&self) -> usize {
+        let pt_addr = self
+            .vspace_root
+            .as_ref()
+            .expect("VSpace root not configured")
+            .obj_ptr()
+            .to_pa()
+            .as_usize();
+        let ppn = pt_addr >> 12;
+        (8 << 60) | ppn // Sv39 mode
+    }
+
     /// 创建一个内核线程
     /// 内核线程运行在 S-Mode，共享内核地址空间
     pub fn new_kthread(entry: usize) -> Self {
         let mut tcb = Self::new();
         tcb.privileged = true;
-        tcb.kstack = Some(KernelStack::alloc().expect("Failed to alloc kstack for kernel thread"));
+        tcb.kstack = pmem::alloc_frame_cap(KSTACK_PAGES);
 
         // 设置上下文以跳转到入口函数
         tcb.context.ra = entry;
-        tcb.context.sp = tcb.kstack.as_ref().unwrap().top().as_usize();
+        tcb.context.sp = tcb.get_kstack_top().as_usize();
         // s0 (fp) 设为 0，方便调试回溯终止
         tcb.context.s0 = 0;
-
-        tcb
+        unimplemented!()
     }
 
     /// 配置线程的核心资源
     /// 这是 Capability 系统分发 VSpace 和 CSpace 的关键接口
     pub fn configure(
         &mut self,
-        cspace: &Capability,
-        vspace: &Capability,
+        cspace: Option<&Capability>,
+        vspace: Option<&Capability>,
         utcb_frame: Option<&Capability>,
-        utcb_vaddr: VirtAddr,
-        fault_ep: Option<&Capability>,
+        utcb_vaddr: Option<VirtAddr>,
+        trapframe: Option<&Capability>,
+        kstack: Option<&Capability>,
     ) {
-        self.cspace_root = cspace.clone();
-        self.vspace_root = vspace.clone();
-        // 初始化 VSpace 对象
-        self.vspace.configure(vspace);
-        self.utcb_frame = utcb_frame.cloned();
-        self.fault_handler = fault_ep.cloned();
-        self.utcb_base = utcb_vaddr;
-        // UTCB 通常包含 IPC Buffer
-        self.ipc_buffer = utcb_vaddr + UTCB_SIZE;
+        if !cspace.is_none() {
+            self.cspace_root = cspace.cloned();
+        }
+        if !vspace.is_none() {
+            self.vspace_root = vspace.cloned();
+        }
+        if !utcb_frame.is_none() {
+            self.utcb_frame = utcb_frame.cloned();
+        }
+        if !utcb_vaddr.is_none() {
+            self.utcb_base = utcb_vaddr.unwrap();
+        }
+        if !trapframe.is_none() {
+            self.trapframe = trapframe.cloned();
+        }
+        if !kstack.is_none() {
+            self.kstack = kstack.cloned();
+        }
     }
 
     pub fn set_priority(&mut self, prio: u8) {
@@ -139,22 +181,33 @@ impl TCB {
     }
 
     pub fn set_registers(&mut self, entry_point: usize, stack_top: usize) {
-        // 1. 获取 TrapFrame (位于内核栈顶)
-        let tf_ptr = {
-            let tf = self.get_trapframe().expect("Failed to get TrapFrame");
+        // 1. 获取内核栈顶
+        let kstack_top = self.get_kstack_top().as_usize();
 
-            // 2. 设置用户态初始状态
-            tf.kernel_epc = entry_point; // sepc
-            tf.sp = stack_top;
-            tf as *mut _ as usize
-        };
+        // 2. 获取 TrapFrame
+        let tf = self.get_tf();
+        let tf_va = tf as *mut TrapFrame as usize;
 
-        // 3. 设置内核上下文，使其在被调度时跳转到 trap_return_wrapper
+        // 3. 设置用户态初始状态
+        tf.sp = stack_top; // 用户栈顶
+        tf.kernel_epc = entry_point; // sepc
+        tf.kernel_satp = satp::read().bits(); // sstatus
+        tf.kernel_hartid = hart::get().id; // hartid
+        tf.kernel_sp = kstack_top; // 内核栈顶
+        tf.a0 = tf_va; // sscratch 指向 TrapFrame 的虚拟地址
+        unsafe {
+            sscratch::write(tf_va);
+        }
+
+        // 4. 设置内核上下文，使其在被调度时跳转到 trap_return_wrapper
         // 由于 switch_context 只恢复 Callee-Saved 寄存器，无法直接传递参数 a0
         // 我们利用 s0 寄存器来传递 TrapFrame 指针，并使用一个 wrapper 函数
-        self.context.ra = crate::trap::user::trap_return_wrapper as usize;
-        self.context.sp = self.kstack.as_ref().unwrap().top().as_usize();
-        self.context.s0 = tf_ptr; // 将 TrapFrame 指针存入 s0
+        self.context.ra = trap_user_return as usize;
+        self.context.sp = kstack_top;
+    }
+
+    pub fn set_fault_handler(&mut self, ep: Capability) {
+        self.fault_handler = Some(ep);
     }
 
     pub fn resume(&mut self) {
@@ -167,33 +220,6 @@ impl TCB {
         self.state = ThreadState::Inactive;
     }
 
-    /// 获取当前线程的 TrapFrame (用户态上下文)
-    /// TrapFrame 总是位于内核栈的顶部
-    pub fn get_trapframe(&self) -> Option<&mut TrapFrame> {
-        if self.privileged {
-            return None;
-        }
-        if let Some(kstack) = &self.kstack {
-            let top = kstack.top();
-            // TrapFrame 位于栈顶下方
-            let tf_addr = top - size_of::<TrapFrame>();
-            Some(tf_addr.as_mut::<TrapFrame>())
-        } else {
-            None
-        }
-    }
-
-    pub fn get_trapframe_va(&self) -> Option<VirtAddr> {
-        if let Some(kstack) = &self.kstack {
-            let top = kstack.top();
-            // TrapFrame 位于栈顶下方
-            let tf_addr = top - size_of::<TrapFrame>();
-            Some(tf_addr)
-        } else {
-            None
-        }
-    }
-
     pub fn get_utcb(&self) -> Option<&mut UTCB> {
         if let Some(utcb_cap) = &self.utcb_frame {
             let vaddr = utcb_cap.obj_ptr();
@@ -203,17 +229,18 @@ impl TCB {
         }
     }
 
-    pub fn get_satp(&self) -> usize {
-        self.vspace.get_satp()
-    }
-
     pub fn cap_lookup(&self, cptr: usize) -> Option<Capability> {
         self.cap_lookup_slot(cptr).map(|(cap, _)| cap)
     }
 
     pub fn cap_lookup_slot(&self, cptr: usize) -> Option<(Capability, PhysAddr)> {
+        if cptr == 0 {
+            return None;
+        }
         // 1. 获取 Root CNode
-        if let CapType::CNode { paddr, bits } = self.cspace_root.object {
+        if let CapType::CNode { paddr, bits } =
+            self.cspace_root.as_ref().expect("CSpace root not configured").object
+        {
             let cnode = crate::cap::CNode::from_addr(paddr, bits);
             // 2. 在 CNode 中查找
             cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))

@@ -2,7 +2,6 @@ use crate::cap::CapType;
 use crate::cap::Capability;
 use crate::mem::{PGSIZE, PhysAddr};
 use riscv::asm::sfence_vma_all;
-use riscv::register::satp;
 use spin::Mutex;
 
 /// ASID 管理器 (单例)
@@ -75,10 +74,10 @@ impl VSpace {
     pub fn get_satp(&self) -> usize {
         // Mode: Sv39 (8)
         // PPN: paddr >> 12
-        let mode = 8usize << 60;
+        let mode = 8usize;
         let ppn = self.root_paddr.as_usize() >> 12;
         let asid = self.asid as usize;
-        mode | (asid << 44) | ppn
+        (mode << 60) | (asid << 44) | ppn
     }
 
     /// 激活此地址空间 (上下文切换时调用)
@@ -94,9 +93,6 @@ impl VSpace {
         drop(manager);
 
         assert!(self.root_paddr.is_aligned(PGSIZE), "Root page table address must be page-aligned");
-        unsafe {
-            satp::set(satp::Mode::Sv39, self.asid as usize, self.root_paddr.to_ppn().as_usize());
-        }
     }
 
     /// 获取根页表物理地址

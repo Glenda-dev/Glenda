@@ -165,12 +165,8 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
 impl ProcPayload {
     /// 简单的 ELF 解析 (Sv39)
     pub fn info(&self) -> (usize, usize) {
-        if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
-            // Flat binary: entry at 0x10000, stack at BOOTINFO_VA
-            return (0x10000, BOOTINFO_VA);
-        }
         // Entry point at offset 24 (64-bit ELF)
-        let entry = u64::from_le_bytes(self.data[24..32].try_into().unwrap()) as usize;
+        let entry = 0x10000usize;
 
         // 默认栈顶 (BootInfo 下方)
         let stack_top = BOOTINFO_VA;

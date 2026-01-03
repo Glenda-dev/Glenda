@@ -2,9 +2,9 @@ use super::PGSIZE;
 use super::pte::perms;
 use super::{PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::dtb;
+use crate::mem::TRAMPOLINE_VA;
 use crate::printk;
 use crate::printk::uart;
-use crate::trap::vector;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Once;
@@ -21,6 +21,7 @@ unsafe extern "C" {
     static __data_end: u8;
     static __bss_start: u8;
     static __bss_end: u8;
+    static __trampoline: u8;
 }
 
 pub static KERNEL_PAGE_TABLE: Once<PageTable> = Once::new();
@@ -91,8 +92,9 @@ pub fn init_kernel_vm(hartid: usize) {
     // .data 和 .bss 已经是 RW 了，不需要额外重映射，但为了逻辑完整也可以做
 
     // 3. 映射 Trampoline (高地址)
-    let tramp_pa = PhysAddr::from(vector::user_vector as usize).align_down(PGSIZE);
-    let tramp_va = VirtAddr::from(VirtAddr::max().as_usize() - PGSIZE);
+    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
+    assert!(tramp_pa.is_aligned(PGSIZE));
+    let tramp_va = VirtAddr::from(TRAMPOLINE_VA);
     printk!(
         "vm: Map TRAMPOLINE [{:#x}, {:#x}) -> [{:#x}, {:#x}) RX\n",
         tramp_pa.as_usize(),

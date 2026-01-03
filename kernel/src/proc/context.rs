@@ -18,16 +18,6 @@ pub struct ProcContext {
     pub s9: usize,
     pub s10: usize,
     pub s11: usize,
-    // 这是一个 hack，用于在 switch_context 后传递参数给 ra 指向的函数
-    // switch_context 不会恢复 a0，但我们可以手动将其放在栈上或者修改 switch_context
-    // 但最简单的方法是让 switch_context 恢复 s0/s1，然后让 wrapper 函数从 s0/s1 移动到 a0
-    // 或者，我们修改 switch_context 来恢复更多的寄存器？不，这会增加开销。
-
-    // 更好的方法：
-    // 我们不修改 ProcContext 结构，而是利用 switch_context 的特性。
-    // switch_context(old, new) -> old 是 a0, new 是 a1
-    // 当我们切换到新线程时，ra 会从栈上恢复。
-    // 如果我们想给新线程传递参数，通常需要一个 trampoline。
 }
 
 impl ProcContext {

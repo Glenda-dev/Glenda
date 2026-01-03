@@ -1,4 +1,5 @@
 use crate::cap::{invoke, rights};
+use crate::printk;
 use crate::proc::scheduler;
 use crate::trap::TrapContext;
 
@@ -17,6 +18,7 @@ pub mod errcode {
 }
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
+    printk!("syscall: dispatching syscall a0={:#x}\n", ctx.a0);
     let cptr = ctx.a0;
 
     // 获取当前线程

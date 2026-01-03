@@ -1,4 +1,4 @@
-use super::payload;
+use super::KSTACK_PAGES;
 use super::scheduler;
 use super::{TCB, ThreadState};
 use crate::boot::{BootInfo, UntypedDesc};
@@ -10,7 +10,7 @@ use crate::initrd;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
 use crate::mem::{BOOTINFO_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
-use crate::mem::{KernelStack, PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 use crate::trap::vector;
 
@@ -27,38 +27,155 @@ pub const MEM_SLOT_START: usize = 7;
 pub const STACK_SIZE: usize = 16 * 1024; // 16KB
 pub const HEAP_SIZE: usize = 1024 * 1024; // 1MB
 
+unsafe extern "C" {
+    static __trampoline: u8;
+}
+struct RootCaps {
+    vspace: Capability,
+    cspace: Capability,
+    tcb: Capability,
+    utcb: Capability,
+    tf: Capability,
+    kstack: Capability,
+    bootinfo: Capability,
+    console: Capability,
+}
+
+fn alloc_root_caps() -> RootCaps {
+    RootCaps {
+        vspace: pmem::alloc_pagetable_cap(2).expect("Failed to alloc root VSpace"),
+        cspace: pmem::alloc_cnode_cap(12).expect("Failed to alloc root CSpace"),
+        tcb: pmem::alloc_tcb_cap().expect("Failed to alloc root TCB"),
+        utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
+        tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
+        kstack: pmem::alloc_frame_cap(KSTACK_PAGES).expect("Failed to alloc root Kernel Stack"),
+        bootinfo: pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo"),
+        console: Capability::new(crate::cap::CapType::Console, rights::ALL),
+    }
+}
+
+fn setup_root_vspace(vspace: &mut PageTable, caps: &RootCaps, root_task: &initrd::ProcPayload) {
+    init_vspace(
+        vspace,
+        caps.tf.obj_ptr().to_pa(),
+        caps.utcb.obj_ptr().to_pa(),
+        caps.bootinfo.obj_ptr().to_pa(),
+    );
+    root_task.map(vspace);
+}
+
+fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
+    cspace.insert(CSPACE_SLOT, &caps.cspace);
+    cspace.insert(VSPACE_SLOT, &caps.vspace);
+    cspace.insert(TCB_SLOT, &caps.tcb);
+    cspace.insert(UTCB_SLOT, &caps.utcb);
+    cspace.insert(BOOTINFO_SLOT, &caps.bootinfo);
+    cspace.insert(CONSOLE_SLOT, &caps.console);
+
+    if let Some(range) = dtb::initrd_range() {
+        let page_count = (range.size + PGSIZE - 1) / PGSIZE;
+        let initrd_cap = Capability::new(
+            crate::cap::CapType::Frame { paddr: range.start, page_count },
+            rights::READ | rights::WRITE | rights::GRANT,
+        );
+        cspace.insert(INITRD_SLOT, &initrd_cap);
+    }
+}
+
+fn start_root_task(tcb: &mut TCB, entry_point: usize, stack_top: usize) {
+    tcb.set_priority(255);
+    tcb.set_registers(entry_point, stack_top);
+
+    // Initialize TrapFrame (User context)
+    let tf = tcb.get_tf();
+    tf.kernel_epc = entry_point;
+    tf.sp = stack_top;
+    // sstatus is not in TrapFrame, handled by trap return logic
+
+    tcb.state = ThreadState::Ready;
+    scheduler::add_thread(tcb);
+    printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
+}
+
 /// 初始化进程子系统并创建 Root Task
 pub fn init() {
-    let root_task = payload::get_root_task().expect("proc: Root task not found");
-    // 1. 加载 Root Task 的 ELF 文件 (获取入口点和段信息)
+    let root_task = initrd::get_root_task().expect("proc: Root task not found");
     let (entry_point, stack_top) = root_task.info();
 
-    // 2. 手动分配 Root Task 的核心对象
-    let root_vspace_cap = pmem::alloc_pagetable_cap(2).expect("Failed to alloc root VSpace");
-    let root_cspace_cap = pmem::alloc_cnode_cap(12).expect("Failed to alloc root CSpace");
-    let root_tcb_cap = pmem::alloc_tcb_cap().expect("Failed to alloc root TCB");
-    let root_utcb_cap = pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB");
-    let root_bootinfo_cap = pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo");
+    // 1. Allocate Capabilities
+    let caps = alloc_root_caps();
 
-    // 3. 初始化 TCB (提前到这里是为了获取 TrapFrame 的物理地址)
-    let tcb = root_tcb_cap.obj_ptr().as_mut::<TCB>();
-    // 分配内核栈
-    tcb.kstack = Some(KernelStack::alloc().expect("Failed to alloc kernel stack for Root Task"));
-    let tf_paddr = tcb.get_trapframe_va().expect("Failed to get TF VA").to_pa();
+    // 2. Setup TCB basic fields
+    let tcb = caps.tcb.obj_ptr().as_mut::<TCB>();
 
-    // 4. 构建 Root VSpace (页表)
-    // 必须映射内核空间和 Root Task 自身的代码/数据段
-    let vspace = PageTable::from_addr(root_vspace_cap.obj_ptr().to_pa());
+    // 3. Setup VSpace
+    let pt_pa = caps.vspace.obj_ptr().to_pa();
+    let mut vspace = PageTable::from_addr(pt_pa);
+    setup_root_vspace(&mut vspace, &caps, root_task);
 
-    // 初始化用户空间布局 (Trampoline, TrapFrame, UTCB Tables)
-    init_vspace(vspace, tf_paddr);
+    // 4. Setup BootInfo
+    let bootinfo = caps.bootinfo.obj_ptr().as_mut::<BootInfo>();
+    init_bootinfo(bootinfo);
 
-    root_task.map(vspace);
-    let utcb_base = VirtAddr::from(UTCB_VA);
+    // 5. Setup CSpace
+    let mut cspace = CNode::from_addr(caps.cspace.obj_ptr().to_pa(), 12);
+    init_cspace(&mut cspace, bootinfo);
+    fill_root_cspace(&mut cspace, &caps);
+
+    // 6. Configure TCB resources
+    tcb.configure(
+        Some(&caps.cspace),
+        Some(&caps.vspace),
+        Some(&caps.utcb),
+        Some(VirtAddr::from(UTCB_VA)),
+        Some(&caps.tf),
+        Some(&caps.kstack),
+    );
+
+    // 7. Start Task
+    start_root_task(tcb, entry_point, stack_top);
+}
+/*
+用户地址空间布局：
+trampoline  (1 page) 映射在最高地址
+trapframe   (1 page)
+UTCB        (1 page)
+BootInfo    (1 page)
+ustack      (N pages)
+————————————
+heap        (M pages)
+code + data (1 page)
+empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
+*/
+
+fn init_vspace(
+    vspace: &mut PageTable,
+    tf_paddr: PhysAddr,
+    utcb_paddr: PhysAddr,
+    bootinfo_paddr: PhysAddr,
+) {
+    printk!("proc: Setting up Root Task VSpace at {:#x}\n", vspace as *const _ as usize);
+    // 1. 映射 Trampoline (最高地址)
+    // 物理地址是 vector::user_vector 的地址 (需对齐)
+    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
+    vspace.map_with_alloc(
+        VirtAddr::from(TRAMPOLINE_VA),
+        tramp_pa,
+        PGSIZE,
+        PteFlags::from(perms::READ | perms::EXECUTE),
+    );
+    // 2. 映射 TrapFrame (Trampoline 下方)
+    vspace.map_with_alloc(
+        VirtAddr::from(TRAPFRAME_VA),
+        tf_paddr,
+        PGSIZE,
+        PteFlags::from(perms::READ | perms::WRITE),
+    );
+
     // 映射 UTCB 到固定位置
     vspace.map_with_alloc(
-        utcb_base,
-        root_utcb_cap.obj_ptr().to_pa(),
+        VirtAddr::from(UTCB_VA),
+        utcb_paddr,
         PGSIZE,
         PteFlags::from(perms::READ | perms::WRITE),
     );
@@ -66,7 +183,7 @@ pub fn init() {
     // 映射 BootInfo 到固定位置
     vspace.map_with_alloc(
         VirtAddr::from(BOOTINFO_VA),
-        root_bootinfo_cap.obj_ptr().to_pa(),
+        bootinfo_paddr,
         PGSIZE,
         PteFlags::from(perms::READ), // 只读
     );
@@ -88,6 +205,7 @@ pub fn init() {
 
     // 映射用户堆 (1MB)
     // HEAP_VA = 0x2000_0000 (Defined in libglenda-rs/src/crt0.rs)
+    /*
     let heap_va_start = 0x2000_0000;
     let heap_size = 1024 * 1024; // 1MB
     let heap_pages = heap_size / PGSIZE;
@@ -103,74 +221,12 @@ pub fn init() {
         );
         core::mem::forget(frame);
     }
-
-    // 初始化 BootInfo
-    let bootinfo = root_bootinfo_cap.obj_ptr().as_mut::<BootInfo>();
-    *bootinfo = BootInfo::new();
-
-    // 填充 DTB 信息
-    if let Some((dtb_paddr, dtb_size)) = dtb::dtb_info() {
-        bootinfo.dtb_paddr = dtb_paddr;
-        bootinfo.dtb_size = dtb_size;
-    }
-
-    // 填充启动参数
-    if let Some(args) = dtb::bootargs() {
-        let bytes = args.as_bytes();
-        let len = core::cmp::min(bytes.len(), bootinfo.cmdline.len() - 1);
-        bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
-        bootinfo.cmdline[len] = 0;
-    }
-
-    // 5. 构建 Root CSpace (CNode)
-    // 这是 Root Task 权力的来源。我们需要把所有剩余的物理内存
-    // 转化为 Untyped Capability 并放入这个 CNode。
-    let mut cspace = CNode::from_addr(root_cspace_cap.obj_ptr().to_pa(), 12);
-    populate_root_cnode(&mut cspace, bootinfo);
-
-    // 6. 配置 TCB (绑定资源)
-    tcb.configure(
-        &root_cspace_cap,
-        &root_vspace_cap,
-        Some(&root_utcb_cap),
-        utcb_base,
-        None, // Root Task 暂时没有 Fault Handler，或者指向内核默认处理
-    );
-
-    tcb.set_priority(255);
-
-    // 7. 设置初始寄存器
-    tcb.set_registers(entry_point, stack_top);
-
-    // 8. 激活线程
-    tcb.state = ThreadState::Ready;
-    scheduler::add_thread(tcb);
-
-    // 9. 在 Root CNode 中注册 VSpace 和 CSpace 的 Capability
-    // cspace=[cspace,vspace,tcb,...]
-    cspace.insert(CSPACE_SLOT, &root_cspace_cap);
-    cspace.insert(VSPACE_SLOT, &root_vspace_cap);
-    cspace.insert(TCB_SLOT, &root_tcb_cap);
-    cspace.insert(UTCB_SLOT, &root_utcb_cap);
-    cspace.insert(BOOTINFO_SLOT, &root_bootinfo_cap);
-    cspace.insert(CONSOLE_SLOT, &Capability::new(crate::cap::CapType::Console, rights::ALL));
-
-    // 插入 Initrd Frame Capability
-    if let Some(range) = dtb::initrd_range() {
-        let page_count = (range.size + PGSIZE - 1) / PGSIZE;
-        let initrd_cap = Capability::new(
-            crate::cap::CapType::Frame { paddr: range.start, page_count },
-            rights::READ | rights::WRITE | rights::GRANT, // 允许读写和传递
-        );
-        cspace.insert(INITRD_SLOT, &initrd_cap);
-    }
-
-    printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
+    */
 }
 
 /// 填充 Root CNode
 /// 将所有空闲物理内存作为 Untyped Capability 授予 Root Task
-fn populate_root_cnode(cnode: &mut CNode, bootinfo: &mut BootInfo) {
+fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     let free_region = pmem::get_untyped();
     let preserved_region = pmem::get_preserved_untyped();
     let mut slot = MEM_SLOT_START;
@@ -228,34 +284,21 @@ fn populate_root_cnode(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     bootinfo.empty.end = 1 << 12; // CNode size bits = 12
 }
 
-/*
-用户地址空间布局：
-trampoline  (1 page) 映射在最高地址
-trapframe   (1 page)
-UTCB        (1 page)
-BootInfo    (1 page)
-ustack      (N pages)
-heap        (M pages)
-code + data (1 page)
-empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
-*/
+fn init_bootinfo(bootinfo: &mut BootInfo) {
+    // 初始化 BootInfo
+    *bootinfo = BootInfo::new();
 
-fn init_vspace(vspace: &mut PageTable, tf_paddr: PhysAddr) {
-    // 1. 映射 Trampoline (最高地址)
-    // 物理地址是 vector::user_vector 的地址 (需对齐)
-    let tramp_pa = PhysAddr::from(vector::user_vector as usize).align_down(PGSIZE);
-    vspace.map_with_alloc(
-        VirtAddr::from(TRAMPOLINE_VA),
-        tramp_pa,
-        PGSIZE,
-        PteFlags::from(perms::READ | perms::EXECUTE),
-    );
+    // 填充 DTB 信息
+    if let Some((dtb_paddr, dtb_size)) = dtb::dtb_info() {
+        bootinfo.dtb_paddr = dtb_paddr;
+        bootinfo.dtb_size = dtb_size;
+    }
 
-    // 2. 映射 TrapFrame (Trampoline 下方)
-    vspace.map_with_alloc(
-        VirtAddr::from(TRAPFRAME_VA),
-        tf_paddr,
-        PGSIZE,
-        PteFlags::from(perms::READ | perms::WRITE),
-    );
+    // 填充启动参数
+    if let Some(args) = dtb::bootargs() {
+        let bytes = args.as_bytes();
+        let len = core::cmp::min(bytes.len(), bootinfo.cmdline.len() - 1);
+        bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
+        bootinfo.cmdline[len] = 0;
+    }
 }

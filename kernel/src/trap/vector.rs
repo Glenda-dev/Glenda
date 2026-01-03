@@ -4,7 +4,7 @@ use riscv::register::stvec::{self, Stvec};
 
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn kernel_vector() -> ! {
+pub unsafe extern "C" fn kernel_vector() {
     naked_asm!(
         "addi sp, sp, -256",
         "sd ra, 0(sp)",
@@ -80,10 +80,15 @@ pub unsafe extern "C" fn kernel_vector() -> ! {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 #[unsafe(link_section = "trampsec")]
-pub unsafe extern "C" fn user_vector() -> ! {
+pub unsafe extern "C" fn user_vector() {
     naked_asm!(
+        // ------------------sd 过程 (begin)-----------------------
+        // sscratch寄存器存放了p->trapframe
         "csrrw a0, sscratch, a0",
+        // 把 TrapFrame 中由内核预先写入的指针给 a3
+        // See: trap_user_handler
         "ld a3, 280(a0)",
+        // 保存通用寄存器到trapframe
         "sd ra, 40(a0)",
         "sd sp, 48(a0)",
         "sd gp, 56(a0)",
@@ -114,13 +119,22 @@ pub unsafe extern "C" fn user_vector() -> ! {
         "sd t4, 264(a0)",
         "sd t5, 272(a0)",
         "sd t6, 280(a0)",
+        // 保存 a0 到 p->trapframe
         "csrr t0, sscratch",
         "sd t0, 112(a0)",
-        "ld sp, 8(a0)",
-        "ld tp, 32(a0)",
+        //------------------sd 过程 (end)-------------------------
+        /*
+        恢复之前保存的内核执行环境
+        1. 内核栈指针
+        2. hartid信息
+        3. 内核页表
+        之后跳转到 trap_user_handler 
+        */
+        "ld sp, 8(a0)", // sp = tf->user_to_kern_sp
+        "ld tp, 32(a0)", // tp = tf->user_to_kern_hartid
         "sd tp, 64(a0)",
-        "ld t0, 16(a0)",
-        "ld t1, 0(a0)",
+        "ld t0, 16(a0)",// t0 = tf->user_to_kern_trapvector
+        "ld t1, 0(a0)",// t1 = tf->user_to_kern_satp
         "csrw satp, t1",
         "sfence.vma zero, zero",
         "mv a0, a3",
@@ -131,7 +145,7 @@ pub unsafe extern "C" fn user_vector() -> ! {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 #[unsafe(link_section = "trampsec")]
-pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) -> ! {
+pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
     naked_asm!(
         "csrw satp, a1",
         "sfence.vma zero, zero",

@@ -34,6 +34,7 @@ impl PmemManager {
     }
 
     fn alloc_addr(&mut self, size: usize, align: usize) -> Option<PhysAddr> {
+        //printk!("pmem: Allocating {} bytes with alignment {}\n", size, align);
         if self.current.as_usize() == 0 {
             return None;
         }

@@ -1,7 +1,10 @@
-use core::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub};
+use core::{
+    fmt::Debug,
+    ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub},
+};
 
 use super::{PPN, PhysAddr};
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Pte(usize);
 #[derive(Clone, Copy)]
 pub struct PteFlags(usize);
@@ -102,5 +105,34 @@ impl Sub for PteFlags {
     type Output = PteFlags;
     fn sub(self, rhs: PteFlags) -> PteFlags {
         PteFlags(self.0 & !rhs.0)
+    }
+}
+
+impl Debug for PteFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut first = true;
+        let perms = [
+            (perms::VALID, "V"),
+            (perms::READ, "R"),
+            (perms::WRITE, "W"),
+            (perms::EXECUTE, "X"),
+            (perms::USER, "U"),
+            (perms::GLOBAL, "G"),
+            (perms::ACCESSED, "A"),
+            (perms::DIRTY, "D"),
+        ];
+        for (bit, name) in perms.iter() {
+            if (self.0 & *bit) != 0 {
+                if !first {
+                    write!(f, "|")?;
+                }
+                write!(f, "{}", name)?;
+                first = false;
+            }
+        }
+        if first {
+            write!(f, "NONE")?;
+        }
+        Ok(())
     }
 }

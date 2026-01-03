@@ -2,7 +2,8 @@ use super::syscall;
 use super::vector;
 use super::{TrapContext, TrapFrame};
 use crate::hart;
-use crate::mem::{PGSIZE, VA_MAX};
+use crate::mem::TRAPFRAME_VA;
+use crate::mem::{PGSIZE, TRAMPOLINE_VA};
 use crate::proc::scheduler;
 use core::mem;
 use riscv::register::{
@@ -89,19 +90,24 @@ pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
     ctx.t6 = kctx.t6;
 
     ctx.kernel_epc = sepc::read();
-    trap_user_return(ctx);
+    trap_user_return();
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
-    // TODO: Refactor this
-    // 直接通过当前 hart 的进程状态获取 TrapFrame 的指针
-    let tcb = unsafe { &*scheduler::current().expect("No current process in trap_user_return") };
+pub extern "C" fn trap_user_return() {
+    let tcb = unsafe { &mut *scheduler::current().expect("No current process in scheduler") };
+
+    let kstack_top = tcb.get_kstack_top().as_usize();
+    let user_satp = tcb.get_satp() as u64;
+
+    // 从 TCB 获取正确的 TrapFrame
+    let ctx = tcb.get_tf();
+
     unsafe {
         sstatus::clear_sie();
     }
     // 将 stvec 切换到用户态向量入口
-    let tramp_base_va = VA_MAX - PGSIZE;
+    let tramp_base_va = TRAMPOLINE_VA;
     let user_vec_off = (vector::user_vector as usize) & (PGSIZE - 1);
     let user_vec_addr = tramp_base_va + user_vec_off;
     unsafe {
@@ -126,34 +132,19 @@ pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
     ctx.kernel_hartid = hart::get().id;
     // KSTACK(0) 顶部
     // vm::map_kstack0();
-    ctx.kernel_sp = tcb.kstack.as_ref().unwrap().top().as_usize();
+    ctx.kernel_sp = kstack_top;
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = tcb.get_trapframe_va().expect("No TrapFrame VA found");
+    let user_tf_va = TRAPFRAME_VA;
     unsafe {
-        sscratch::write(user_tf_va.as_usize());
+        sscratch::write(user_tf_va);
     }
-    // TODO: Refactor this
-    let user_satp = tcb.get_satp() as u64;
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
     let user_ret_off = (vector::user_return as usize) & (PGSIZE - 1);
     let user_ret_addr = tramp_base_va + user_ret_off;
     let user_return_fn: extern "C" fn(u64, u64) -> ! = unsafe { mem::transmute(user_ret_addr) };
-    user_return_fn(user_tf_va.as_usize() as u64, user_satp)
-}
-
-/// 这是一个 wrapper 函数，用于新线程第一次启动
-/// 它从 s0 寄存器获取 TrapFrame 指针，并将其移动到 a0，然后调用 trap_user_return
-/// 因为 switch_context 会恢复 s0，但不会恢复 a0
-#[unsafe(naked)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn trap_return_wrapper() {
-    core::arch::naked_asm!(
-        "mv a0, s0",
-        "call trap_user_return",
-        "unimp" // Should not return
-    )
+    user_return_fn(user_tf_va as u64, user_satp)
 }
 
 pub fn syscall_handler(ctx: &mut TrapContext) {

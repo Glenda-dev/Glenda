@@ -124,20 +124,18 @@ pub fn scheduler() -> ! {
 
             // 获取当前 CPU 的 Hart 结构
             let hart = hart::get();
-            let mut context = hart.context;
-            // TODO: Add HHDM support
-            // tcb.vspace.activate();
+            // 设置当前运行的线程
+            set_current(tcb_ptr);
 
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
-                switch_context(&mut context, &mut tcb.context);
+                switch_context(&mut hart.context, &mut tcb.context);
             }
+            set_current(core::ptr::null_mut());
 
             // --- 线程返回 ---
             // 当线程被抢占或主动 yield 后，会回到这里
-            unsafe {
-                CURRENT_TCB[hart.id] = None;
-            }
+            set_current(tcb_ptr);
         } else {
             // 没有可运行的线程，进入低功耗等待
             unsafe {
@@ -233,4 +231,11 @@ pub fn current() -> Option<*mut TCB> {
     let hart = hart::get().id;
     let tcb_ptr = unsafe { CURRENT_TCB[hart] };
     if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
+}
+
+fn set_current(tcb_ptr: *mut TCB) {
+    let hart = hart::get().id;
+    unsafe {
+        CURRENT_TCB[hart] = Some(tcb_ptr);
+    }
 }
