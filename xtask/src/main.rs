@@ -14,9 +14,6 @@ struct Xtask {
     #[arg(short, long, global = true)]
     config: Option<String>,
 
-    #[arg(long = "features", value_delimiter = ',', num_args(0..), global = true)]
-    features: Vec<String>,
-
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -67,10 +64,6 @@ enum Cmd {
         #[arg(long, default_value = "nographic")]
         display: String,
 
-        /// Run tests instead of normal kernel
-        #[arg(long, default_value_t = false)]
-        test: bool,
-
         #[arg(long, default_value_t = 1234)]
         port: u16,
     },
@@ -94,33 +87,28 @@ enum Cmd {
 }
 
 fn main() -> anyhow::Result<()> {
+    // cd into workspace root
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")?;
+    let root = std::path::Path::new(&manifest_dir).parent().unwrap();
+    std::env::set_current_dir(root)?;
+
     let xtask = Xtask::parse();
     let mode = if xtask.release { "release" } else { "debug" };
 
     match xtask.cmd {
-        Cmd::Build => build::build(mode, &xtask.features, xtask.config.as_deref())?,
+        Cmd::Build => build::build(mode, xtask.config.as_deref())?,
         Cmd::Run { cpus, mem, display } => {
-            build::build(mode, &xtask.features, xtask.config.as_deref())?;
+            build::build(mode, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_run(mode, cpus, &mem, &display)?;
         }
-        Cmd::Gdb { cpus, mem, display, test, port } => {
-            let mut feats = xtask.features.clone();
-            if test == true {
-                if !feats.iter().any(|f| f == "tests") {
-                    feats.push(String::from("tests"));
-                }
-            }
-            build::build(mode, &feats, xtask.config.as_deref())?;
+        Cmd::Gdb { cpus, mem, display, port } => {
+            build::build(mode, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_gdb(mode, cpus, &mem, &display, port)?;
         }
         Cmd::Test { cpus, mem, display } => {
-            let mut feats = xtask.features.clone();
-            if !feats.iter().any(|f| f == "tests") {
-                feats.push(String::from("tests"));
-            }
-            build::build(mode, &feats, xtask.config.as_deref())?;
+            build::build(mode, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_run(mode, cpus, &mem, &display)?;
         }

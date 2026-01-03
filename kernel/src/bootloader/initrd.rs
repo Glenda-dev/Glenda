@@ -8,9 +8,9 @@ use crate::printk::{ANSI_RED, ANSI_RESET};
 use crate::proc::ElfFile;
 use spin::Once;
 
-use super::{BOOT_LOADER_TYPE, BootLoaderType};
 #[cfg(feature = "multiboot2")]
 use super::multiboot2;
+use super::{BOOT_LOADER_TYPE, BootLoaderType};
 
 /*
 Payload结构体

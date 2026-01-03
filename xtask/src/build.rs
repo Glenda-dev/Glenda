@@ -5,17 +5,25 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
-pub fn build(mode: &str, features: &Vec<String>, config_path: Option<&str>) -> anyhow::Result<()> {
+pub fn build(mode: &str, config_path: Option<&str>) -> anyhow::Result<()> {
+    let default_path = "config.toml";
+    let cfg_path = Path::new(config_path.unwrap_or(default_path));
+    if !cfg_path.exists() {
+        eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
+        return Ok(());
+    }
+    let cfg = Config::from_path(cfg_path)?;
     // Build libraries
-    build_libraries(mode, features)?;
+    build_libraries(mode, &cfg)?;
     // Process workspace services and generate initrd for kernel embedding
-    build_initrd(mode, config_path)?;
+    build_initrd(mode, &cfg)?;
     // Build the kernel
-    build_kernel(mode, features)?;
+    build_kernel(mode, &cfg)?;
     Ok(())
 }
 
-pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
+pub fn build_kernel(mode: &str, cfg: &Config) -> anyhow::Result<()> {
+    let features = cfg.features.get("kernel").map(|s| s.as_str()).unwrap_or("");
     let mut cmd = Command::new("cargo");
     cmd.current_dir("kernel");
     cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
@@ -30,8 +38,7 @@ pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
         cmd.arg("--release");
     }
     if !features.is_empty() {
-        let joined = features.join(",");
-        cmd.arg("--features").arg(joined);
+        cmd.arg("--features").arg(features);
     }
     run(&mut cmd)?;
 
@@ -44,31 +51,36 @@ pub fn build_kernel(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn build_libraries(mode: &str, features: &Vec<String>) -> anyhow::Result<()> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir("lib/libglenda-rs");
-    cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
-    if mode == "release" {
-        cmd.arg("--release");
+pub fn build_libraries(mode: &str, cfg: &Config) -> anyhow::Result<()> {
+    for c in cfg.libraries.iter() {
+        let cmd_str = if mode == "release" {
+            c.build_cmd_release.as_ref()
+        } else {
+            c.build_cmd_debug.as_ref()
+        };
+        let name = &c.name;
+        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
+
+        if let Some(cmd_str) = cmd_str {
+            eprintln!("[ INFO ] Building Library {} with: {}", c.name, cmd_str);
+            // run via shell so build_cmd can be arbitrary
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(cmd_str).current_dir(&c.path);
+            if !features.is_empty() {
+                cmd.arg("--features").arg(features);
+            }
+            let status = cmd.status()?;
+            if !status.success() {
+                return Err(anyhow::anyhow!("build command failed for {}", c.name));
+            }
+        }
     }
-    if !features.is_empty() {
-        let joined = features.join(",");
-        cmd.arg("--features").arg(joined);
-    }
-    run(&mut cmd)
+    Ok(())
 }
 
 const ENTRY_SIZE: usize = 48; // as in design
 
-pub fn build_initrd(mode: &str, config_path: Option<&str>) -> anyhow::Result<()> {
-    let default_path = "config.toml";
-    let cfg_path = Path::new(config_path.unwrap_or(default_path));
-    if !cfg_path.exists() {
-        eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
-        return Ok(());
-    }
-    let cfg = Config::from_path(cfg_path)?;
-
+pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
     // Ensure target dir
     fs::create_dir_all("target")?;
 
@@ -85,13 +97,18 @@ pub fn build_initrd(mode: &str, config_path: Option<&str>) -> anyhow::Result<()>
             root_task_cfg.build_cmd_debug.as_ref()
         };
 
+        let name = &root_task_cfg.name;
+
+        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
+
         if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building Root Task {} with: {}", root_task_cfg.name, cmd_str);
-            let status = Command::new("sh")
-                .arg("-c")
-                .arg(cmd_str)
-                .current_dir(&root_task_cfg.path)
-                .status()?;
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(cmd_str).current_dir(&root_task_cfg.path);
+            if !features.is_empty() {
+                cmd.arg("--features").arg(features);
+            }
+            let status = cmd.status()?;
             if !status.success() {
                 return Err(anyhow::anyhow!("build command failed for {}", root_task_cfg.name));
             }
@@ -121,11 +138,18 @@ pub fn build_initrd(mode: &str, config_path: Option<&str>) -> anyhow::Result<()>
         } else {
             c.build_cmd_debug.as_ref()
         };
+        let name = &c.name;
+        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
 
         if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);
             // run via shell so build_cmd can be arbitrary
-            let status = Command::new("sh").arg("-c").arg(cmd_str).current_dir(&c.path).status()?;
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(cmd_str).current_dir(&c.path);
+            if !features.is_empty() {
+                cmd.arg("--features").arg(features);
+            }
+            let status = cmd.status()?;
             if !status.success() {
                 return Err(anyhow::anyhow!("build command failed for {}", c.name));
             }

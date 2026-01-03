@@ -14,9 +14,21 @@ pub struct Service {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Library {
+    pub name: String,
+    pub path: String,
+    pub build_cmd_debug: Option<String>,
+    pub build_cmd_release: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(rename = "services")]
     pub services: Vec<Service>,
+    #[serde(default)]
+    pub libraries: Vec<Library>,
+    #[serde(default)]
+    pub features: std::collections::HashMap<String, String>,
 }
 
 impl Config {

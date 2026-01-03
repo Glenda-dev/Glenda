@@ -38,3 +38,10 @@ name = "manifest"
 path = "config"
 output_bin = "manifest.toml"
 kind = "file"
+[[libraries]]
+name = "libglenda-rs"
+path = "lib/libglenda-rs"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"
+[features]
+kernel = ""
