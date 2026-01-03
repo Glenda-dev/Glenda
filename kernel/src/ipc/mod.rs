@@ -3,7 +3,7 @@ pub mod message;
 pub mod utcb;
 
 pub use message::{MsgTag, label};
-pub use utcb::{UTCB, UTCB_SIZE};
+pub use utcb::UTCB;
 
 use crate::cap::{CapType, Capability, Slot, rights};
 use crate::mem::VirtAddr;
@@ -34,21 +34,8 @@ unsafe fn copy_msg(
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
     let src = unsafe { &*src_ptr };
     let dst = unsafe { &mut *dst_ptr };
-
-    // 1. 拷贝消息头和寄存器
-    dst.msg_tag = src.msg_tag;
-    dst.mrs_regs = src.mrs_regs;
-    dst.ipc_buffer_size = src.ipc_buffer_size;
-
-    // 拷贝 IPC 缓冲区内容
-    if dst.ipc_buffer_size > 0 {
-        let src_buf_ptr = (src_ptr as usize + UTCB_SIZE) as *const u8;
-        let dst_buf_ptr = (dst_ptr as usize + UTCB_SIZE) as *mut u8;
-        unsafe {
-            core::ptr::copy_nonoverlapping(src_buf_ptr, dst_buf_ptr, dst.ipc_buffer_size);
-        }
-    }
-
+    // 1. 传递消息内容
+    src.copy_to(dst);
     // 2. 传递 Badge
     set_badge(receiver, badge);
 
@@ -67,11 +54,12 @@ unsafe fn copy_msg(
     }
 }
 
-fn set_badge(tcb: &TCB, badge: usize) {
-    tcb.get_trapframe().expect("ipc: TCB has no TrapFrame").t0 = badge;
+fn set_badge(tcb: &mut TCB, badge: usize) {
+    let tf = tcb.get_tf();
+    tf.a1 = badge;
 }
 
-/// 发送操作 (sys_send)
+/// 发送操作
 ///
 /// * `current`: 当前正在执行的线程 (发送者)
 /// * `ep`: 目标 Endpoint 对象

@@ -1,5 +1,5 @@
 use super::MsgTag;
-use crate::mem::{PGSIZE, VirtAddr};
+use crate::mem::VirtAddr;
 
 /// 用户线程控制块 (UTCB)
 /// 映射到用户地址空间，用于内核与用户态之间的高效数据交换
@@ -20,26 +20,35 @@ pub struct UTCB {
     pub tls: VirtAddr,
 
     /// ipc缓冲区大小
-    pub ipc_buffer_size: usize,
+    pub buffer_size: usize,
+
+    /// ipc缓冲区
+    pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }
 
-pub const UTCB_SIZE: usize = core::mem::size_of::<UTCB>();
+pub const BUFFER_MAX_SIZE: usize = 3 * 1024; // 3KB
 
-pub const IPC_BUFFER_SIZE: usize = PGSIZE - UTCB_SIZE;
-
-#[repr(C)]
-pub struct IPCBuffer(pub [u8; IPC_BUFFER_SIZE]);
-
-impl IPCBuffer {
-    pub fn from_utcb(utcb: &UTCB) -> &mut Self {
-        let buf_addr = (utcb as *const UTCB as usize) + UTCB_SIZE;
-        unsafe { &mut *(buf_addr as *mut IPCBuffer) }
+impl UTCB {
+    pub fn copy_to(&self, dest: &mut UTCB) {
+        dest.msg_tag = self.msg_tag;
+        dest.mrs_regs = self.mrs_regs;
+        dest.cap_transfer = self.cap_transfer;
+        dest.recv_window = self.recv_window;
+        dest.tls = self.tls;
+        dest.buffer_size = self.buffer_size;
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                &self.ipc_buffer as *const [u8; BUFFER_MAX_SIZE],
+                &mut dest.ipc_buffer as *mut [u8; BUFFER_MAX_SIZE],
+                self.buffer_size,
+            );
+        }
     }
-
     pub fn get_str(&self, offset: usize, len: usize) -> Option<&str> {
-        if offset.checked_add(len)? > IPC_BUFFER_SIZE {
+        if offset + len > self.buffer_size {
             return None;
         }
-        core::str::from_utf8(&self.0[offset..offset + len]).ok()
+        let slice = &self.ipc_buffer[offset..offset + len];
+        core::str::from_utf8(slice).ok()
     }
 }
