@@ -8,8 +8,8 @@ use std::process::Command;
 pub fn build(mode: &str, features: &Vec<String>, config_path: Option<&str>) -> anyhow::Result<()> {
     // Build libraries
     build_libraries(mode, features)?;
-    // Process workspace services and generate modules blob for kernel embedding
-    build_services(config_path)?;
+    // Process workspace services and generate initrd for kernel embedding
+    build_initrd(mode, config_path)?;
     // Build the kernel
     build_kernel(mode, features)?;
     Ok(())
@@ -60,7 +60,7 @@ pub fn build_libraries(mode: &str, features: &Vec<String>) -> anyhow::Result<()>
 
 const ENTRY_SIZE: usize = 48; // as in design
 
-pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
+pub fn build_initrd(mode: &str, config_path: Option<&str>) -> anyhow::Result<()> {
     let default_path = "config.toml";
     let cfg_path = Path::new(config_path.unwrap_or(default_path));
     if !cfg_path.exists() {
@@ -79,7 +79,13 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
     if let Some(root_task_cfg) =
         cfg.services.iter().find(|c| c.kind.as_deref() == Some("root_task"))
     {
-        if let Some(cmd_str) = &root_task_cfg.build_cmd {
+        let cmd_str = if mode == "release" {
+            root_task_cfg.build_cmd_release.as_ref()
+        } else {
+            root_task_cfg.build_cmd_debug.as_ref()
+        };
+
+        if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building Root Task {} with: {}", root_task_cfg.name, cmd_str);
             let status = Command::new("sh")
                 .arg("-c")
@@ -110,7 +116,13 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
         if c.kind.as_deref() == Some("root_task") {
             continue; // Already processed
         }
-        if let Some(cmd_str) = &c.build_cmd {
+        let cmd_str = if mode == "release" {
+            c.build_cmd_release.as_ref()
+        } else {
+            c.build_cmd_debug.as_ref()
+        };
+
+        if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);
             // run via shell so build_cmd can be arbitrary
             let status = Command::new("sh").arg("-c").arg(cmd_str).current_dir(&c.path).status()?;
@@ -198,7 +210,7 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
         current_pos = start + data.len() as u32;
     }
 
-    eprintln!("[ INFO ] Wrote modules blob to {}", modules_path.display());
+    eprintln!("[ INFO ] Wrote initrd ({} KB) to {}", total_size / 1024, modules_path.display());
 
     Ok(())
 }

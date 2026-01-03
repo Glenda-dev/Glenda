@@ -6,7 +6,8 @@ use std::path::Path;
 pub struct Service {
     pub name: String,
     pub path: String,
-    pub build_cmd: Option<String>,
+    pub build_cmd_debug: Option<String>,
+    pub build_cmd_release: Option<String>,
     pub output_bin: String,
     #[serde(default)]
     pub kind: Option<String>,
