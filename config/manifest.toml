@@ -1,3 +1,7 @@
+[[service]]
+name = "unicorn"
+binary = "unicorn"
+
 [[driver]]
 name = "ns16550a"
 binary = "ns16550a"
@@ -13,4 +17,4 @@ type = "process"
 
 [driver.match]
 compatible = ["virtio,mmio"]
-device_id = 2 # VirtIO Block Device ID
+device_id = 2                # VirtIO Block Device ID

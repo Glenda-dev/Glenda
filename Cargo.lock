@@ -260,6 +260,7 @@ name = "libglenda-rs"
 version = "0.1.0"
 dependencies = [
  "buddy_system_allocator",
+ "serde",
  "spin 0.9.8",
 ]
 
