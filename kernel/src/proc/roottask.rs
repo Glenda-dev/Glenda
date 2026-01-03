@@ -132,8 +132,6 @@ pub fn init() {
 
     // 7. Start Task
     start_root_task(tcb, entry_point, stack_top);
-
-    vspace.debug_print();
 }
 /*
 用户地址空间布局：
@@ -208,7 +206,6 @@ fn init_vspace(
 
     // 映射用户堆 (1MB)
     // HEAP_VA = 0x2000_0000 (Defined in libglenda-rs/src/crt0.rs)
-    /*
     let heap_va_start = 0x2000_0000;
     let heap_size = 1024 * 1024; // 1MB
     let heap_pages = heap_size / PGSIZE;
@@ -224,7 +221,6 @@ fn init_vspace(
         );
         core::mem::forget(frame);
     }
-    */
 }
 
 /// 填充 Root CNode
