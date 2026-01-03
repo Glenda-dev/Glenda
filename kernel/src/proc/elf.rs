@@ -1,6 +1,7 @@
 use crate::mem::pmem;
 use crate::mem::pte::perms;
 use crate::mem::{PGSIZE, PageTable, PteFlags, VirtAddr};
+use crate::printk;
 use core::mem::size_of;
 
 pub const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
@@ -82,6 +83,12 @@ impl<'a> ElfFile<'a> {
     pub fn map(&self, vspace: &mut PageTable) -> Result<(), &'static str> {
         for ph in self.program_headers() {
             if ph.p_type == PT_LOAD {
+                printk!(
+                    "elf: Mapping segment at vaddr {:#x}, filesz: {}, memsz: {}\n",
+                    ph.p_vaddr,
+                    ph.p_filesz,
+                    ph.p_memsz
+                );
                 let mut flags = PteFlags::from(perms::USER | perms::VALID);
                 if ph.p_flags & PF_X != 0 {
                     flags |= perms::EXECUTE;

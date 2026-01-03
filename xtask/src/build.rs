@@ -143,31 +143,39 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
     let modules_path = Path::new("target").join("modules.bin");
     let mut file = File::create(&modules_path)?;
 
-    // header: magic + count + total_size
+    // header: magic + count + total_size + padding
     const MAGIC: u32 = 0x99999999;
     let count = entries.len() as u32;
 
     // compute sizes to populate header
-    let header_size = 4 + 4 + 4; // magic + count + total_size
+    let header_size = 16; // 4 + 4 + 4 + 4(padding)
     let entries_size = (entries.len() * ENTRY_SIZE) as u32;
-    let data_size: u32 = entries.iter().map(|(_t, _n, d)| d.len() as u32).sum();
-    let total_size = header_size as u32 + entries_size + data_size;
+
+    // compute offsets and total size with alignment
+    let mut current_data_offset = header_size + entries_size;
+    let mut aligned_entries = Vec::new();
+
+    for (t, name, data) in entries {
+        let start = (current_data_offset + 7) & !7; // 8-byte alignment
+        let size = data.len() as u32;
+        aligned_entries.push((t, name, data, start));
+        current_data_offset = start + size;
+    }
+    let total_size = current_data_offset;
 
     file.write_all(&MAGIC.to_le_bytes())?;
     file.write_all(&count.to_le_bytes())?;
     file.write_all(&total_size.to_le_bytes())?;
-
-    // compute offsets: header + entries
-    let mut offset = header_size as u32 + entries_size;
+    file.write_all(&[0u8; 4])?; // Padding to 16 bytes
 
     // write metadata entries
-    for (t, name, data) in entries.iter() {
+    for (t, name, _data, start) in aligned_entries.iter() {
         // type
         file.write_all(&[*t])?;
         // offset
-        file.write_all(&offset.to_le_bytes())?;
+        file.write_all(&start.to_le_bytes())?;
         // size
-        let size = data.len() as u32;
+        let size = _data.len() as u32;
         file.write_all(&size.to_le_bytes())?;
         // name (32 bytes, null padded)
         let mut name_buf = [0u8; 32];
@@ -177,12 +185,17 @@ pub fn build_services(config_path: Option<&str>) -> anyhow::Result<()> {
         file.write_all(&name_buf)?;
         // padding 7 bytes
         file.write_all(&[0u8; 7])?;
-        offset += size;
     }
 
-    // write data
-    for (_t, _name, data) in entries.into_iter() {
+    // write data with padding
+    let mut current_pos = header_size + entries_size;
+    for (_t, _name, data, start) in aligned_entries.into_iter() {
+        // Write padding bytes
+        if start > current_pos {
+            file.write_all(&vec![0u8; (start - current_pos) as usize])?;
+        }
         file.write_all(&data)?;
+        current_pos = start + data.len() as u32;
     }
 
     eprintln!("[ INFO ] Wrote modules blob to {}", modules_path.display());

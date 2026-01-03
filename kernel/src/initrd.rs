@@ -94,8 +94,8 @@ pub fn init() {
         return;
     }
 
-    // Entries start at offset 12, each ENTRY is 48 bytes
-    let entry_base = 12usize;
+    // Entries start at offset 16 (magic + count + total_size + padding)
+    let entry_base = 16usize;
 
     // Parse ONLY the first entry (Root Task)
     let ent_off = entry_base;
