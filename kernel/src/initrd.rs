@@ -240,34 +240,38 @@ impl ProcPayload {
             }
         }
     }
-
     // Map Flat Entire Binary
     pub fn map(&self, vspace: &mut PageTable) {
         // Copy data into newly allocated frames
-        let flags = PteFlags::from(perms::USER | perms::READ | perms::EXECUTE | perms::VALID);
+        let flags = PteFlags::from(
+            perms::USER | perms::READ | perms::EXECUTE | perms::WRITE | perms::VALID,
+        );
         let num_pages = (self.data.len() + PGSIZE - 1) / PGSIZE;
+
         for j in 0..num_pages {
+            // 1. 分配一个新的物理页
             let frame_cap =
                 pmem::alloc_frame_cap(1).expect("Failed to alloc frame for flat mapping");
-            let va = VirtAddr::from(0x10000 + j * PGSIZE);
-            let src_pa = PhysAddr::from(self.data.as_ptr() as usize + j * PGSIZE);
-            let src_va = src_pa.to_va();
-            let copy_size = if (j + 1) * PGSIZE <= self.data.len() {
-                PGSIZE
-            } else {
-                self.data.len() - j * PGSIZE
-            };
-            if copy_size > 0 {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        src_va.as_ptr::<u8>(),
-                        frame_cap.obj_ptr().as_mut_ptr::<u8>(),
-                        copy_size,
-                    );
-                }
-            }
 
-            vspace.map_with_alloc(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
+            // 2. 获取该物理页在内核中的虚拟地址（用于写入数据）
+            let dst_va = frame_cap.obj_ptr();
+            let dst_slice =
+                unsafe { core::slice::from_raw_parts_mut(dst_va.as_mut_ptr::<u8>(), PGSIZE) };
+
+            // 3. 计算源数据范围
+            let start = j * PGSIZE;
+            let end = core::cmp::min(start + PGSIZE, self.data.len());
+            let src_slice = &self.data[start..end];
+
+            // 4. 拷贝数据 (先清零，再拷贝)
+            dst_slice.fill(0);
+            dst_slice[0..src_slice.len()].copy_from_slice(src_slice);
+
+            // 5. 映射到用户空间 (0x10000 + offset)
+            let user_va = VirtAddr::from(0x10000 + j * PGSIZE);
+            vspace.map_with_alloc(user_va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
+
+            // 6. 忘记 Capability，防止 Drop 时释放物理页（因为已经移交给页表管理了）
             core::mem::forget(frame_cap);
         }
     }

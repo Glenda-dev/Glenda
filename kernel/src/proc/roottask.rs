@@ -12,7 +12,6 @@ use crate::mem::pte::perms;
 use crate::mem::{BOOTINFO_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
-use crate::trap::vector;
 
 pub const VSPACE_SLOT: usize = 1;
 pub const CSPACE_SLOT: usize = 0;
@@ -134,6 +133,8 @@ pub fn init() {
 
     // 7. Start Task
     start_root_task(tcb, entry_point, stack_top);
+
+    vspace.debug_print();
 }
 /*
 用户地址空间布局：
@@ -157,6 +158,8 @@ fn init_vspace(
     printk!("proc: Setting up Root Task VSpace at {:#x}\n", vspace as *const _ as usize);
     // 1. 映射 Trampoline (最高地址)
     // 物理地址是 vector::user_vector 的地址 (需对齐)
+    // 注意：Trampoline 代码运行在 S 态 (user_return/user_vector)，
+    // 因此不能设置 USER 权限 (S 态无法执行 U 页面代码)
     let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
     vspace.map_with_alloc(
         VirtAddr::from(TRAMPOLINE_VA),
@@ -165,6 +168,7 @@ fn init_vspace(
         PteFlags::from(perms::READ | perms::EXECUTE),
     );
     // 2. 映射 TrapFrame (Trampoline 下方)
+    // TrapFrame 仅由 S 态的 user_vector/user_return 访问
     vspace.map_with_alloc(
         VirtAddr::from(TRAPFRAME_VA),
         tf_paddr,
@@ -177,7 +181,7 @@ fn init_vspace(
         VirtAddr::from(UTCB_VA),
         utcb_paddr,
         PGSIZE,
-        PteFlags::from(perms::READ | perms::WRITE),
+        PteFlags::from(perms::USER | perms::READ | perms::WRITE),
     );
 
     // 映射 BootInfo 到固定位置
@@ -185,7 +189,7 @@ fn init_vspace(
         VirtAddr::from(BOOTINFO_VA),
         bootinfo_paddr,
         PGSIZE,
-        PteFlags::from(perms::READ), // 只读
+        PteFlags::from(perms::USER | perms::READ), // 只读
     );
 
     // 映射用户栈 (16KB)
@@ -198,7 +202,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(perms::READ | perms::WRITE | perms::USER),
+            PteFlags::from(perms::USER | perms::READ | perms::WRITE),
         );
         core::mem::forget(frame);
     }
@@ -217,7 +221,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(perms::READ | perms::WRITE | perms::USER),
+            PteFlags::from(perms::USER | perms::READ | perms::WRITE),
         );
         core::mem::forget(frame);
     }
