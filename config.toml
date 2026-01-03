@@ -10,10 +10,27 @@ path = "service/factotum"
 build_cmd = "bash build.sh"
 output_bin = "build/factotum.bin"
 kind = "server"
-
 [[services]]
 name = "unicorn"
 path = "service/unicorn"
 build_cmd = "bash build.sh"
 output_bin = "build/unicorn.bin"
 kind = "server"
+[[services]]
+name = "ns16550a"
+path = "drivers/ns16550a"
+build_cmd = "bash build.sh"
+output_bin = "build/ns16550a.bin"
+kind = "driver"
+[[services]]
+name = "virtio-blk"
+path = "drivers/virtio/block"
+build_cmd = "bash build.sh"
+output_bin = "build/virtio-blk.bin"
+kind = "driver"
+[[services]]
+name = "drivers-manifest"
+path = "drivers/"
+build_cmd = ""
+output_bin = "manifest.toml"
+kind = "file"

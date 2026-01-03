@@ -6,6 +6,9 @@ members = [
     "service/9ball",
     "service/factotum",
     "service/unicorn",
+    "drivers/virtio/common",
+    "drivers/virtio/block",
+    "drivers/ns16550a",
     "examples/hello",
 ]
 resolver = "2"

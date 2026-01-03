@@ -13,3 +13,6 @@
 [submodule "service/unicorn"]
 	path = service/unicorn
 	url = https://github.com/Glenda-dev/unicorn.git
+[submodule "drivers"]
+	path = drivers
+	url = https://github.com/Glenda-dev/Glenda-drivers.git
