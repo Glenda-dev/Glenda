@@ -138,9 +138,23 @@ impl TCB {
         self.priority = prio;
     }
 
-    pub fn set_registers(&mut self, ra: usize, sp: usize) {
-        self.context.ra = ra;
-        self.context.sp = sp;
+    pub fn set_registers(&mut self, entry_point: usize, stack_top: usize) {
+        // 1. 获取 TrapFrame (位于内核栈顶)
+        let tf_ptr = {
+            let tf = self.get_trapframe().expect("Failed to get TrapFrame");
+
+            // 2. 设置用户态初始状态
+            tf.kernel_epc = entry_point; // sepc
+            tf.sp = stack_top;
+            tf as *mut _ as usize
+        };
+
+        // 3. 设置内核上下文，使其在被调度时跳转到 trap_return_wrapper
+        // 由于 switch_context 只恢复 Callee-Saved 寄存器，无法直接传递参数 a0
+        // 我们利用 s0 寄存器来传递 TrapFrame 指针，并使用一个 wrapper 函数
+        self.context.ra = crate::trap::user::trap_return_wrapper as usize;
+        self.context.sp = self.kstack.as_ref().unwrap().top().as_usize();
+        self.context.s0 = tf_ptr; // 将 TrapFrame 指针存入 s0
     }
 
     pub fn resume(&mut self) {

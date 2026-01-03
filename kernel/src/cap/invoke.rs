@@ -151,10 +151,12 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
             errcode::SUCCESS
         }
         tcbmethod::SET_REGISTERS => {
-            // SetRegisters: (flags, arch_flags, ...)
-            // 参数通常从 UTCB 读取，因为寄存器太多放不下
-            // 读取 UTCB 中的寄存器状态并写入 tcb.context
-            unimplemented!();
+            // SetRegisters: (entry, sp)
+            // 简化版：只设置入口点和栈指针
+            let entry = args[0];
+            let sp = args[1];
+            tcb.set_registers(entry, sp);
+            errcode::SUCCESS
         }
         tcbmethod::RESUME => {
             // Resume

@@ -131,7 +131,7 @@ pub unsafe extern "C" fn user_vector() -> ! {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 #[unsafe(link_section = "trampsec")]
-pub unsafe extern "C" fn user_return(trapframe: u64, pagetable: u64) -> ! {
+pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) -> ! {
     naked_asm!(
         "csrw satp, a1",
         "sfence.vma zero, zero",

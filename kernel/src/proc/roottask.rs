@@ -23,6 +23,9 @@ pub const INITRD_SLOT: usize = 6;
 
 pub const MEM_SLOT_START: usize = 7;
 
+pub const STACK_SIZE: usize = 16 * 1024; // 16KB
+pub const HEAP_SIZE: usize = 1024 * 1024; // 1MB
+
 /// 初始化进程子系统并创建 Root Task
 pub fn init() {
     let root_task = payload::get_root_task().expect("proc: Root task not found");

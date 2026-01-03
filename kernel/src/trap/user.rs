@@ -143,6 +143,19 @@ pub extern "C" fn trap_user_return(ctx: &mut TrapFrame) {
     user_return_fn(user_tf_va.as_usize() as u64, user_satp)
 }
 
+/// 这是一个 wrapper 函数，用于新线程第一次启动
+/// 它从 s0 寄存器获取 TrapFrame 指针，并将其移动到 a0，然后调用 trap_user_return
+/// 因为 switch_context 会恢复 s0，但不会恢复 a0
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn trap_return_wrapper() {
+    core::arch::naked_asm!(
+        "mv a0, s0",
+        "call trap_user_return",
+        "unimp" // Should not return
+    )
+}
+
 pub fn syscall_handler(ctx: &mut TrapContext) {
     let ret = syscall::dispatch(ctx);
     ctx.a0 = ret;

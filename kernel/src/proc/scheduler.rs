@@ -118,7 +118,6 @@ pub fn scheduler() -> ! {
 
         if let Some(tcb_ptr) = next_thread {
             let tcb = unsafe { &mut *tcb_ptr };
-            tcb.vspace.activate();
 
             // 更新状态
             tcb.state = ThreadState::Running;
@@ -126,6 +125,8 @@ pub fn scheduler() -> ! {
             // 获取当前 CPU 的 Hart 结构
             let hart = hart::get();
             let mut context = hart.context;
+            // TODO: Add HHDM support
+            // tcb.vspace.activate();
 
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
