@@ -148,7 +148,7 @@ fn interrupt_handler(
 
 // 外设中断处理 (基于PLIC)
 pub fn external_handler() {
-    let hartid = hart::get().id;
+    let hartid = hart::getid();
     let id = plic::claim(hartid);
     match id {
         0 => return,
@@ -160,7 +160,7 @@ pub fn external_handler() {
 }
 
 pub fn timer_handler_ssip(sstatus_bits: usize) {
-    if hart::get().id == 0 {
+    if hart::getid() == 0 {
         timer::update();
     }
     unsafe {
@@ -173,7 +173,7 @@ pub fn timer_handler_ssip(sstatus_bits: usize) {
 }
 
 pub fn timer_handler_stip(sstatus_bits: usize) {
-    if hart::get().id == 0 {
+    if hart::getid() == 0 {
         timer::update();
     }
     timer::program_next_tick();

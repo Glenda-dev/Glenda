@@ -228,13 +228,13 @@ pub fn reschedule() {
 }
 
 pub fn current() -> Option<*mut TCB> {
-    let hart = hart::get().id;
+    let hart = hart::getid();
     let tcb_ptr = unsafe { CURRENT_TCB[hart] };
     if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
 }
 
 fn set_current(tcb_ptr: *mut TCB) {
-    let hart = hart::get().id;
+    let hart = hart::getid();
     unsafe {
         CURRENT_TCB[hart] = Some(tcb_ptr);
     }

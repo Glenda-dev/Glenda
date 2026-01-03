@@ -1,6 +1,7 @@
 use super::PGSIZE;
 use super::pte::perms;
 use super::{PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::boot::initrd;
 use crate::dtb;
 use crate::mem::TRAMPOLINE_VA;
 use crate::printk;
@@ -150,7 +151,7 @@ pub fn init_kernel_vm(hartid: usize) {
     }
 
     // 映射initrd
-    if let Some(initrd) = dtb::initrd_range() {
+    if let Some(initrd) = initrd::range() {
         let initrd_start = initrd.start;
         let initrd_end = initrd.start + initrd.size;
         let initrd_size = initrd.size;

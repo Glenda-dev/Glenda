@@ -129,7 +129,7 @@ pub extern "C" fn trap_user_return() {
     // S 态页表
     ctx.kernel_satp = satp::read().bits();
     // S 态 hartid
-    ctx.kernel_hartid = hart::get().id;
+    ctx.kernel_hartid = hart::getid();
     // KSTACK(0) 顶部
     // vm::map_kstack0();
     ctx.kernel_sp = kstack_top;

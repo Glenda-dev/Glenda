@@ -1,4 +1,4 @@
-use crate::dtb;
+use crate::dtb::{self, MemoryRange};
 use crate::mem::pmem;
 use crate::mem::pte::perms;
 use crate::mem::{BOOTINFO_VA, PGSIZE};
@@ -55,6 +55,8 @@ pub struct ProcPayload {
 const PAYLOAD_MAGIC: u32 = 0x99999999;
 
 static ROOT_TASK: Once<ProcPayload> = Once::new();
+
+static INITRD_RANGE: Once<dtb::MemoryRange> = Once::new();
 
 pub fn init() {
     let initrd = dtb::initrd_range();
@@ -163,10 +165,19 @@ pub fn init() {
 
     let root_task = ProcPayload { metadata, data };
     let _ = ROOT_TASK.call_once(|| root_task);
+    let _ = INITRD_RANGE.call_once(|| range);
 }
 
 pub fn get_root_task() -> Option<&'static ProcPayload> {
     ROOT_TASK.get()
+}
+
+pub fn range() -> Option<MemoryRange> {
+    let range = INITRD_RANGE.get();
+    if range.is_none() {
+        return None;
+    }
+    Some(*range.unwrap())
 }
 
 impl ProcPayload {

@@ -2,6 +2,7 @@ use core::arch::global_asm;
 
 pub mod info;
 pub mod initrd;
+pub mod multiboot2;
 
 pub use info::BootInfo;
 pub use info::UntypedDesc;
@@ -14,7 +15,7 @@ global_asm!(
 
     .equ BOOT_STACK_SIZE, 65536 // 64KB 启动栈
     .equ MAX_BOOT_HARTS, 8  // 最多 8 个 hart 并发启动
-
+    
     .macro HART_ENTRY
         csrw sie, zero
         la   t1, boot_stack_top
@@ -56,3 +57,11 @@ pub const BOOTINFO_SIZE: usize = 4096;
 
 /// Maximum number of untyped memory regions we can describe
 pub const MAX_UNTYPED_REGIONS: usize = 128;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BootLoaderType {
+    Dtb,
+    Multiboot2,
+}
+
+pub static mut BOOT_LOADER_TYPE: BootLoaderType = BootLoaderType::Dtb;

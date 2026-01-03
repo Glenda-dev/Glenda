@@ -20,7 +20,7 @@ impl Hart {
 pub static mut HARTS: [Hart; MAX_HARTS] = [Hart::new(); MAX_HARTS];
 
 #[inline(always)]
-fn getid() -> usize {
+pub fn getid() -> usize {
     let mut id: usize;
     unsafe {
         asm!("mv {}, tp", out(reg) id);

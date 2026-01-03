@@ -432,7 +432,7 @@ fn invoke_irq_handler(irq: usize, method: usize) -> usize {
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
-            let hartid = hart::get().id;
+            let hartid = hart::getid();
             irq::ack_irq(hartid, irq);
             errcode::SUCCESS
         }

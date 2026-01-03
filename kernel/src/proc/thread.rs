@@ -185,7 +185,7 @@ impl TCB {
         tf.sp = stack_top; // 用户栈顶
         tf.kernel_epc = entry_point; // sepc
         tf.kernel_satp = satp; // 使用该线程自己的页表
-        tf.kernel_hartid = hart::get().id; // hartid
+        tf.kernel_hartid = hart::getid(); // hartid
         tf.kernel_sp = kstack_top; // 内核栈顶
         tf.kernel_trapvector = trap_user_handler as usize;
 
