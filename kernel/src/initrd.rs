@@ -5,6 +5,7 @@ use crate::mem::{BOOTINFO_VA, PGSIZE};
 use crate::mem::{PageTable, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
+use crate::proc::ElfFile;
 use spin::Once;
 
 /*
@@ -169,85 +170,32 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
 }
 
 impl ProcPayload {
-    /// 简单的 ELF 解析 (Sv39)
+    pub fn as_elf(&self) -> Option<ElfFile<'_>> {
+        ElfFile::new(self.data).ok()
+    }
+
     pub fn info(&self) -> (usize, usize) {
-        // Entry point at offset 24 (64-bit ELF)
-        let entry = 0x10000usize;
+        let entry = if let Some(elf) = self.as_elf() {
+            elf.entry_point()
+        } else {
+            0x10000 // Default for flat binary
+        };
 
         // 默认栈顶 (BootInfo 下方)
         let stack_top = BOOTINFO_VA;
         (entry, stack_top)
     }
 
-    /// 遍历 ELF Program Headers 并映射 LOAD 段
-    pub fn map_segments(&self, vspace: &mut PageTable) {
-        if self.data.len() < 64 || &self.data[0..4] != b"\x7FELF" {
-            return;
-        }
-        let phoff = u64::from_le_bytes(self.data[32..40].try_into().unwrap()) as usize;
-        let phnum = u16::from_le_bytes(self.data[56..58].try_into().unwrap()) as usize;
-        let phentsize = u16::from_le_bytes(self.data[54..56].try_into().unwrap()) as usize;
-
-        for i in 0..phnum {
-            let off = phoff + i * phentsize;
-            let p_type = u32::from_le_bytes(self.data[off..off + 4].try_into().unwrap());
-            if p_type == 1 {
-                // PT_LOAD
-                let p_offset =
-                    u64::from_le_bytes(self.data[off + 8..off + 16].try_into().unwrap()) as usize;
-                let p_vaddr =
-                    u64::from_le_bytes(self.data[off + 16..off + 24].try_into().unwrap()) as usize;
-                let p_filesz =
-                    u64::from_le_bytes(self.data[off + 32..off + 40].try_into().unwrap()) as usize;
-                let p_memsz =
-                    u64::from_le_bytes(self.data[off + 40..off + 48].try_into().unwrap()) as usize;
-                let p_flags = u32::from_le_bytes(self.data[off + 4..off + 8].try_into().unwrap());
-
-                let mut flags = PteFlags::from(perms::USER | perms::VALID);
-                if p_flags & perms::EXECUTE as u32 != 0 {
-                    flags |= perms::EXECUTE;
-                }
-                if p_flags & perms::WRITE as u32 != 0 {
-                    flags |= perms::WRITE;
-                }
-                if p_flags & perms::READ as u32 != 0 {
-                    flags |= perms::READ;
-                }
-
-                let num_pages = (p_memsz + PGSIZE - 1) / PGSIZE;
-                for j in 0..num_pages {
-                    let frame_cap =
-                        pmem::alloc_frame_cap(1).expect("Failed to alloc frame for segment");
-
-                    let va = VirtAddr::from(p_vaddr) + j * PGSIZE;
-                    let copy_size = if (j + 1) * PGSIZE <= p_filesz {
-                        PGSIZE
-                    } else if j * PGSIZE < p_filesz {
-                        p_filesz - j * PGSIZE
-                    } else {
-                        0
-                    };
-
-                    if copy_size > 0 {
-                        let src =
-                            &self.data[p_offset + j * PGSIZE..p_offset + j * PGSIZE + copy_size];
-                        unsafe {
-                            core::ptr::copy_nonoverlapping(
-                                src.as_ptr(),
-                                frame_cap.obj_ptr().as_mut_ptr::<u8>(),
-                                copy_size,
-                            );
-                        }
-                    }
-
-                    vspace.map_with_alloc(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
-                    core::mem::forget(frame_cap);
-                }
-            }
+    pub fn map(&self, vspace: &mut PageTable) {
+        if let Some(elf) = self.as_elf() {
+            let _ = elf.map(vspace);
+        } else {
+            self.map_flat(vspace);
         }
     }
+
     // Map Flat Entire Binary
-    pub fn map(&self, vspace: &mut PageTable) {
+    pub fn map_flat(&self, vspace: &mut PageTable) {
         // Copy data into newly allocated frames
         let flags = PteFlags::from(
             perms::USER | perms::READ | perms::EXECUTE | perms::WRITE | perms::VALID,

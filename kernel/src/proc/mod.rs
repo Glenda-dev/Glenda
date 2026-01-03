@@ -1,9 +1,11 @@
 pub mod context;
+pub mod elf;
 pub mod roottask;
 pub mod scheduler;
 pub mod thread;
 
 pub use context::ProcContext;
+pub use elf::ElfFile;
 pub use thread::KSTACK_PAGES;
 pub use thread::{TCB, ThreadState};
 
