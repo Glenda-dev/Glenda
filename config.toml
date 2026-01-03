@@ -44,4 +44,4 @@ path = "lib/libglenda-rs"
 build_cmd_release = "bash build.sh --release"
 build_cmd_debug = "bash build.sh"
 [features]
-kernel = ""
+kernel = []

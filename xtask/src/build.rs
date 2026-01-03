@@ -23,7 +23,7 @@ pub fn build(mode: &str, config_path: Option<&str>) -> anyhow::Result<()> {
 }
 
 pub fn build_kernel(mode: &str, cfg: &Config) -> anyhow::Result<()> {
-    let features = cfg.features.get("kernel").map(|s| s.as_str()).unwrap_or("");
+    let features = cfg.features.get("kernel").map(|arr| arr.join(",")).unwrap_or_default();
     let mut cmd = Command::new("cargo");
     cmd.current_dir("kernel");
     cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
@@ -59,7 +59,7 @@ pub fn build_libraries(mode: &str, cfg: &Config) -> anyhow::Result<()> {
             c.build_cmd_debug.as_ref()
         };
         let name = &c.name;
-        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
+        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
 
         if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building Library {} with: {}", c.name, cmd_str);
@@ -99,7 +99,7 @@ pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
 
         let name = &root_task_cfg.name;
 
-        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
+        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
 
         if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building Root Task {} with: {}", root_task_cfg.name, cmd_str);
@@ -139,7 +139,7 @@ pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
             c.build_cmd_debug.as_ref()
         };
         let name = &c.name;
-        let features = cfg.features.get(name).map(|s| s.as_str()).unwrap_or("");
+        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
 
         if let Some(cmd_str) = cmd_str {
             eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);

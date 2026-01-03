@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use toml::value::Array;
 
 #[derive(Debug, Deserialize)]
 pub struct Service {
@@ -23,12 +24,12 @@ pub struct Library {
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    #[serde(rename = "services")]
+    #[serde(default)]
     pub services: Vec<Service>,
     #[serde(default)]
     pub libraries: Vec<Library>,
     #[serde(default)]
-    pub features: std::collections::HashMap<String, String>,
+    pub features: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Config {
