@@ -19,9 +19,8 @@ pub struct UTCB {
     pub recv_window: CapPtr,
     /// 线程本地存储指针
     pub tls: VirtAddr,
-    pub cursor: usize,
-    /// ipc缓冲区大小
-    pub buffer_size: usize,
+    pub head: usize,
+    pub tail: usize,
     /// ipc缓冲区
     pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }
@@ -35,17 +34,18 @@ impl UTCB {
         dest.cap_transfer = self.cap_transfer;
         dest.recv_window = self.recv_window;
         dest.tls = self.tls;
-        dest.buffer_size = self.buffer_size;
+        dest.head = self.head;
+        dest.tail = self.tail;
         unsafe {
             core::ptr::copy_nonoverlapping(
                 &self.ipc_buffer as *const [u8; BUFFER_MAX_SIZE],
                 &mut dest.ipc_buffer as *mut [u8; BUFFER_MAX_SIZE],
-                self.buffer_size,
+                BUFFER_MAX_SIZE,
             );
         }
     }
     pub fn get_str(&self, offset: usize, len: usize) -> Option<&str> {
-        if offset + len > self.buffer_size {
+        if offset + len > BUFFER_MAX_SIZE {
             return None;
         }
         let slice = &self.ipc_buffer[offset..offset + len];

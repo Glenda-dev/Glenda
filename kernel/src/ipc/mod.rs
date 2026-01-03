@@ -11,7 +11,7 @@ use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
-pub use utcb::MAX_MRS;
+pub use utcb::{BUFFER_MAX_SIZE, MAX_MRS};
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
@@ -36,7 +36,25 @@ unsafe fn copy_msg(
     let src = unsafe { &*src_ptr };
     let dst = unsafe { &mut *dst_ptr };
     // 1. 传递消息内容
-    src.copy_to(dst);
+    // 将发送者的 msg_tag 拷贝到接收者的 msg_tag
+    dst.msg_tag = src.msg_tag;
+    // 拷贝 mrs_regs
+    for i in 0..MAX_MRS {
+        dst.mrs_regs[i] = src.mrs_regs[i];
+    }
+
+    dst.cap_transfer = src.cap_transfer;
+    dst.recv_window = src.recv_window;
+    dst.tls = src.tls;
+    dst.head = src.head;
+    dst.tail = src.tail;
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            &src.ipc_buffer as *const [u8; BUFFER_MAX_SIZE],
+            &mut dst.ipc_buffer as *mut [u8; BUFFER_MAX_SIZE],
+            BUFFER_MAX_SIZE,
+        );
+    }
     // 2. 传递 Badge
     set_badge(receiver, badge);
 

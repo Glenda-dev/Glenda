@@ -45,10 +45,9 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize) -> usize {
             if !cap.has_rights(rights::SEND) {
                 return errcode::PERMISSION_DENIED;
             }
-            let msg_info = utcb.mrs_regs[0];
+            let tag = utcb.msg_tag;
             // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
             let mut cap_to_send = None;
-            let tag = ipc::MsgTag(msg_info);
             if tag.has_cap() {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if (cap.rights & rights::GRANT) != 0 {
@@ -70,9 +69,8 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize) -> usize {
             if !cap.has_rights(rights::CALL) {
                 return errcode::PERMISSION_DENIED;
             }
-            let msg_info = utcb.mrs_regs[0];
+            let tag = utcb.msg_tag;
             let mut cap_to_send = None;
-            let tag = ipc::MsgTag(msg_info);
             if tag.has_cap() {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if (cap.rights & rights::GRANT) != 0 {
@@ -151,10 +149,11 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize) -> usize {
             errcode::SUCCESS
         }
         tcbmethod::SET_REGISTERS => {
-            // SetRegisters: (entry, sp)
+            // SetRegisters: (flags, entry, sp)
             // 简化版：只设置入口点和栈指针
-            let entry = utcb.mrs_regs[0];
-            let sp = utcb.mrs_regs[1];
+            let _flags = utcb.mrs_regs[0];
+            let entry = utcb.mrs_regs[1];
+            let sp = utcb.mrs_regs[2];
             tcb.set_registers(entry, sp);
             errcode::SUCCESS
         }
