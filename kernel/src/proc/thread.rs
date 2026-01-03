@@ -65,7 +65,6 @@ pub struct TCB {
 
     // --- UTCB (User Thread Control Block) ---
     pub utcb_frame: Option<Capability>, // UTCB 所在的物理帧 (以 Capability 形式存储)
-    pub utcb_base: VirtAddr,            // UTCB 在用户地址空间中的基址
 
     // Priveleged Thread Indicator
     pub privileged: bool, // 是否为内核线程
@@ -93,7 +92,6 @@ impl TCB {
             ipc_badge: 0,
             ipc_cap: None,
             utcb_frame: None,
-            utcb_base: VirtAddr::null(),
             privileged: false,
         }
     }
@@ -152,7 +150,6 @@ impl TCB {
         cspace: Option<&Capability>,
         vspace: Option<&Capability>,
         utcb_frame: Option<&Capability>,
-        utcb_vaddr: Option<VirtAddr>,
         trapframe: Option<&Capability>,
         kstack: Option<&Capability>,
     ) {
@@ -164,9 +161,6 @@ impl TCB {
         }
         if !utcb_frame.is_none() {
             self.utcb_frame = utcb_frame.cloned();
-        }
-        if !utcb_vaddr.is_none() {
-            self.utcb_base = utcb_vaddr.unwrap();
         }
         if !trapframe.is_none() {
             self.trapframe = trapframe.cloned();

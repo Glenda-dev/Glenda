@@ -2,7 +2,7 @@ use crate::dtb;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
 use crate::mem::{BOOTINFO_VA, PGSIZE};
-use crate::mem::{PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::mem::{PageTable, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use spin::Once;
@@ -122,7 +122,13 @@ pub fn init() {
     let name_end = name_buf.iter().position(|&c| c == 0).unwrap_or(32);
     let name = core::str::from_utf8(&name_buf[..name_end]).unwrap_or("<invalid utf8>");
 
-    printk!("initrd: Found Root Task: type={} offset={} size={} name={}\n", t, offset, size, name);
+    printk!(
+        "initrd: Found Root Task: type={} offset={} size={}KB name={}\n",
+        t,
+        offset,
+        size / 1024,
+        name
+    );
 
     if t != 0 {
         // 0 is RootTask

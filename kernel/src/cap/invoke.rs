@@ -9,45 +9,50 @@ use crate::ipc;
 use crate::irq;
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::proc::{TCB, scheduler};
-use crate::trap::syscall::{Args, errcode};
+use crate::trap::syscall::errcode;
 use core::mem::size_of;
 
-pub fn dispatch(cap: &Capability, method: usize, args: &Args) -> usize {
+pub fn dispatch(cap: &Capability, method: usize) -> usize {
     // 4. 根据对象类型分发
     match cap.object {
-        CapType::Endpoint { ep_ptr } => invoke_ipc(ep_ptr, &cap, method, &args),
-        CapType::Thread { tcb_ptr } => invoke_tcb(tcb_ptr, method, &args),
-        CapType::PageTable { paddr, .. } => invoke_pagetable(paddr, method, &args),
-        CapType::CNode { paddr, bits, .. } => invoke_cnode(paddr, bits, method, &args),
-        CapType::Untyped { start_paddr, size } => invoke_untyped(start_paddr, size, method, &args),
-        CapType::IrqHandler { irq } => invoke_irq_handler(irq, method, &args),
-        CapType::Reply { tcb_ptr } => invoke_reply(tcb_ptr, method, &args),
-        CapType::Console => invoke_console(method, &args),
+        CapType::Endpoint { ep_ptr } => invoke_ipc(ep_ptr, &cap, method),
+        CapType::Thread { tcb_ptr } => invoke_tcb(tcb_ptr, method),
+        CapType::PageTable { paddr, .. } => invoke_pagetable(paddr, method),
+        CapType::CNode { paddr, bits, .. } => invoke_cnode(paddr, bits, method),
+        CapType::Untyped { start_paddr, size } => invoke_untyped(start_paddr, size, method),
+        CapType::IrqHandler { irq } => invoke_irq_handler(irq, method),
+        CapType::Reply { tcb_ptr } => invoke_reply(tcb_ptr, method),
+        CapType::Console => invoke_console(method),
         _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
     }
 }
 
 // --- IPC ipc::Endpoint Methods ---
 
-fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) -> usize {
+fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize) -> usize {
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let badge = cap.get_badge();
+
+    // 获取 UTCB 以读取参数 (msg_info)
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         ipcmethod::SEND => {
             if !cap.has_rights(rights::SEND) {
                 return errcode::PERMISSION_DENIED;
             }
-            let msg_info = args[0];
+            let msg_info = utcb.mrs_regs[0];
             // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
             let mut cap_to_send = None;
             let tag = ipc::MsgTag(msg_info);
             if tag.has_cap() {
-                if let Some(utcb) = tcb.get_utcb() {
-                    if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
-                        if (cap.rights & rights::GRANT) != 0 {
-                            cap_to_send = Some(cap);
-                        }
+                if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+                    if (cap.rights & rights::GRANT) != 0 {
+                        cap_to_send = Some(cap);
                     }
                 }
             }
@@ -65,15 +70,13 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
             if !cap.has_rights(rights::CALL) {
                 return errcode::PERMISSION_DENIED;
             }
-            let msg_info = args[0];
+            let msg_info = utcb.mrs_regs[0];
             let mut cap_to_send = None;
             let tag = ipc::MsgTag(msg_info);
             if tag.has_cap() {
-                if let Some(utcb) = tcb.get_utcb() {
-                    if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
-                        if (cap.rights & rights::GRANT) != 0 {
-                            cap_to_send = Some(cap);
-                        }
+                if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+                    if (cap.rights & rights::GRANT) != 0 {
+                        cap_to_send = Some(cap);
                     }
                 }
             }
@@ -91,7 +94,7 @@ fn invoke_ipc(ep_ptr: VirtAddr, cap: &Capability, method: usize, args: &Args) ->
     }
 }
 
-fn invoke_reply(tcb_ptr: VirtAddr, method: usize, _args: &Args) -> usize {
+fn invoke_reply(tcb_ptr: VirtAddr, method: usize) -> usize {
     let target_tcb = tcb_ptr.as_mut::<TCB>();
     let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     match method {
@@ -105,19 +108,22 @@ fn invoke_reply(tcb_ptr: VirtAddr, method: usize, _args: &Args) -> usize {
 
 // --- TCB Methods ---
 
-fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
+fn invoke_tcb(tcb_ptr: VirtAddr, method: usize) -> usize {
     let tcb = tcb_ptr.as_mut::<TCB>();
+    let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match current_tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         tcbmethod::CONFIGURE => {
-            // args: [cspace_cptr, vspace_cptr, utcb_cptr, utcb_addr, tf_cptr, kstack_cptr]
-            let cspace_cptr = args[0];
-            let vspace_cptr = args[1];
-            let utcb_cptr = args[2];
-            let utcb_addr = args[3];
-            let tf_cptr = args[4];
-            let kstack_cptr = args[5];
-            let current_tcb =
-                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
+            // args: [cspace_cptr, vspace_cptr, utcb_cptr, tf_cptr, kstack_cptr]
+            let cspace_cptr = utcb.mrs_regs[0];
+            let vspace_cptr = utcb.mrs_regs[1];
+            let utcb_cptr = utcb.mrs_regs[2];
+            let tf_cptr = utcb.mrs_regs[3];
+            let kstack_cptr = utcb.mrs_regs[4];
 
             // 查找并验证能力
             let cspace_cap = current_tcb.cap_lookup(cspace_cptr);
@@ -125,14 +131,12 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
             let utcb_cap = current_tcb.cap_lookup(utcb_cptr);
             let tf_cap = current_tcb.cap_lookup(tf_cptr);
             let kstack_cap = current_tcb.cap_lookup(kstack_cptr);
-            let utcb_va = if utcb_addr != 0 { Some(VirtAddr::from(utcb_addr)) } else { None };
 
             // 简化的配置逻辑
             tcb.configure(
                 cspace_cap.as_ref(),
                 vspace_cap.as_ref(),
                 utcb_cap.as_ref(),
-                utcb_va,
                 tf_cap.as_ref(),
                 kstack_cap.as_ref(),
             );
@@ -140,7 +144,7 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
         }
         tcbmethod::SET_PRIORITY => {
             // SetPriority: (prio)
-            let prio = args[0] as u8;
+            let prio = utcb.mrs_regs[0] as u8;
             tcb.set_priority(prio);
             // 如果修改了优先级，可能需要触发重新调度
             scheduler::reschedule();
@@ -149,16 +153,14 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
         tcbmethod::SET_REGISTERS => {
             // SetRegisters: (entry, sp)
             // 简化版：只设置入口点和栈指针
-            let entry = args[0];
-            let sp = args[1];
+            let entry = utcb.mrs_regs[0];
+            let sp = utcb.mrs_regs[1];
             tcb.set_registers(entry, sp);
             errcode::SUCCESS
         }
         tcbmethod::SET_FAULT_HANDLER => {
             // SetFaultHandler: (ep_cptr)
-            let ep_cptr = args[0];
-            let current_tcb =
-                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
+            let ep_cptr = utcb.mrs_regs[0];
             if let Some(ep_cap) = current_tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
@@ -191,18 +193,23 @@ fn invoke_tcb(tcb_ptr: VirtAddr, method: usize, args: &Args) -> usize {
 
 // --- PageTable Methods ---
 
-fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &Args) -> usize {
+fn invoke_pagetable(paddr: PhysAddr, method: usize) -> usize {
     // PageTable 需要物理地址转虚拟地址才能操作
     let pt_ptr = paddr.to_va();
     let pt = pt_ptr.as_mut::<PageTable>();
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         pagetablemethod::MAP => {
             // Map: (frame_cap, vaddr, flags)
-            let frame_cptr = args[0];
-            let vaddr = VirtAddr::from(args[1]);
-            let flags = PteFlags::from(args[2]);
+            let frame_cptr = utcb.mrs_regs[0];
+            let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
+            let flags = PteFlags::from(utcb.mrs_regs[2]);
 
-            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             let frame_cap = match tcb.cap_lookup(frame_cptr) {
                 Some(c) => c,
                 None => return errcode::INVALID_CAP,
@@ -221,8 +228,8 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &Args) -> usize {
         }
         pagetablemethod::UNMAP => {
             // Unmap: (vaddr, size)
-            let vaddr = VirtAddr::from(args[0]);
-            let size = args[1];
+            let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
+            let size = utcb.mrs_regs[1];
             match pt.unmap(vaddr, size) {
                 Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
@@ -234,18 +241,23 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize, args: &Args) -> usize {
 
 // --- CNode methods ---
 
-fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize {
+fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize) -> usize {
     let mut cnode = CNode::from_addr(paddr, bits);
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         cnodemethod::MINT => {
             // Mint: (src_cptr, dest_slot, badge, rights)
-            let src_cptr = args[0];
-            let dest_slot = args[1];
-            let badge_val = args[2];
-            let rights = args[3];
+            let src_cptr = utcb.mrs_regs[0];
+            let dest_slot = utcb.mrs_regs[1];
+            let badge_val = utcb.mrs_regs[2];
+            let rights = utcb.mrs_regs[3];
             let badge = if badge_val == 0 { None } else { Some(badge_val) };
 
-            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
                 let new_cap = src_cap.mint(badge, rights as u8);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
@@ -259,11 +271,10 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
         }
         cnodemethod::COPY => {
             // Copy: (src_cptr, dest_slot, rights)
-            let src_cptr = args[0];
-            let dest_slot = args[1];
-            let rights = args[2] as u8;
+            let src_cptr = utcb.mrs_regs[0];
+            let dest_slot = utcb.mrs_regs[1];
+            let rights = utcb.mrs_regs[2] as u8;
 
-            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
                 let new_cap = src_cap.mint(None, rights);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
@@ -277,7 +288,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
         }
         cnodemethod::DELETE => {
             // Delete: (slot)
-            let slot = args[0];
+            let slot = utcb.mrs_regs[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode.delete(slot);
@@ -288,7 +299,7 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
         }
         cnodemethod::REVOKE => {
             // Revoke: (slot)
-            let slot = args[0];
+            let slot = utcb.mrs_regs[0];
             let slot_addr = cnode.get_slot_addr(slot);
             if slot_addr != PhysAddr::null() {
                 cnode.revoke(slot);
@@ -301,17 +312,22 @@ fn invoke_cnode(paddr: PhysAddr, bits: u8, method: usize, args: &Args) -> usize 
     }
 }
 
-fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> usize {
+fn invoke_untyped(start: PhysAddr, size: usize, method: usize) -> usize {
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         untypedmethod::RETYPE => {
             // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset)
-            let obj_type = args[0];
-            let obj_size_bits = args[1];
-            let n_objects = args[2];
-            let dest_cnode_cptr = args[3];
-            let dest_slot_offset = args[4];
+            let obj_type = utcb.mrs_regs[0];
+            let obj_size_bits = utcb.mrs_regs[1];
+            let n_objects = utcb.mrs_regs[2];
+            let dest_cnode_cptr = utcb.mrs_regs[3];
+            let dest_slot_offset = utcb.mrs_regs[4];
 
-            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
                 None => return errcode::INVALID_CAP,
@@ -391,14 +407,18 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize, args: &Args) -> u
     }
 }
 
-fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
+fn invoke_irq_handler(irq: usize, method: usize) -> usize {
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         irqmethod::SET_NOTIFICATION => {
             // SetNotification: args[0] = ep_cptr
-            let ep_cptr = args[0];
+            let ep_cptr = utcb.mrs_regs[0];
 
-            let tcb =
-                unsafe { &mut *scheduler::current().expect("No current TCB in exception handler") };
             if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if let CapType::Endpoint { .. } = ep_cap.object {
@@ -424,7 +444,7 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
         }
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority
-            let priority = args[0];
+            let priority = utcb.mrs_regs[0];
             irq::plic::set_priority(irq, priority);
             errcode::SUCCESS
         }
@@ -432,26 +452,27 @@ fn invoke_irq_handler(irq: usize, method: usize, args: &Args) -> usize {
     }
 }
 
-fn invoke_console(method: usize, args: &Args) -> usize {
+fn invoke_console(method: usize) -> usize {
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
     match method {
         consolemethod::PUT_CHAR => {
-            let c = args[0] as u8 as char;
+            let c = utcb.mrs_regs[0] as u8 as char;
             crate::printk!("{}", c);
             errcode::SUCCESS
         }
         consolemethod::PUT_STR => {
-            let offset = args[0];
-            let len = args[1];
-            let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
-            if let Some(utcb) = tcb.get_utcb() {
-                if let Some(s) = utcb.get_str(offset, len) {
-                    crate::printk!("{}", s);
-                    errcode::SUCCESS
-                } else {
-                    errcode::INVALID_SLOT
-                }
+            let offset = utcb.mrs_regs[0];
+            let len = utcb.mrs_regs[1];
+            if let Some(s) = utcb.get_str(offset, len) {
+                crate::printk!("{}", s);
+                errcode::SUCCESS
             } else {
-                errcode::MAPPING_FAILED
+                errcode::INVALID_SLOT
             }
         }
         _ => errcode::INVALID_METHOD,

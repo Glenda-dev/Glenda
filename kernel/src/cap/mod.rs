@@ -8,7 +8,10 @@ pub use capability::Capability;
 pub use captype::CapType;
 pub use cnode::{CNode, Slot};
 
+use crate::ipc::MAX_MRS;
+
 pub type CapPtr = usize;
+pub type Args = [usize; MAX_MRS];
 
 /// 能力权限位 (Bitmask)
 pub mod rights {

@@ -126,7 +126,6 @@ pub fn init() {
         Some(&caps.cspace),
         Some(&caps.vspace),
         Some(&caps.utcb),
-        Some(VirtAddr::from(UTCB_VA)),
         Some(&caps.tf),
         Some(&caps.kstack),
     );

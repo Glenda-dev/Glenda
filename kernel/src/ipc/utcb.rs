@@ -1,5 +1,8 @@
 use super::MsgTag;
+use crate::cap::CapPtr;
 use crate::mem::VirtAddr;
+
+pub const MAX_MRS: usize = 7; // 最大消息寄存器数量
 
 /// 用户线程控制块 (UTCB)
 /// 映射到用户地址空间，用于内核与用户态之间的高效数据交换
@@ -9,19 +12,16 @@ pub struct UTCB {
     /// 消息标签 (MR0)
     pub msg_tag: MsgTag,
     /// 消息寄存器 (MR1-MR7) - 对应 CPU 寄存器
-    pub mrs_regs: [usize; 7],
-
+    pub mrs_regs: [usize; MAX_MRS],
     /// Capability 传递描述符 (CPTR)
-    pub cap_transfer: usize,
+    pub cap_transfer: CapPtr,
     /// 接收窗口描述符 (CNode CPTR + Index)
-    pub recv_window: usize,
-
+    pub recv_window: CapPtr,
     /// 线程本地存储指针
     pub tls: VirtAddr,
-
+    pub cursor: usize,
     /// ipc缓冲区大小
     pub buffer_size: usize,
-
     /// ipc缓冲区
     pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }

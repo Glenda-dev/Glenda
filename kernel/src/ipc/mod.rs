@@ -11,6 +11,7 @@ use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
+pub use utcb::MAX_MRS;
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
