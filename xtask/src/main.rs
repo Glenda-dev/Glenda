@@ -70,6 +70,9 @@ enum Cmd {
         /// Run tests instead of normal kernel
         #[arg(long, default_value_t = false)]
         test: bool,
+
+        #[arg(long, default_value_t = 1234)]
+        port: u16,
     },
     /// Disassemble the kernel ELF
     Objdump,
@@ -100,7 +103,7 @@ fn main() -> anyhow::Result<()> {
             fs::mkfs()?;
             qemu::qemu_run(mode, cpus, &mem, &display)?;
         }
-        Cmd::Gdb { cpus, mem, display, test } => {
+        Cmd::Gdb { cpus, mem, display, test, port } => {
             let mut feats = xtask.features.clone();
             if test == true {
                 if !feats.iter().any(|f| f == "tests") {
@@ -109,7 +112,7 @@ fn main() -> anyhow::Result<()> {
             }
             build::build(mode, &feats, xtask.config.as_deref())?;
             fs::mkfs()?;
-            qemu::qemu_gdb(mode, cpus, &mem, &display)?;
+            qemu::qemu_gdb(mode, cpus, &mem, &display, port)?;
         }
         Cmd::Test { cpus, mem, display } => {
             let mut feats = xtask.features.clone();

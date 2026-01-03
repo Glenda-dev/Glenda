@@ -40,7 +40,7 @@ pub fn qemu_run(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     run(&mut cmd)
 }
 
-pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<()> {
+pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str, port: u16) -> anyhow::Result<()> {
     let elf = PathBuf::from("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel");
     if !elf.exists() {
         return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
@@ -66,12 +66,17 @@ pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
     cmd.arg("-initrd").arg("target/modules.bin");
     cmd.arg("-append").arg("console=ttyS0 loglevel=7");
-    cmd.arg("-bios").arg("default").arg("-S").arg("-s").arg("-kernel").arg(elf.to_str().unwrap());
+    cmd.arg("-gdb").arg(format!("tcp::{port}"));
+    cmd.arg("-bios").arg("default").arg("-S").arg("-kernel").arg(elf.to_str().unwrap());
     eprintln!("QEMU started. In another shell:");
     if which("gdb").is_ok() {
-        eprintln!("  gdb -ex 'set architecture riscv:rv64' -ex 'target remote :1234' -ex 'symbol-file {}'", elf.display());
+        eprintln!(
+            "  gdb -ex 'set architecture riscv:rv64' -ex 'target remote :{}' -ex 'symbol-file {}'",
+            port,
+            elf.display()
+        );
     } else {
-        eprintln!("[ ERROR ] install gdb or riscv64elf-gdb first");
+        eprintln!("[ ERROR ] install gdb or riscv64-elf-gdb first");
     }
     run(&mut cmd)
 }
