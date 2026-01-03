@@ -1,9 +1,0 @@
-[package]
-name = "virtio-blk"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-libglenda-rs = { path = "../../../lib/libglenda-rs" }
-virtio-common = { path = "../common" }
-volatile = "0.4"
