@@ -83,12 +83,6 @@ impl<'a> ElfFile<'a> {
     pub fn map(&self, vspace: &mut PageTable) -> Result<(), &'static str> {
         for ph in self.program_headers() {
             if ph.p_type == PT_LOAD {
-                printk!(
-                    "elf: Mapping segment at vaddr {:#x}, filesz: {}, memsz: {}\n",
-                    ph.p_vaddr,
-                    ph.p_filesz,
-                    ph.p_memsz
-                );
                 let mut flags = PteFlags::from(perms::USER | perms::VALID);
                 if ph.p_flags & PF_X != 0 {
                     flags |= perms::EXECUTE;
@@ -99,6 +93,13 @@ impl<'a> ElfFile<'a> {
                 if ph.p_flags & PF_R != 0 {
                     flags |= perms::READ;
                 }
+                printk!(
+                    "elf: Mapping segment at vaddr {:#x}, filesz: {}, memsz: {}, perms: {:?}\n",
+                    ph.p_vaddr,
+                    ph.p_filesz,
+                    ph.p_memsz,
+                    flags
+                );
                 let start_va = ph.p_vaddr as usize;
 
                 // We need to handle cases where p_vaddr is not page-aligned

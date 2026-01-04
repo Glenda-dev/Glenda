@@ -4,7 +4,7 @@ target = "riscv64gc-unknown-none-elf"
 [target.riscv64gc-unknown-none-elf]
 rustflags = [
     "-C",
-    "link-arg=-Tservice/9ball/linker.ld",
+    "link-arg=-Tlib/libglenda-rs/linker.ld",
     "-C",
     "link-arg=--gc-sections",
 ]

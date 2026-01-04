@@ -9,7 +9,7 @@ use crate::cap::rights;
 use crate::dtb;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{BOOTINFO_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
+use crate::mem::{BOOTINFO_VA, INITRD_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 
@@ -132,6 +132,8 @@ pub fn init() {
 
     // 7. Start Task
     start_root_task(tcb, entry_point, stack_top);
+
+    //vspace.debug_print();
 }
 /*
 用户地址空间布局：
@@ -189,6 +191,16 @@ fn init_vspace(
         PteFlags::from(perms::USER | perms::READ), // 只读
     );
 
+    // 映射 Initrd 到固定位置
+    if let Some(range) = dtb::initrd_range() {
+        vspace.map_with_alloc(
+            VirtAddr::from(INITRD_VA),
+            range.start,
+            range.size,
+            PteFlags::from(perms::USER | perms::READ),
+        );
+    }
+
     // 映射用户栈 (16KB)
     // Stack Top = BOOTINFO_VA
     // Range: [BOOTINFO_VA - 16KB, BOOTINFO_VA)
@@ -221,18 +233,6 @@ fn init_vspace(
         );
         core::mem::forget(frame);
     }
-
-    // 映射initrd
-    let initrd_range = initrd::range().expect("No initrd found");
-    let initrd_start = initrd_range.start;
-    let initrd_size = initrd_range.size;
-    let initrd_va = VirtAddr::from(0x3000_0000);
-    vspace.map_with_alloc(
-        initrd_va,
-        initrd_start,
-        initrd_size,
-        PteFlags::from(perms::USER | perms::READ),
-    );
 }
 
 /// 填充 Root CNode
