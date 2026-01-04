@@ -1,7 +1,6 @@
 use super::BOOTINFO_MAGIC;
 use super::MAX_UNTYPED_REGIONS;
 use crate::cap::CapPtr;
-use crate::cap::Slot;
 use crate::mem::PhysAddr;
 
 #[repr(C)]

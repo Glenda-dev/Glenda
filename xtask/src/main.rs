@@ -25,21 +25,7 @@ enum Cmd {
     /// Build then boot the kernel in QEMU
     Run {
         /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 4)]
-        cpus: u32,
-
-        /// Memory for QEMU (e.g. 128M, 1G)
-        #[arg(long, default_value = "128M")]
-        mem: String,
-
-        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
-        #[arg(long, default_value = "nographic")]
-        display: String,
-    },
-    /// Run kernel tests
-    Test {
-        /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 4)]
+        #[arg(long, default_value_t = 1)]
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
@@ -53,7 +39,7 @@ enum Cmd {
     /// Start QEMU paused and wait for GDB
     Gdb {
         /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 4)]
+        #[arg(long, default_value_t = 1)]
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
@@ -106,11 +92,6 @@ fn main() -> anyhow::Result<()> {
             build::build(mode, xtask.config.as_deref())?;
             fs::mkfs()?;
             qemu::qemu_gdb(mode, cpus, &mem, &display, port)?;
-        }
-        Cmd::Test { cpus, mem, display } => {
-            build::build(mode, xtask.config.as_deref())?;
-            fs::mkfs()?;
-            qemu::qemu_run(mode, cpus, &mem, &display)?;
         }
         Cmd::Objdump => util::objdump(mode)?,
         Cmd::Size => util::size(mode)?,
