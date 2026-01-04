@@ -1,5 +1,7 @@
 # Glenda Kernel
 > 文档在 docs 文件夹下
+>
+> 通过网盘分享的文件：glenda.mkv 链接: https://pan.baidu.com/s/1OjNj-4w-d-jKo7oikRCpLg?pwd=1145 提取码: 1145
 ```plaintext
                  __
                 /  )
