@@ -21,9 +21,9 @@ pub const VSPACE_SLOT: usize = 2;
 pub const TCB_SLOT: usize = 3;
 pub const UTCB_SLOT: usize = 4;
 pub const MEM_SLOT: usize = 5;
-pub const CONSOLE_SLOT: usize = 6;
-pub const INITRD_SLOT: usize = 7;
-pub const DTB_SLOT: usize = 8;
+pub const CONSOLE_SLOT: usize = 7;
+pub const INITRD_SLOT: usize = 8;
+pub const DTB_SLOT: usize = 9;
 
 pub const BOOTINFO_SLOT_START: usize = 32;
 

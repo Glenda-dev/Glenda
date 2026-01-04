@@ -1,3 +1,5 @@
+use riscv::asm::{sfence_vma, sfence_vma_all};
+
 use super::Pte;
 use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
@@ -127,6 +129,7 @@ impl PageTable {
             }
             current_va += PGSIZE;
         }
+        sfence_vma_all();
         Ok(())
     }
 

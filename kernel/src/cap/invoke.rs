@@ -228,7 +228,7 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
             // Map: (frame_cap, vaddr, flags)
             let frame_cptr = utcb.mrs_regs[0];
             let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
-            let flags = PteFlags::from(utcb.mrs_regs[2]) & perms::USER;
+            let flags = PteFlags::from(utcb.mrs_regs[2]);
 
             let frame_cap = match tcb.cap_lookup(frame_cptr) {
                 Some(c) => c,
@@ -280,6 +280,10 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
             Ok(()) => errcode::SUCCESS,
             Err(_) => errcode::MAPPING_FAILED,
         },
+        pagetablemethod::DEBUG_PRINT => {
+            pt.debug_print();
+            errcode::SUCCESS
+        }
 
         _ => errcode::INVALID_METHOD,
     }
