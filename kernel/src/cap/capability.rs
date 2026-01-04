@@ -109,8 +109,8 @@ impl Capability {
         self.badge.is_some()
     }
 
-    pub fn create_untyped(start_paddr: PhysAddr, size: usize, rights: u8) -> Self {
-        Self::new(CapType::Untyped { start_paddr, size, free_offset: 0 }, rights)
+    pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: u8) -> Self {
+        Self::new(CapType::Untyped { start_paddr, total_pages, free_pages: 0 }, rights)
     }
 
     pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
@@ -134,8 +134,8 @@ impl Capability {
         Self::new(CapType::PageTable { paddr, level }, rights)
     }
 
-    pub fn create_cnode(paddr: PhysAddr, bits: u8, rights: u8) -> Self {
-        Self::new(CapType::CNode { paddr, bits }, rights)
+    pub fn create_cnode(paddr: PhysAddr, rights: u8) -> Self {
+        Self::new(CapType::CNode { paddr }, rights)
     }
 
     pub fn create_irqhandler(irq: usize, rights: u8) -> Self {

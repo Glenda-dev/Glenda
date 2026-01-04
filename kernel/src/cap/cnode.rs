@@ -37,15 +37,17 @@ pub struct Slot {
     pub cdt: CDTNode,
 }
 
+pub const CNODE_BITS: usize = 12; // 4096 slots per CNode
+pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
+
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
 pub struct CNode {
     paddr: PhysAddr,
-    bits: u8,
 }
 
 impl CNode {
-    pub fn new(paddr: PhysAddr, bits: u8) -> Self {
+    pub fn new(paddr: PhysAddr) -> Self {
         // 初始化 Header
         let header_ptr = paddr.as_mut::<CNodeHeader>();
         unsafe {
@@ -53,22 +55,22 @@ impl CNode {
             // 初始化所有 Slot 为 Empty
             let slots_ptr =
                 (paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
-            for i in 0..(1 << bits) {
+            for i in 0..(1 << 12) {
                 core::ptr::write(
                     slots_ptr.add(i),
                     Slot { cap: Capability::empty(), cdt: CDTNode::new() },
                 );
             }
         }
-        Self { paddr, bits }
+        Self { paddr }
     }
 
-    pub fn from_addr(paddr: PhysAddr, bits: u8) -> Self {
-        Self { paddr, bits }
+    pub fn from_addr(paddr: PhysAddr) -> Self {
+        Self { paddr }
     }
 
     pub fn size(&self) -> usize {
-        1 << self.bits
+        1 << CNODE_BITS
     }
 
     fn get_header(&self) -> *mut CNodeHeader {

@@ -11,8 +11,8 @@ pub enum CapType {
     /// 可通过 Retype 操作分裂或转换为其他内核对象
     Untyped {
         start_paddr: PhysAddr,
-        size: usize,
-        free_offset: usize,
+        total_pages: usize,
+        free_pages: usize,
     },
 
     /// 线程控制块 (TCB)
@@ -53,9 +53,9 @@ pub enum CapType {
 
     /// 能力节点 (CNode)
     /// CSpace 的组成部分，本质上是一个 Capability 数组
+    /// 12bits 4096 slots per
     CNode {
         paddr: PhysAddr, // CNode 占用的物理页地址
-        bits: u8,        // CNode 大小 = 2^bits 个 Slot
     },
 
     /// 中断处理权限
@@ -70,6 +70,7 @@ pub enum CapType {
 }
 
 pub mod types {
+    pub const UNTYPED: usize = 0;
     pub const CNODE: usize = 1;
     pub const TCB: usize = 2;
     pub const ENDPOINT: usize = 3;

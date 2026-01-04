@@ -1,5 +1,5 @@
 use super::ProcContext;
-use crate::cap::{CapType, Capability};
+use crate::cap::{CNode, CapType, Capability};
 use crate::hart;
 use crate::ipc::UTCB;
 use crate::mem::pmem;
@@ -226,10 +226,10 @@ impl TCB {
             return None;
         }
         // 1. 获取 Root CNode
-        if let CapType::CNode { paddr, bits } =
+        if let CapType::CNode { paddr } =
             self.cspace_root.as_ref().expect("CSpace root not configured").object
         {
-            let cnode = crate::cap::CNode::from_addr(paddr, bits);
+            let cnode = CNode::from_addr(paddr);
             // 2. 在 CNode 中查找
             cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))
         } else {

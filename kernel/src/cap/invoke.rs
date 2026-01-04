@@ -288,12 +288,12 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- CNode methods ---
 
 fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let (paddr, bits) = match cap.object {
-        CapType::CNode { paddr, bits } => (paddr, bits),
+    let paddr = match cap.object {
+        CapType::CNode { paddr } => paddr,
         _ => return errcode::INVALID_OBJ_TYPE,
     };
 
-    let mut cnode = CNode::from_addr(paddr, bits);
+    let mut cnode = CNode::from_addr(paddr);
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
@@ -364,8 +364,10 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
 }
 
 fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
-    let (start, size, free_offset) = match cap.object {
-        CapType::Untyped { start_paddr, size, free_offset } => (start_paddr, size, free_offset),
+    let (start, total_pages, free_pages) = match cap.object {
+        CapType::Untyped { start_paddr, total_pages, free_pages } => {
+            (start_paddr, total_pages, free_pages)
+        }
         _ => return errcode::INVALID_OBJ_TYPE,
     };
 
@@ -377,67 +379,56 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
 
     match method {
         untypedmethod::RETYPE => {
-            // Retype: (type, obj_size_bits, n_objects, dest_cnode_cptr, dest_slot_offset, offset)
-            let obj_type_raw = utcb.mrs_regs[0];
-            let obj_type = obj_type_raw & 0xFFFF;
-            let no_clear = (obj_type_raw & (1 << 31)) != 0;
+            // Retype: (type, obj_pages, n_objects, dest_cnode_cptr, dest_slot_offset, dirty)
+            let obj_type = utcb.mrs_regs[0];
 
-            let obj_size_bits = utcb.mrs_regs[1];
+            let obj_pages = utcb.mrs_regs[1];
             let n_objects = utcb.mrs_regs[2];
             let dest_cnode_cptr = utcb.mrs_regs[3];
             let dest_slot_offset = utcb.mrs_regs[4];
+            let dirty = utcb.mrs_regs[5];
 
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
                 None => return errcode::INVALID_CAP,
             };
 
-            if let CapType::CNode { paddr: cn_paddr, bits: cn_bits } = dest_cnode_cap.object {
-                let mut dest_cnode = crate::cap::CNode::from_addr(cn_paddr, cn_bits);
-
-                let obj_size = 1 << obj_size_bits;
-
-                // 计算对齐
-                let mut current_offset = free_offset;
-                let align_mask = obj_size - 1;
-                let aligned_offset = (current_offset + align_mask) & !align_mask;
+            if let CapType::CNode { paddr: cn_paddr } = dest_cnode_cap.object {
+                let mut dest_cnode = crate::cap::CNode::from_addr(cn_paddr);
 
                 // 检查总大小
-                let needed_size = (aligned_offset - current_offset) + n_objects * obj_size;
-                if current_offset + needed_size > size {
+                let needed_pages = n_objects * obj_pages;
+                if free_pages + needed_pages > total_pages {
                     return errcode::UNTYPE_OOM;
                 }
 
-                current_offset = aligned_offset;
+                let current_page_offset = free_pages;
 
                 for i in 0..n_objects {
-                    let obj_paddr =
-                        PhysAddr::from(start.as_usize() + current_offset + i * obj_size);
+                    let page_idx = current_page_offset + i * obj_pages;
+                    let obj_paddr = PhysAddr::from(start.as_usize() + page_idx * PGSIZE);
                     let obj_vaddr = obj_paddr.to_va();
+                    let obj_size_bytes = obj_pages * PGSIZE;
 
                     // 必须清零内存，防止旧数据残留 (除非是设备内存)
-                    if !no_clear {
+                    if dirty == 0 {
                         unsafe {
-                            core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size)
+                            core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes)
                         };
                     }
 
                     let new_cap = match obj_type {
                         // CNode
                         types::CNODE => {
-                            // seL4 方式：obj_size_bits 指定对象的总大小 (log2 bytes)。
-                            // 每个 slot 大小为 16 字节 (2^4)。
-                            // 因此 slot 数量的 log2 (bits) = obj_size_bits - 4。
-                            if obj_size_bits < 4 {
+                            if obj_pages != 1 {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
-                            let bits = obj_size_bits as u8 - 4;
-                            let _ = CNode::new(obj_paddr, bits);
-                            Capability::create_cnode(obj_paddr, bits, rights::ALL)
+                            let _ = CNode::new(obj_paddr);
+                            Capability::create_cnode(obj_paddr, rights::ALL)
                         }
                         // TCB
                         types::TCB => {
-                            if obj_size < size_of::<TCB>() {
+                            if obj_pages != 1 {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
@@ -446,7 +437,7 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                         }
                         // ipc::Endpoint
                         types::ENDPOINT => {
-                            if obj_size < size_of::<ipc::Endpoint>() {
+                            if obj_pages != 1 {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
@@ -454,11 +445,12 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
                         // Frame
-                        types::FRAME => {
-                            Capability::create_frame(obj_paddr, obj_size / PGSIZE, rights::ALL)
-                        }
+                        types::FRAME => Capability::create_frame(obj_paddr, obj_pages, rights::ALL),
                         // PageTable
                         types::PAGETABLE => {
+                            if obj_pages != 1 {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
                             // 初始化页表 (清零已在上面完成)
                             Capability::create_pagetable(obj_paddr, 0, rights::ALL)
                         }
@@ -470,16 +462,16 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     }
                 }
 
-                // 更新 Untyped Cap 的 free_offset
-                let new_free_offset = current_offset + n_objects * obj_size;
+                // 更新 Untyped Cap 的 free_pages
+                let new_free_pages = current_page_offset + n_objects * obj_pages;
 
                 // 写回 CSpace
                 if let Some((_, slot_paddr)) = tcb.cap_lookup_slot(cptr) {
                     let slot_ptr = slot_paddr.as_mut::<Slot>();
                     // 我们需要构造一个新的 Capability，或者直接修改现有的
                     // 由于 Capability 是 Copy，我们可以直接修改 slot_ptr.cap
-                    if let CapType::Untyped { free_offset, .. } = &mut slot_ptr.cap.object {
-                        *free_offset = new_free_offset;
+                    if let CapType::Untyped { free_pages, .. } = &mut slot_ptr.cap.object {
+                        *free_pages = new_free_pages;
                     }
                 }
 

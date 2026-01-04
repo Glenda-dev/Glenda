@@ -47,7 +47,7 @@ struct RootCaps {
 fn alloc_root_caps() -> RootCaps {
     RootCaps {
         vspace: pmem::alloc_pagetable_cap(2).expect("Failed to alloc root VSpace"),
-        cspace: pmem::alloc_cnode_cap(12).expect("Failed to alloc root CSpace"),
+        cspace: pmem::alloc_cnode_cap().expect("Failed to alloc root CSpace"),
         tcb: pmem::alloc_tcb_cap().expect("Failed to alloc root TCB"),
         utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
         tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
@@ -129,7 +129,7 @@ pub fn init() {
     init_bootinfo(bootinfo);
 
     // 5. Setup CSpace
-    let mut cspace = CNode::from_addr(caps.cspace.obj_ptr().to_pa(), 12);
+    let mut cspace = CNode::from_addr(caps.cspace.obj_ptr().to_pa());
     init_cspace(&mut cspace, bootinfo);
     fill_root_cspace(&mut cspace, &caps);
 
@@ -262,7 +262,11 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     // 1. Preserved Region (OpenSBI, Kernel, etc.)
     let preserved_size = (preserved_region.end - preserved_region.start).as_usize();
     if preserved_size > 0 {
-        let cap = Capability::create_untyped(preserved_region.start, preserved_size, rights::ALL);
+        let cap = Capability::create_untyped(
+            preserved_region.start,
+            preserved_size / PGSIZE,
+            rights::ALL,
+        );
         cnode.insert(slot, &cap);
 
         bootinfo.mmio_list[bootinfo.mmio_count] =
@@ -278,7 +282,7 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     // 2. Free Region (RAM available for allocation)
     let free_size = (free_region.end - free_region.start).as_usize();
     if free_size > 0 {
-        let cap = Capability::create_untyped(free_region.start, free_size, rights::ALL);
+        let cap = Capability::create_untyped(free_region.start, free_size / PGSIZE, rights::ALL);
         cnode.insert(slot, &cap);
 
         bootinfo.untyped_list[bootinfo.untyped_count] =

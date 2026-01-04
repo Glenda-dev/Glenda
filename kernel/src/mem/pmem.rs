@@ -1,4 +1,5 @@
 use super::{PGSIZE, PhysAddr};
+use crate::cap::CNODE_BITS;
 use crate::cap::cnode::CNodeHeader;
 use crate::cap::{CNode, Capability, Slot, rights};
 use crate::dtb;
@@ -85,15 +86,16 @@ pub fn alloc_frame_cap(count: usize) -> Option<Capability> {
 pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
     PMEM.lock()
         .alloc_addr(size, PGSIZE)
-        .map(|paddr| Capability::create_untyped(paddr, size, rights::ALL))
+        .map(|paddr| Capability::create_untyped(paddr, size / PGSIZE, rights::ALL))
 }
 
-pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
-    let size = (1 << bits) * core::mem::size_of::<Slot>() + core::mem::size_of::<CNodeHeader>();
+pub fn alloc_cnode_cap() -> Option<Capability> {
+    let size =
+        (1 << CNODE_BITS) * core::mem::size_of::<Slot>() + core::mem::size_of::<CNodeHeader>();
     let align = core::mem::align_of::<Slot>();
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        CNode::new(paddr, bits);
-        Capability::create_cnode(paddr, bits, rights::ALL)
+        CNode::new(paddr);
+        Capability::create_cnode(paddr, rights::ALL)
     })
 }
 
