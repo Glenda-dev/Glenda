@@ -36,7 +36,7 @@ fn invoke_ipc(cap: &Capability, _cptr: usize, method: usize) -> usize {
 
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
-    let badge = cap.get_badge();
+    let badge = cap.get_badge().unwrap_or(0);
 
     // 获取 UTCB 以读取参数 (msg_info)
     let utcb = match tcb.get_utcb() {
@@ -330,14 +330,27 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
     match method {
         cnodemethod::MINT => {
             // Mint: (src_cptr, dest_slot, badge, rights)
+            let _src_cptr = utcb.mrs_regs[0];
             let src_cptr = utcb.mrs_regs[0];
             let dest_slot = utcb.mrs_regs[1];
             let badge_val = utcb.mrs_regs[2];
-            let rights = utcb.mrs_regs[3];
-            let badge = if badge_val == 0 { None } else { Some(badge_val) };
+            let req_rights = utcb.mrs_regs[3] as u8;
+            let new_badge = if badge_val == 0 { None } else { Some(badge_val) };
 
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
-                let new_cap = src_cap.mint(badge, rights as u8);
+                // 1. 权限收缩：新权限必须是源权限的子集
+                let final_rights = req_rights & src_cap.rights;
+
+                // 2. Badge 检查：
+                // - 如果源 Cap 已有 Badge，则不能再次设置新 Badge (seL4 语义)
+                // - 新 Cap 必须继承源 Cap 的 Badge (如果存在)
+                let src_badge = src_cap.get_badge();
+                if src_badge.is_some() && new_badge.is_some() {
+                    return errcode::INVALID_CAP; // Cannot re-badge an already badged cap
+                }
+                let final_badge = src_badge.or(new_badge);
+
+                let new_cap = src_cap.mint(final_badge, final_rights);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
@@ -386,6 +399,10 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 errcode::INVALID_SLOT
             }
         }
+        cnodemethod::DEBUG_PRINT => {
+            cnode.print();
+            errcode::SUCCESS
+        }
         _ => errcode::INVALID_METHOD,
     }
 }
@@ -427,6 +444,19 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                 let needed_pages = n_objects * obj_pages;
                 if free_pages + needed_pages > total_pages {
                     return errcode::UNTYPE_OOM;
+                }
+                // [FIX] 预先检查所有目标槽位是否可用，确保操作原子性
+                // 防止中途失败导致物理内存已分配但 free_pages 未更新（Double Allocation）
+                for i in 0..n_objects {
+                    let slot_idx = dest_slot_offset + i;
+                    let slot_addr = dest_cnode.get_slot_addr(slot_idx);
+                    if slot_addr == PhysAddr::null() {
+                        return errcode::INVALID_SLOT; // 槽位越界
+                    }
+                    let slot = unsafe { &*slot_addr.as_mut_ptr::<Slot>() };
+                    if !slot.cap.is_null() {
+                        return errcode::INVALID_SLOT; // 槽位已被占用
+                    }
                 }
 
                 let current_page_offset = free_pages;

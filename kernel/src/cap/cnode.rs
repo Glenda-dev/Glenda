@@ -56,7 +56,7 @@ impl CNode {
             // 初始化所有 Slot 为 Empty
             let slots_ptr =
                 (paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
-            for i in 0..(1 << 12) {
+            for i in 0..(1 << CNODE_BITS) {
                 core::ptr::write(
                     slots_ptr.add(i),
                     Slot { cap: Capability::empty(), cdt: CDTNode::new() },
@@ -181,7 +181,7 @@ impl CNode {
         let slots_ptr = self.get_slots_ptr();
         for i in 0..self.size() {
             let slot = unsafe { &*slots_ptr.add(i) };
-            if let CapType::Empty = slot.cap.object {
+            if slot.cap.is_null() {
                 continue;
             }
             printk!("  Slot {}: {:?}\n", i, slot.cap);

@@ -100,8 +100,8 @@ impl Capability {
     }
 
     /// 获取 Badge 值，若无则返回 0
-    pub fn get_badge(&self) -> usize {
-        self.badge.unwrap_or(0)
+    pub fn get_badge(&self) -> Option<usize> {
+        self.badge
     }
 
     /// 检查是否已被标记
@@ -148,6 +148,10 @@ impl Capability {
 
     pub fn create_mmio(paddr: PhysAddr, size: usize, rights: u8) -> Self {
         Self::new(CapType::MMIO { paddr, size }, rights)
+    }
+
+    pub fn is_null(&self) -> bool {
+        matches!(self.object, CapType::Empty)
     }
 }
 
