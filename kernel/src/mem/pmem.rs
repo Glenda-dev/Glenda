@@ -118,13 +118,7 @@ pub fn alloc_tcb_cap() -> Option<Capability> {
 
 /// 获取剩余的 Untyped 内存区域
 /// 这应该在 Root Task 创建完成后调用，用于将剩余内存移交给 Root Task
-pub fn get_untyped() -> UntypedRegion {
+pub fn get_untyped() -> impl Iterator<Item = UntypedRegion> {
     let pmem = PMEM.lock();
-    UntypedRegion { start: pmem.current, end: pmem.end }
-}
-
-/// 获取保留的未分配内存区域
-pub fn get_preserved_untyped() -> UntypedRegion {
-    let pmem = PMEM.lock();
-    UntypedRegion { start: PhysAddr::null(), end: pmem.start - 1 }
+    core::iter::once(UntypedRegion { start: pmem.current, end: pmem.end })
 }

@@ -58,7 +58,7 @@ pub const BOOTINFO_MAGIC: u32 = 0x99999999;
 pub const BOOTINFO_SIZE: usize = 4096;
 
 /// Maximum number of untyped memory regions we can describe
-pub const MAX_UNTYPED_REGIONS: usize = 128;
+pub const MAX_UNTYPED_REGIONS: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootLoaderType {

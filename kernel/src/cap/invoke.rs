@@ -7,11 +7,9 @@ use crate::cap::{CNode, CapType, Capability, Slot, rights};
 use crate::hart;
 use crate::ipc;
 use crate::irq;
-use crate::mem::pte::perms;
-use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr, pagetable};
+use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::errcode;
-use core::mem::size_of;
 
 pub fn dispatch(cap: &Capability, cptr: usize, method: usize) -> usize {
     // 4. 根据对象类型分发

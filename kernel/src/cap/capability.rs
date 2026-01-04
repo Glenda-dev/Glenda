@@ -141,6 +141,14 @@ impl Capability {
     pub fn create_irqhandler(irq: usize, rights: u8) -> Self {
         Self::new(CapType::IrqHandler { irq }, rights)
     }
+
+    pub fn create_console(rights: u8) -> Self {
+        Self::new(CapType::Console, rights)
+    }
+
+    pub fn create_mmio(paddr: PhysAddr, size: usize, rights: u8) -> Self {
+        Self::new(CapType::MMIO { paddr, size }, rights)
+    }
 }
 
 impl Drop for Capability {

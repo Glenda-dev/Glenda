@@ -67,6 +67,12 @@ pub enum CapType {
     /// 控制台 (Console)
     /// 允许向内核控制台输出日志
     Console,
+
+    /// MMIO
+    MMIO {
+        paddr: PhysAddr,
+        size: usize,
+    },
 }
 
 pub mod types {
@@ -76,6 +82,9 @@ pub mod types {
     pub const ENDPOINT: usize = 3;
     pub const FRAME: usize = 4;
     pub const PAGETABLE: usize = 5;
+    pub const IRQHANDLER: usize = 6;
+    pub const CONSOLE: usize = 7;
+    pub const MMIO: usize = 8;
 }
 
 impl CapType {
@@ -112,5 +121,20 @@ impl CapType {
     /// 判断是否为未类型化内存
     pub fn is_untyped(&self) -> bool {
         matches!(self, CapType::Untyped { .. })
+    }
+
+    /// 判断是否为终端
+    pub fn is_console(&self) -> bool {
+        matches!(self, CapType::Console { .. })
+    }
+
+    /// 判断是否为中断处理
+    pub fn is_irq_handler(&self) -> bool {
+        matches!(self, CapType::IrqHandler { .. })
+    }
+
+    // 判断是否为MMIO
+    pub fn is_mmio(&self) -> bool {
+        matches!(self, CapType::MMIO { .. })
     }
 }

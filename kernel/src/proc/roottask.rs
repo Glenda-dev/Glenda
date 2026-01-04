@@ -3,6 +3,7 @@ use super::scheduler;
 use super::{TCB, ThreadState};
 use crate::bootloader::initrd;
 use crate::bootloader::{BootInfo, UntypedDesc};
+use crate::cap::CNODE_BITS;
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
@@ -252,46 +253,53 @@ fn init_vspace(
 /// 填充 Root CNode
 /// 将所有空闲物理内存作为 Untyped Capability 授予 Root Task
 fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
-    let free_region = pmem::get_untyped();
-    let preserved_region = pmem::get_preserved_untyped();
     let mut slot = BOOTINFO_SLOT_START;
 
     // 记录 Untyped 区域的起始槽位
     bootinfo.mmio.start = slot;
 
-    // 1. Preserved Region (OpenSBI, Kernel, etc.)
-    let preserved_size = (preserved_region.end - preserved_region.start).as_usize();
-    if preserved_size > 0 {
-        let cap = Capability::create_untyped(
-            preserved_region.start,
-            preserved_size / PGSIZE,
-            rights::ALL,
-        );
-        cnode.insert(slot, &cap);
+    // 1. mmio Region (OpenSBI, Kernel, etc.)
+    for mmio_region in dtb::mmio_ranges() {
+        let mmio_size = mmio_region.size;
+        if mmio_size > 0 {
+            let cap = Capability::create_mmio(mmio_region.start, mmio_size, rights::ALL);
+            cnode.insert(slot, &cap);
 
-        bootinfo.mmio_list[bootinfo.mmio_count] =
-            UntypedDesc { paddr: preserved_region.start, size: preserved_size };
-        bootinfo.mmio_count += 1;
-        slot += 1;
+            if bootinfo.mmio_count < bootinfo.mmio_list.len() {
+                bootinfo.mmio_list[bootinfo.mmio_count] =
+                    UntypedDesc { paddr: mmio_region.start, size: mmio_size };
+                bootinfo.mmio_count += 1;
+            }
+            slot += 1;
+        }
     }
 
-    bootinfo.mmio.end = slot - 1;
+    bootinfo.mmio.end = slot;
 
+    // 记录 Untyped 区域的起始槽位
     bootinfo.untyped.start = slot;
 
-    // 2. Free Region (RAM available for allocation)
-    let free_size = (free_region.end - free_region.start).as_usize();
-    if free_size > 0 {
-        let cap = Capability::create_untyped(free_region.start, free_size / PGSIZE, rights::ALL);
-        cnode.insert(slot, &cap);
+    // 1. mmio Region (OpenSBI, Kernel, etc.)
+    for untyped_region in pmem::get_untyped() {
+        let untyped_size = (untyped_region.end - untyped_region.start).as_usize();
+        if untyped_size > 0 {
+            let cap = Capability::create_untyped(
+                untyped_region.start,
+                untyped_size / PGSIZE,
+                rights::ALL,
+            );
+            cnode.insert(slot, &cap);
 
-        bootinfo.untyped_list[bootinfo.untyped_count] =
-            UntypedDesc { paddr: free_region.start, size: free_size };
-        bootinfo.untyped_count += 1;
-        slot += 1;
+            if bootinfo.untyped_count < bootinfo.untyped_list.len() {
+                bootinfo.untyped_list[bootinfo.untyped_count] =
+                    UntypedDesc { paddr: untyped_region.start, size: untyped_size };
+                bootinfo.untyped_count += 1;
+            }
+            slot += 1;
+        }
     }
 
-    bootinfo.untyped.end = slot - 1;
+    bootinfo.untyped.end = slot;
 
     // 插入 IRQ Handler Capabilities
     // 假设系统支持 64 个中断 (与 IRQ_TABLE 大小一致)
@@ -305,7 +313,7 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
 
     // 记录空闲槽位
     bootinfo.empty.start = slot;
-    bootinfo.empty.end = 1 << 12; // CNode size bits = 12
+    bootinfo.empty.end = 1 << CNODE_BITS; // CNode size bits = 12
 }
 
 fn init_bootinfo(bootinfo: &mut BootInfo) {

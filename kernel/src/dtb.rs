@@ -7,6 +7,8 @@ use core::hint::spin_loop;
 use core::sync::atomic::{AtomicU8, Ordering};
 use fdt::Fdt;
 
+const MAX_MMIO_REGIONS: usize = 64;
+
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRange {
     pub start: PhysAddr,
@@ -20,6 +22,9 @@ impl MemoryRange {
     pub fn end(&self) -> PhysAddr {
         self.start + self.size
     }
+    pub fn empty() -> Self {
+        Self { start: PhysAddr::from(0), size: 0 }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -32,6 +37,8 @@ pub struct DeviceTreeInfo {
     bootargs: Option<&'static str>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
+    mmio_regions: [MemoryRange; MAX_MMIO_REGIONS],
+    mmio_count: usize,
 }
 
 impl DeviceTreeInfo {
@@ -43,7 +50,19 @@ impl DeviceTreeInfo {
         let initrd = parse_initrd(fdt);
         let bootargs = parse_bootargs(fdt);
         let dtb_size = fdt.total_size();
-        Self { uart, hart_count, memory, plic, dtb_paddr, dtb_size, initrd, bootargs }
+        let (mmio_regions, mmio_count) = parse_mmio(fdt);
+        Self {
+            uart,
+            hart_count,
+            memory,
+            plic,
+            dtb_paddr,
+            dtb_size,
+            initrd,
+            bootargs,
+            mmio_regions,
+            mmio_count,
+        }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -68,6 +87,10 @@ impl DeviceTreeInfo {
 
     fn bootargs(&self) -> Option<&'static str> {
         self.bootargs
+    }
+
+    pub fn mmio_ranges(&self) -> &[MemoryRange] {
+        &self.mmio_regions[..self.mmio_count]
     }
 }
 
@@ -178,6 +201,10 @@ pub fn bootargs() -> Option<&'static str> {
     DEVICE_TREE.get().and_then(|info| info.bootargs)
 }
 
+pub fn mmio_ranges() -> &'static [MemoryRange] {
+    DEVICE_TREE.get().map(|info| info.mmio_ranges()).unwrap_or(&[])
+}
+
 pub fn dtb_range() -> MemoryRange {
     let info = DEVICE_TREE.get().expect("Device Tree Not Initialzed");
     MemoryRange::from(PhysAddr::from(info.dtb_paddr), info.dtb_size)
@@ -285,4 +312,35 @@ pub fn init(dtb: *const u8) {
             panic!("Device tree parsing failed: {:?}\n", err);
         }
     }
+}
+
+fn parse_mmio(fdt: &Fdt) -> ([MemoryRange; MAX_MMIO_REGIONS], usize) {
+    let mut regions = [MemoryRange::empty(); MAX_MMIO_REGIONS];
+    let mut count = 0;
+
+    for node in fdt.all_nodes() {
+        if let Some(device_type) = node.property("device_type").and_then(|p| p.as_str()) {
+            if device_type == "memory" || device_type == "cpu" {
+                continue;
+            }
+        }
+
+        if node.name == "chosen" || node.name == "aliases" {
+            continue;
+        }
+
+        if let Some(mut regs) = node.reg() {
+            while let Some(region) = regs.next() {
+                if count < MAX_MMIO_REGIONS {
+                    let start = region.starting_address as usize;
+                    let size = region.size.unwrap_or(0);
+                    if size > 0 {
+                        regions[count] = MemoryRange { start: PhysAddr::from(start), size };
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    (regions, count)
 }
