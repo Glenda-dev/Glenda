@@ -53,6 +53,12 @@ fn backtrace() {
     let mut current_fp = fp();
     let mut depth = 0;
     while current_fp != 0 && depth < 20 {
+        // [修复] 检查 fp 对齐，防止读取垃圾值导致的非对齐访问 Panic
+        if current_fp % 8 != 0 {
+            printk!("Invalid unaligned fp: {:#x}\n", current_fp);
+            break;
+        }
+
         // 0(fp) -> saved fp
         // 8(fp) -> saved ra
         unsafe {
