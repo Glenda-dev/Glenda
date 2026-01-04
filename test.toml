@@ -2,5 +2,5 @@
 name = "hello"
 path = "examples/hello"
 build_cmd = "bash build.sh"
-output_bin = "build/hello.elf"
+output = "build/hello.elf"
 kind = "root_task"
