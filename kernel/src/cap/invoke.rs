@@ -225,11 +225,38 @@ fn invoke_pagetable(paddr: PhysAddr, method: usize) -> usize {
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
+        pagetablemethod::MAP_TABLE => {
+            // MapTable: (table_cap, vaddr, level)
+            let table_cptr = utcb.mrs_regs[0];
+            let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
+            let level = utcb.mrs_regs[2];
+
+            let table_cap = match tcb.cap_lookup(table_cptr) {
+                Some(c) => c,
+                None => return errcode::INVALID_CAP,
+            };
+
+            let table_paddr = match table_cap.object {
+                CapType::PageTable { paddr, .. } => paddr,
+                _ => return errcode::INVALID_OBJ_TYPE,
+            };
+
+            match pt.map_table(vaddr, table_paddr, level) {
+                Ok(()) => errcode::SUCCESS,
+                Err(_) => errcode::MAPPING_FAILED,
+            }
+        }
         pagetablemethod::UNMAP => {
             // Unmap: (vaddr, size)
             let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
             let size = utcb.mrs_regs[1];
             match pt.unmap(vaddr, size) {
+                Ok(()) => errcode::SUCCESS,
+                Err(_) => errcode::MAPPING_FAILED,
+            }
+        }
+        pagetablemethod::MAP_TRAMPOLINE => {
+            match pt.map_trampoline(){
                 Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
@@ -358,17 +385,15 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize) -> usize {
                     let new_cap = match obj_type {
                         // CNode
                         types::CNODE => {
-                            // CNode 需要初始化 Header
-                            // obj_size_bits 是 CNode 的 slot 数量 log2
-                            // 实际上我们需要分配的空间 = Header + slots * sizeof(Cap)
-                            // 这里假设用户已经计算好了足够的 obj_size_bits 来容纳这一切
-
-                            // 采用 seL4 方式：obj_size_bits 指定 CNode 的 slot log2。
-                            // 对象实际大小 = 2^obj_size_bits * 16 bytes (slot size).
-                            // 我们忽略 Header 的开销 (假设它很小或者我们偷用第一个 slot?)
-                            // 为了正确性，我们使用 CNode::new 初始化 Header
-                            let _ = CNode::new(obj_paddr, obj_size_bits as u8);
-                            Capability::create_cnode(obj_paddr, obj_size_bits as u8, rights::ALL)
+                            // seL4 方式：obj_size_bits 指定对象的总大小 (log2 bytes)。
+                            // 每个 slot 大小为 16 字节 (2^4)。
+                            // 因此 slot 数量的 log2 (bits) = obj_size_bits - 4。
+                            if obj_size_bits < 4 {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
+                            let bits = obj_size_bits as u8 - 4;
+                            let _ = CNode::new(obj_paddr, bits);
+                            Capability::create_cnode(obj_paddr, bits, rights::ALL)
                         }
                         // TCB
                         types::TCB => {
@@ -449,17 +474,15 @@ fn invoke_untyped(start: PhysAddr, size: usize, method: usize) -> usize {
                     let new_cap = match obj_type {
                         // CNode
                         types::CNODE => {
-                            // CNode 需要初始化 Header
-                            // obj_size_bits 是 CNode 的 slot 数量 log2
-                            // 实际上我们需要分配的空间 = Header + slots * sizeof(Cap)
-                            // 这里假设用户已经计算好了足够的 obj_size_bits 来容纳这一切
-
-                            // 采用 seL4 方式：obj_size_bits 指定 CNode 的 slot log2。
-                            // 对象实际大小 = 2^obj_size_bits * 16 bytes (slot size).
-                            // 我们忽略 Header 的开销 (假设它很小或者我们偷用第一个 slot?)
-                            // 为了正确性，我们使用 CNode::new 初始化 Header
-                            let _ = CNode::new(obj_paddr, obj_size_bits as u8);
-                            Capability::create_cnode(obj_paddr, obj_size_bits as u8, rights::ALL)
+                            // seL4 方式：obj_size_bits 指定对象的总大小 (log2 bytes)。
+                            // 每个 slot 大小为 16 字节 (2^4)。
+                            // 因此 slot 数量的 log2 (bits) = obj_size_bits - 4。
+                            if obj_size_bits < 4 {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
+                            let bits = obj_size_bits as u8 - 4;
+                            let _ = CNode::new(obj_paddr, bits);
+                            Capability::create_cnode(obj_paddr, bits, rights::ALL)
                         }
                         // TCB
                         types::TCB => {

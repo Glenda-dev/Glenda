@@ -1,8 +1,6 @@
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use toml::value::Array;
-
 #[derive(Debug, Deserialize)]
 pub struct Service {
     pub name: String,

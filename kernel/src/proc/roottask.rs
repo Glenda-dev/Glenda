@@ -221,6 +221,18 @@ fn init_vspace(
         );
         core::mem::forget(frame);
     }
+
+    // 映射initrd
+    let initrd_range = initrd::range().expect("No initrd found");
+    let initrd_start = initrd_range.start;
+    let initrd_size = initrd_range.size;
+    let initrd_va = VirtAddr::from(0x3000_0000);
+    vspace.map_with_alloc(
+        initrd_va,
+        initrd_start,
+        initrd_size,
+        PteFlags::from(perms::USER | perms::READ),
+    );
 }
 
 /// 填充 Root CNode
@@ -233,38 +245,37 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     // 记录 Untyped 区域的起始槽位
     bootinfo.untyped.start = slot;
 
-    // 目前 pmem::get_untyped 返回单个区域，但 BootInfo 支持列表
-    // 我们将其作为一个条目添加
-    let size = (free_region.end - free_region.start).as_usize();
+    // 1. Preserved Region (OpenSBI, Kernel, etc.)
     let preserved_size = (preserved_region.end - preserved_region.start).as_usize();
-    // 简单起见，我们假设这是一个 2^N 大小的块，或者我们只给出一个大块
-    // 实际上 Untyped 应该是 2^N 对齐的。
-    // 这里我们简化处理，直接创建一个覆盖该区域的 Untyped Cap
-    // 注意：Capability::create_untyped 需要 size_bits 吗？
-    // 查看 pmem.rs: Capability::create_untyped(paddr, size, rights)
-    // 它是 size (bytes)。
+    if preserved_size > 0 {
+        let cap = Capability::create_untyped(preserved_region.start, preserved_size, rights::ALL);
+        cnode.insert(slot, &cap);
 
-    let cap = Capability::create_untyped(free_region.start, size, rights::ALL);
-    cnode.insert(slot, &cap);
+        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
+            paddr: preserved_region.start,
+            size_bits: (preserved_size.ilog2() as u8),
+            is_device: true,
+            padding: [0; 6],
+        };
+        bootinfo.untyped_count += 1;
+        slot += 1;
+    }
 
-    bootinfo.untyped_list[0] = UntypedDesc {
-        paddr: preserved_region.start,
-        size_bits: (preserved_size.ilog2() as u8), // 近似
-        is_device: true,
-        padding: [0; 6],
-    };
-    bootinfo.untyped_count += 1;
+    // 2. Free Region (RAM available for allocation)
+    let free_size = (free_region.end - free_region.start).as_usize();
+    if free_size > 0 {
+        let cap = Capability::create_untyped(free_region.start, free_size, rights::ALL);
+        cnode.insert(slot, &cap);
 
-    // 填充 BootInfo
-    bootinfo.untyped_list[1] = UntypedDesc {
-        paddr: free_region.start,
-        size_bits: (size.ilog2() as u8), // 近似
-        is_device: false,
-        padding: [0; 6],
-    };
-    bootinfo.untyped_count += 1;
-
-    slot += 1;
+        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
+            paddr: free_region.start,
+            size_bits: (free_size.ilog2() as u8),
+            is_device: false,
+            padding: [0; 6],
+        };
+        bootinfo.untyped_count += 1;
+        slot += 1;
+    }
 
     bootinfo.untyped.end = slot;
 

@@ -1,9 +1,12 @@
 use super::Pte;
 use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
+use crate::mem::TRAMPOLINE_VA;
 use crate::mem::pmem;
 use crate::mem::pte::PteFlags;
-
+unsafe extern "C" {
+    static __trampoline: u8;
+}
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
 pub struct PageTable {
@@ -279,5 +282,14 @@ impl PageTable {
                 }
             }
         }
+    }
+    pub fn map_trampoline(&mut self) -> Result<(), ()> {
+        let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
+        self.map(
+            VirtAddr::from(TRAMPOLINE_VA),
+            tramp_pa,
+            PGSIZE,
+            PteFlags::from(perms::READ | perms::EXECUTE),
+        )
     }
 }
