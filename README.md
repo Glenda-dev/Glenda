@@ -1,4 +1,5 @@
 # Glenda Kernel
+> 文档在 docs 文件夹下
 ```plaintext
                  __
                 /  )
