@@ -186,6 +186,12 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 errcode::INVALID_CAP
             }
         }
+        tcbmethod::SET_AFFINITY => {
+            // SetAffinity: (hart_id)
+            let hart_id = utcb.mrs_regs[0];
+            tcb.set_affinity(hart_id);
+            errcode::SUCCESS
+        }
         tcbmethod::RESUME => {
             // Resume
             tcb.resume();

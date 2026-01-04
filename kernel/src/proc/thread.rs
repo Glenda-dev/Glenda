@@ -77,7 +77,7 @@ impl TCB {
             priority: 0,
             timeslice: 0,
             state: ThreadState::Inactive,
-            affinity: 0,
+            affinity: usize::MAX,
             kstack: None,
             trapframe: None,
             cspace_root: None,
@@ -196,6 +196,10 @@ impl TCB {
 
     pub fn set_fault_handler(&mut self, ep: Capability) {
         self.fault_handler = Some(ep);
+    }
+
+    pub fn set_affinity(&mut self, hart_id: usize) {
+        self.affinity = hart_id;
     }
 
     pub fn resume(&mut self) {

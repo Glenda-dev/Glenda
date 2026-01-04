@@ -7,9 +7,10 @@ use riscv::register::sstatus;
 use spin::Mutex;
 
 // 最大优先级数量 (0-255)
-const MAX_PRIORITY: usize = 256;
+pub const MAX_PRIORITY: usize = 256;
 
-struct TcbQueue {
+#[derive(Debug)]
+pub struct TcbQueue {
     head: Option<*mut TCB>,
     tail: Option<*mut TCB>,
 }
@@ -17,11 +18,11 @@ struct TcbQueue {
 unsafe impl Send for TcbQueue {}
 
 impl TcbQueue {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self { head: None, tail: None }
     }
 
-    fn push_back(&mut self, tcb: *mut TCB) {
+    pub fn push_back(&mut self, tcb: *mut TCB) {
         unsafe {
             (*tcb).prev = self.tail;
             (*tcb).next = None;
@@ -34,7 +35,7 @@ impl TcbQueue {
         }
     }
 
-    fn pop_front(&mut self) -> Option<*mut TCB> {
+    pub fn pop_front(&mut self) -> Option<*mut TCB> {
         if let Some(head) = self.head {
             unsafe {
                 let next = (*head).next;
@@ -57,8 +58,8 @@ impl TcbQueue {
 // 全局调度队列：每个优先级一个队列
 // 注意：在 SMP 环境下，这应该是一个 Per-CPU 的结构，或者加全局锁
 // 这里为了简化，使用全局锁保护所有队列
-static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
-    Mutex::new([const { TcbQueue::new() }; MAX_PRIORITY]);
+// static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
+//     Mutex::new([const { TcbQueue::new() }; MAX_PRIORITY]);
 
 static mut CURRENT_TCB: [Option<*mut TCB>; MAX_HARTS] = [None; MAX_HARTS];
 
@@ -81,7 +82,16 @@ fn kick_harts() {
 
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
-    let mut queues = READY_QUEUES.lock();
+    let current_hart_id = hart::getid();
+
+    // 根据 affinity 决定目标核心
+    // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_HARTS，则表示不绑定，默认使用当前核心
+    let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };
+
+    // 获取目标 Hart 的运行队列
+    // 注意：访问全局 HARTS 数组需要 unsafe，且要小心死锁（这里只持有一个锁，是安全的）
+    let target_hart = unsafe { &hart::HARTS[target_hart_id] };
+    let mut queues = target_hart.ready_queues.lock();
     let prio = tcb.priority as usize;
 
     // 确保状态正确
@@ -89,9 +99,13 @@ pub fn add_thread(tcb: &mut TCB) {
         queues[prio].push_back(tcb as *mut _);
     }
 
-    // 唤醒其他核心
     drop(queues);
-    kick_harts();
+    // 如果目标核心不是当前核心，发送 IPI 唤醒它
+    // 这样目标核心如果处于 WFI 状态会被唤醒，或者在运行其他线程时触发调度检查
+    if target_hart_id != current_hart_id {
+        let mask = 1 << target_hart_id;
+        let _ = sbi::send_ipi(mask, 0);
+    }
 }
 
 /// 核心调度循环
@@ -106,7 +120,8 @@ pub fn scheduler() -> ! {
 
         // 2. 寻找最高优先级的 Ready 线程
         {
-            let mut queues = READY_QUEUES.lock();
+            let hart = hart::get();
+            let mut queues = hart.ready_queues.lock();
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
                 if let Some(tcb_ptr) = queues[prio].pop_front() {
