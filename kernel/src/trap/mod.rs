@@ -20,6 +20,6 @@ pub fn init() {
 pub fn init_hart(hartid: usize) {
     vector::init();
     // 启用 S-mode 中断
-    interrupt::enable_s();
+    interrupt::init();
     printk!("trap: Initialized for hart {}\n", hartid);
 }

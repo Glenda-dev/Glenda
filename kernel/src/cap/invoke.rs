@@ -197,13 +197,32 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
             tcb.resume();
             // 将线程加入调度队列
             scheduler::add_thread(tcb);
+            // 2. 抢占检查
+            // 如果目标核心是当前核心，且优先级高于当前线程，则触发重新调度
+            let current_hart = hart::getid();
+            let target_hart =
+                if tcb.affinity < hart::MAX_HARTS { tcb.affinity } else { current_hart };
+
+            if target_hart == current_hart {
+                if let Some(curr_ptr) = scheduler::current() {
+                    // SAFETY: current() 返回的指针在内核运行期间有效
+                    let curr = unsafe { &*curr_ptr };
+                    if tcb.priority >= curr.priority {
+                        scheduler::reschedule();
+                    }
+                } else {
+                    // 当前没有运行线程（Idle），立即调度
+                    scheduler::reschedule();
+                }
+            }
             errcode::SUCCESS
         }
         tcbmethod::SUSPEND => {
             // Suspend
             tcb.suspend();
-            // 如果目标是当前线程，需要触发 yield
-            scheduler::yield_proc();
+            if tcb as *const TCB == current_tcb as *const TCB {
+                scheduler::block_current_thread();
+            }
             errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,

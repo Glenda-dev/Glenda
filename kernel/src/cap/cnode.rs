@@ -1,5 +1,6 @@
 use super::{CapType, Capability};
 use crate::mem::PhysAddr;
+use crate::printk;
 use core::sync::atomic::AtomicUsize;
 
 /// CNode 在物理内存中的布局头
@@ -173,6 +174,18 @@ impl CNode {
         }
         let slot_addr = self.get_slot_addr(slot);
         delete_recursive(slot_addr);
+    }
+
+    pub fn print(&self) {
+        printk!("CNode at paddr {:x}:\n", self.paddr.as_usize());
+        let slots_ptr = self.get_slots_ptr();
+        for i in 0..self.size() {
+            let slot = unsafe { &*slots_ptr.add(i) };
+            if let CapType::Empty = slot.cap.object {
+                continue;
+            }
+            printk!("  Slot {}: {:?}\n", i, slot.cap);
+        }
     }
 }
 

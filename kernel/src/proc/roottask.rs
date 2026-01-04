@@ -95,7 +95,7 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
 }
 
 fn start_root_task(tcb: &mut TCB, entry_point: usize, stack_top: usize) {
-    tcb.set_priority(255);
+    tcb.set_priority(253);
     tcb.set_registers(entry_point, stack_top);
 
     // Initialize TrapFrame (User context)

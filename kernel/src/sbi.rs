@@ -3,6 +3,7 @@ use core::arch::asm;
 const SBI_EXT_HSM: usize = 0x48534d;
 const SBI_EXT_TIME: usize = 0x54494D45;
 const SBI_EXT_IPI: usize = 0x735049;
+const SBI_EXT_0_1_SET_TIMER: usize = 0x0;
 
 #[inline(always)]
 unsafe fn sbi_call(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize) -> isize {
@@ -23,7 +24,15 @@ unsafe fn sbi_call(eid: usize, fid: usize, arg0: usize, arg1: usize, arg2: usize
 
 pub fn set_timer(stime_value: u64) -> Result<(), isize> {
     let error = unsafe { sbi_call(SBI_EXT_TIME, 0, stime_value as usize, 0, 0) };
-    if error == 0 { Ok(()) } else { Err(error) }
+    if error == 0 {
+        Ok(())
+    } else if error == -2 {
+        // SBI_ERR_NOT_SUPPORTED: Fallback to legacy SBI
+        unsafe { sbi_call(SBI_EXT_0_1_SET_TIMER, 0, stime_value as usize, 0, 0) };
+        Ok(())
+    } else {
+        Err(error)
+    }
 }
 
 pub fn send_ipi(hart_mask: usize, hart_mask_base: usize) -> Result<(), isize> {

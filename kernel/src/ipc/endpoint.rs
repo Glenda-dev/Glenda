@@ -1,5 +1,8 @@
+use crate::printk;
 use crate::proc::thread::TCB;
+use crate::trap::interrupt;
 use core::sync::atomic::AtomicUsize;
+use riscv::register::sstatus;
 use spin::Mutex;
 
 /// IPC 通信端点
@@ -38,82 +41,127 @@ impl Endpoint {
     }
 
     pub fn enqueue_send(&self, tcb: *mut TCB) {
-        let mut inner = self.inner.lock();
-        unsafe {
-            (*tcb).prev = inner.send_queue_tail;
-            (*tcb).next = None;
-            if let Some(tail) = inner.send_queue_tail {
-                (*tail).next = Some(tcb);
-            } else {
-                inner.send_queue_head = Some(tcb);
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        {
+            let mut inner = self.inner.lock();
+            unsafe {
+                (*tcb).prev = inner.send_queue_tail;
+                (*tcb).next = None;
+                if let Some(tail) = inner.send_queue_tail {
+                    (*tail).next = Some(tcb);
+                } else {
+                    inner.send_queue_head = Some(tcb);
+                }
+                inner.send_queue_tail = Some(tcb);
             }
-            inner.send_queue_tail = Some(tcb);
+        }
+        if sie {
+            interrupt::enable();
         }
     }
 
     pub fn dequeue_send(&self) -> Option<*mut TCB> {
-        let mut inner = self.inner.lock();
-        if let Some(head) = inner.send_queue_head {
-            unsafe {
-                let next = (*head).next;
-                if let Some(next_ptr) = next {
-                    (*next_ptr).prev = None;
-                } else {
-                    inner.send_queue_tail = None;
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        let ret = {
+            let mut inner = self.inner.lock();
+            if let Some(head) = inner.send_queue_head {
+                unsafe {
+                    let next = (*head).next;
+                    if let Some(next_ptr) = next {
+                        (*next_ptr).prev = None;
+                    } else {
+                        inner.send_queue_tail = None;
+                    }
+                    inner.send_queue_head = next;
+                    (*head).next = None;
+                    (*head).prev = None;
                 }
-                inner.send_queue_head = next;
-                (*head).next = None;
-                (*head).prev = None;
+                Some(head)
+            } else {
+                None
             }
-            Some(head)
-        } else {
-            None
+        };
+        if sie {
+            interrupt::enable();
         }
+        ret
     }
 
     pub fn enqueue_recv(&self, tcb: *mut TCB) {
-        let mut inner = self.inner.lock();
-        unsafe {
-            (*tcb).prev = inner.recv_queue_tail;
-            (*tcb).next = None;
-            if let Some(tail) = inner.recv_queue_tail {
-                (*tail).next = Some(tcb);
-            } else {
-                inner.recv_queue_head = Some(tcb);
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        {
+            let mut inner = self.inner.lock();
+            unsafe {
+                (*tcb).prev = inner.recv_queue_tail;
+                (*tcb).next = None;
+                if let Some(tail) = inner.recv_queue_tail {
+                    (*tail).next = Some(tcb);
+                } else {
+                    inner.recv_queue_head = Some(tcb);
+                }
+                inner.recv_queue_tail = Some(tcb);
             }
-            inner.recv_queue_tail = Some(tcb);
+        }
+        if sie {
+            interrupt::enable();
         }
     }
 
     pub fn dequeue_recv(&self) -> Option<*mut TCB> {
-        let mut inner = self.inner.lock();
-        if let Some(head) = inner.recv_queue_head {
-            unsafe {
-                let next = (*head).next;
-                if let Some(next_ptr) = next {
-                    (*next_ptr).prev = None;
-                } else {
-                    inner.recv_queue_tail = None;
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        let ret = {
+            let mut inner = self.inner.lock();
+            if let Some(head) = inner.recv_queue_head {
+                unsafe {
+                    let next = (*head).next;
+                    if let Some(next_ptr) = next {
+                        (*next_ptr).prev = None;
+                    } else {
+                        inner.recv_queue_tail = None;
+                    }
+                    inner.recv_queue_head = next;
+                    (*head).next = None;
+                    (*head).prev = None;
                 }
-                inner.recv_queue_head = next;
-                (*head).next = None;
-                (*head).prev = None;
+                Some(head)
+            } else {
+                None
             }
-            Some(head)
-        } else {
-            None
+        };
+        if sie {
+            interrupt::enable();
         }
+        ret
     }
 
     pub fn notify(&self, badge: usize) {
-        let mut inner = self.inner.lock();
-        inner.notification_word |= badge;
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        {
+            let mut inner = self.inner.lock();
+            inner.notification_word |= badge;
+        }
+        if sie {
+            interrupt::enable();
+        }
     }
 
     pub fn poll_notification(&self) -> usize {
-        let mut inner = self.inner.lock();
-        let word = inner.notification_word;
-        inner.notification_word = 0;
-        word
+        let sie = interrupt::is_enabled();
+        interrupt::disable();
+        let ret = {
+            let mut inner = self.inner.lock();
+            let word = inner.notification_word;
+            inner.notification_word = 0;
+            word
+        };
+        if sie {
+            interrupt::enable();
+        }
+        ret
     }
 }

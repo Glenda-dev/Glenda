@@ -2,9 +2,9 @@ use super::context::switch_context;
 use super::thread::{TCB, ThreadState};
 use crate::hart;
 use crate::hart::MAX_HARTS;
+use crate::printk;
 use crate::sbi;
 use riscv::register::sstatus;
-use spin::Mutex;
 
 // 最大优先级数量 (0-255)
 pub const MAX_PRIORITY: usize = 256;
@@ -83,7 +83,11 @@ fn kick_harts() {
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
     let current_hart_id = hart::getid();
-
+    printk!(
+        "add_thread: adding thread with priority {} to hart {}\n",
+        tcb.priority,
+        current_hart_id
+    );
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_HARTS，则表示不绑定，默认使用当前核心
     let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };
@@ -125,6 +129,7 @@ pub fn scheduler() -> ! {
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
                 if let Some(tcb_ptr) = queues[prio].pop_front() {
+                    // printk!("scheduler: selected thread with priority {}\n", prio);
                     next_thread = Some(tcb_ptr);
                     break;
                 }
@@ -150,7 +155,6 @@ pub fn scheduler() -> ! {
 
             // --- 线程返回 ---
             // 当线程被抢占或主动 yield 后，会回到这里
-            set_current(tcb_ptr);
         } else {
             // 没有可运行的线程，进入低功耗等待
             unsafe {
@@ -215,9 +219,17 @@ pub fn wake_up(tcb: &mut TCB) {
         add_thread(tcb);
 
         // 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
-        // 目前 add_thread 已经发送了 IPI，会触发其他核心的调度检查
-        // TODO: 对于当前核心，如果需要抢占，应该在这里检查并 yield
-        // 但为了简化，暂时依赖 IPI 或时间片轮转
+        let current_hart_id = hart::getid();
+        let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };
+
+        if target_hart_id == current_hart_id {
+            if let Some(curr_ptr) = current() {
+                let curr = unsafe { &*curr_ptr };
+                if tcb.priority >= curr.priority {
+                    reschedule();
+                }
+            }
+        }
     }
 }
 
@@ -251,6 +263,10 @@ pub fn current() -> Option<*mut TCB> {
 fn set_current(tcb_ptr: *mut TCB) {
     let hart = hart::getid();
     unsafe {
-        CURRENT_TCB[hart] = Some(tcb_ptr);
+        if tcb_ptr.is_null() {
+            CURRENT_TCB[hart] = None;
+        } else {
+            CURRENT_TCB[hart] = Some(tcb_ptr);
+        }
     }
 }

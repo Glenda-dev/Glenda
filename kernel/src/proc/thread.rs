@@ -1,4 +1,5 @@
 use super::ProcContext;
+use super::scheduler;
 use crate::cap::{CNode, CapType, Capability};
 use crate::hart;
 use crate::ipc::UTCB;
