@@ -9,7 +9,7 @@ pub struct Service {
     pub path: String,
     pub build_cmd_debug: Option<String>,
     pub build_cmd_release: Option<String>,
-    pub output_bin: String,
+    pub output: String,
     #[serde(default)]
     pub kind: Option<String>,
 }

@@ -565,8 +565,9 @@ fn invoke_console(method: usize) -> usize {
         consolemethod::PUT_STR => {
             let offset = utcb.mrs_regs[0];
             let len = utcb.mrs_regs[1];
-            if let Some(s) = utcb.get_str(offset, len) {
+            if let Some(_) = utcb.with_str(offset, len, |s| {
                 crate::printk!("{}", s);
+            }) {
                 errcode::SUCCESS
             } else {
                 errcode::INVALID_SLOT

@@ -113,9 +113,9 @@ pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
                 return Err(anyhow::anyhow!("build command failed for {}", root_task_cfg.name));
             }
         }
-        let out_path = Path::new(&(root_task_cfg.path)).join(&root_task_cfg.output_bin);
+        let out_path = Path::new(&(root_task_cfg.path)).join(&root_task_cfg.output);
         if !out_path.exists() {
-            return Err(anyhow::anyhow!("output binary not found: {}", root_task_cfg.output_bin));
+            return Err(anyhow::anyhow!("output binary not found: {}", root_task_cfg.output));
         }
 
         // Copy to root target
@@ -154,9 +154,9 @@ pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
                 return Err(anyhow::anyhow!("build command failed for {}", c.name));
             }
         }
-        let out_path = Path::new(&(c.path)).join(&c.output_bin);
+        let out_path = Path::new(&(c.path)).join(&c.output);
         if !out_path.exists() {
-            return Err(anyhow::anyhow!("output binary not found: {}", c.output_bin));
+            return Err(anyhow::anyhow!("output binary not found: {}", c.output));
         }
 
         // Copy to root target
