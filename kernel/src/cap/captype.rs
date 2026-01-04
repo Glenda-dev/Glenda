@@ -12,6 +12,7 @@ pub enum CapType {
     Untyped {
         start_paddr: PhysAddr,
         size: usize,
+        free_offset: usize,
     },
 
     /// 线程控制块 (TCB)

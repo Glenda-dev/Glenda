@@ -1,3 +1,4 @@
+use crate::cap::CapPtr;
 use crate::cap::{invoke, rights};
 use crate::proc::scheduler;
 use crate::trap::TrapContext;
@@ -34,5 +35,5 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
     // 3. 提取参数 (Method ID 通常在 a7)
     let method = ctx.a7;
     // 4. 分发调用
-    invoke::dispatch(&cap, method)
+    invoke::dispatch(&cap, CapPtr::from(cptr), method)
 }

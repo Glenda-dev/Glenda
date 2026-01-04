@@ -83,20 +83,3 @@ pub fn panic(info: &PanicInfo) -> ! {
         wfi();
     }
 }
-
-#[macro_export]
-macro_rules! unimplemented {
-    () => {
-        panic!("{}UNIMPLEMENTED{} at {}:{}", ANSI_RED, ANSI_RESET, core::file!(), core::line!());
-    };
-    ($msg:expr) => {
-        panic!(
-            "{}UNIMPLEMENTED{} at {}:{}: {}",
-            ANSI_RED,
-            ANSI_RESET,
-            core::file!(),
-            core::line!(),
-            $msg
-        );
-    };
-}

@@ -128,49 +128,45 @@ pub fn init_kernel_vm(hartid: usize) {
         PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL),
     );
 
-    if let Some(plic_range) = dtb::plic() {
-        let plic_pa = plic_range.start;
-        let plic_va = plic_pa.to_va();
-        let plic_size = plic_range.size;
-        printk!(
-            "vm: Map PLIC [{:#x}, {:#x}) -> [{:#x}, {:#x}) RW\n",
-            plic_pa.as_usize(),
-            (plic_pa + plic_range.size).as_usize(),
-            plic_va.as_usize(),
-            (plic_va + plic_size).as_usize()
-        );
-        // 映射整个 PLIC 区域 (简化处理，映射 4MB)
-        kpt.map_with_alloc(
-            plic_va,
-            plic_pa,
-            plic_size,
-            PteFlags::from(
-                perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL,
-            ),
-        );
-    }
+    let plic_range = dtb::plic().expect("No PLIC found");
+    let plic_pa = plic_range.start;
+    let plic_va = plic_pa.to_va();
+    let plic_size = plic_range.size;
+    printk!(
+        "vm: Map PLIC [{:#x}, {:#x}) -> [{:#x}, {:#x}) RW\n",
+        plic_pa.as_usize(),
+        (plic_pa + plic_range.size).as_usize(),
+        plic_va.as_usize(),
+        (plic_va + plic_size).as_usize()
+    );
+    // 映射整个 PLIC 区域
+    kpt.map_with_alloc(
+        plic_va,
+        plic_pa,
+        plic_size,
+        PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL),
+    );
 
     // 映射initrd
-    if let Some(initrd) = initrd::range() {
-        let initrd_start = initrd.start;
-        let initrd_end = initrd.start + initrd.size;
-        let initrd_size = initrd.size;
-        let initrd_pa = initrd_start.align_down(PGSIZE);
-        let initrd_va = initrd_pa.to_va();
-        printk!(
-            "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) R\n",
-            initrd_start.as_usize(),
-            initrd_end.as_usize(),
-            initrd_va.as_usize(),
-            (initrd_va + initrd_size).as_usize()
-        );
-        kpt.map_with_alloc(
-            initrd_va,
-            initrd_pa,
-            initrd_size,
-            PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
-        );
-    }
+    let initrd = initrd::range();
+    let initrd_start = initrd.start;
+    let initrd_end = initrd.start + initrd.size;
+    let initrd_size = initrd.size;
+    let initrd_pa = initrd_start.align_down(PGSIZE);
+    let initrd_va = initrd_pa.to_va();
+    printk!(
+        "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) R\n",
+        initrd_start.as_usize(),
+        initrd_end.as_usize(),
+        initrd_va.as_usize(),
+        (initrd_va + initrd_size).as_usize()
+    );
+    kpt.map_with_alloc(
+        initrd_va,
+        initrd_pa,
+        initrd_size,
+        PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
+    );
 
     printk!("vm: Root page table built by hart {}\n", hartid);
     KERNEL_PAGE_TABLE.call_once(|| kpt);

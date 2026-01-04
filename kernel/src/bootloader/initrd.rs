@@ -1,7 +1,7 @@
 use crate::dtb::{self, MemoryRange};
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{BOOTINFO_VA, PGSIZE};
+use crate::mem::{PGSIZE, STACK_VA};
 use crate::mem::{PageTable, PteFlags, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
@@ -193,12 +193,9 @@ pub fn get_root_task() -> Option<&'static ProcPayload> {
     ROOT_TASK.get()
 }
 
-pub fn range() -> Option<MemoryRange> {
-    let range = INITRD_RANGE.get();
-    if range.is_none() {
-        return None;
-    }
-    Some(*range.unwrap())
+pub fn range() -> MemoryRange {
+    let range = INITRD_RANGE.get().expect("Initrd not found");
+    *range
 }
 
 impl ProcPayload {
@@ -222,7 +219,7 @@ impl ProcPayload {
         };
 
         // 默认栈顶 (BootInfo 下方)
-        let stack_top = BOOTINFO_VA;
+        let stack_top = STACK_VA;
         (entry, stack_top)
     }
 

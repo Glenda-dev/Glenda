@@ -1,4 +1,4 @@
-use crate::mem::PhysAddr;
+use crate::mem::{PGSIZE, PhysAddr};
 use crate::printk;
 use crate::printk::uart::Config as UartConfig;
 use core::cell::UnsafeCell;
@@ -14,6 +14,9 @@ pub struct MemoryRange {
 }
 
 impl MemoryRange {
+    pub fn from(start: PhysAddr, size: usize) -> MemoryRange {
+        MemoryRange { start, size }
+    }
     pub fn end(&self) -> PhysAddr {
         self.start + self.size
     }
@@ -173,6 +176,11 @@ pub fn initrd_range() -> Option<MemoryRange> {
 
 pub fn bootargs() -> Option<&'static str> {
     DEVICE_TREE.get().and_then(|info| info.bootargs)
+}
+
+pub fn dtb_range() -> MemoryRange {
+    let info = DEVICE_TREE.get().expect("Device Tree Not Initialzed");
+    MemoryRange::from(PhysAddr::from(info.dtb_paddr), info.dtb_size)
 }
 
 fn parse_u64(data: &[u8]) -> u64 {

@@ -9,22 +9,26 @@ use crate::cap::rights;
 use crate::dtb;
 use crate::mem::pmem;
 use crate::mem::pte::perms;
-use crate::mem::{BOOTINFO_VA, INITRD_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA};
+use crate::mem::{
+    HEAP_SIZE, HEAP_VA, RES_VA_BASE, STACK_SIZE, STACK_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA,
+};
 use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
 use crate::printk;
 
-pub const VSPACE_SLOT: usize = 1;
-pub const CSPACE_SLOT: usize = 0;
-pub const TCB_SLOT: usize = 2;
-pub const UTCB_SLOT: usize = 3;
-pub const BOOTINFO_SLOT: usize = 4;
-pub const CONSOLE_SLOT: usize = 5;
-pub const INITRD_SLOT: usize = 6;
+pub const NULL_SLOT: usize = 0;
+pub const CSPACE_SLOT: usize = 1;
+pub const VSPACE_SLOT: usize = 2;
+pub const TCB_SLOT: usize = 3;
+pub const UTCB_SLOT: usize = 4;
+pub const MEM_SLOT: usize = 5;
+pub const CONSOLE_SLOT: usize = 6;
+pub const INITRD_SLOT: usize = 7;
+pub const DTB_SLOT: usize = 8;
 
-pub const MEM_SLOT_START: usize = 7;
+pub const BOOTINFO_SLOT_START: usize = 32;
 
-pub const STACK_SIZE: usize = 16 * 1024; // 16KB
-pub const HEAP_SIZE: usize = 1024 * 1024; // 1MB
+pub const BOOTINFO_VA: usize = RES_VA_BASE; // Bootinfo映射地址
+pub const INITRD_VA: usize = BOOTINFO_VA + PGSIZE; // Initrd 映射地址 (Root Task)
 
 unsafe extern "C" {
     static __trampoline: u8;
@@ -68,17 +72,25 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     cspace.insert(VSPACE_SLOT, &caps.vspace);
     cspace.insert(TCB_SLOT, &caps.tcb);
     cspace.insert(UTCB_SLOT, &caps.utcb);
-    cspace.insert(BOOTINFO_SLOT, &caps.bootinfo);
     cspace.insert(CONSOLE_SLOT, &caps.console);
 
-    if let Some(range) = dtb::initrd_range() {
-        let page_count = (range.size + PGSIZE - 1) / PGSIZE;
-        let initrd_cap = Capability::new(
-            crate::cap::CapType::Frame { paddr: range.start, page_count },
-            rights::READ | rights::WRITE | rights::GRANT,
-        );
-        cspace.insert(INITRD_SLOT, &initrd_cap);
-    }
+    let initrd_range = initrd::range();
+    let initrd_start = initrd_range.start.align_down(PGSIZE);
+    let initrd_page_count = (initrd_range.size + PGSIZE - 1) / PGSIZE;
+    let initrd_cap = Capability::new(
+        crate::cap::CapType::Frame { paddr: initrd_start, page_count: initrd_page_count },
+        rights::READ | rights::WRITE | rights::GRANT,
+    );
+    cspace.insert(INITRD_SLOT, &initrd_cap);
+
+    let dtb_range = dtb::dtb_range();
+    let dtb_start = dtb_range.start.align_down(PGSIZE);
+    let dtb_page_count = (dtb_range.size + PGSIZE - 1) / PGSIZE;
+    let dtb_cap = Capability::new(
+        crate::cap::CapType::Frame { paddr: dtb_start, page_count: dtb_page_count },
+        rights::READ | rights::WRITE | rights::GRANT,
+    );
+    cspace.insert(DTB_SLOT, &dtb_cap);
 }
 
 fn start_root_task(tcb: &mut TCB, entry_point: usize, stack_top: usize) {
@@ -140,11 +152,14 @@ pub fn init() {
 trampoline  (1 page) 映射在最高地址
 trapframe   (1 page)
 UTCB        (1 page)
-BootInfo    (1 page)
 ustack      (N pages)
+------------
+BootInfo    (1 page)  0x40000000
+Initrd      (N pages) 0x40001000
 ————————————
-heap        (M pages)
-code + data (1 page)
+heap        (M pages) 0x20000000
+-------------
+code + data (N pages)
 empty space (1 page) 最低的4096字节 不分配物理页，同时不可访问
 */
 
@@ -192,21 +207,20 @@ fn init_vspace(
     );
 
     // 映射 Initrd 到固定位置
-    if let Some(range) = dtb::initrd_range() {
-        vspace.map_with_alloc(
-            VirtAddr::from(INITRD_VA),
-            range.start,
-            range.size,
-            PteFlags::from(perms::USER | perms::READ),
-        );
-    }
+    let range = initrd::range();
+    vspace.map_with_alloc(
+        VirtAddr::from(INITRD_VA),
+        range.start.align_down(PGSIZE),
+        range.size,
+        PteFlags::from(perms::USER | perms::READ),
+    );
 
-    // 映射用户栈 (16KB)
-    // Stack Top = BOOTINFO_VA
-    // Range: [BOOTINFO_VA - 16KB, BOOTINFO_VA)
-    for i in 1..=4 {
+    let stack_va_start = STACK_VA;
+    let stack_size = STACK_SIZE;
+    let stack_pages = stack_size / PGSIZE;
+    for i in 1..=stack_pages {
         let frame = pmem::alloc_frame_cap(1).expect("Failed to alloc user stack");
-        let va = VirtAddr::from(BOOTINFO_VA - i * PGSIZE);
+        let va = VirtAddr::from(stack_va_start - i * PGSIZE);
         vspace.map_with_alloc(
             va,
             frame.obj_ptr().to_pa(),
@@ -218,8 +232,8 @@ fn init_vspace(
 
     // 映射用户堆 (1MB)
     // HEAP_VA = 0x2000_0000 (Defined in libglenda-rs/src/crt0.rs)
-    let heap_va_start = 0x2000_0000;
-    let heap_size = 1024 * 1024; // 1MB
+    let heap_va_start = HEAP_VA;
+    let heap_size = HEAP_SIZE; // 1MB
     let heap_pages = heap_size / PGSIZE;
 
     for i in 0..heap_pages {
@@ -240,10 +254,10 @@ fn init_vspace(
 fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     let free_region = pmem::get_untyped();
     let preserved_region = pmem::get_preserved_untyped();
-    let mut slot = MEM_SLOT_START;
+    let mut slot = BOOTINFO_SLOT_START;
 
     // 记录 Untyped 区域的起始槽位
-    bootinfo.untyped.start = slot;
+    bootinfo.mmio.start = slot;
 
     // 1. Preserved Region (OpenSBI, Kernel, etc.)
     let preserved_size = (preserved_region.end - preserved_region.start).as_usize();
@@ -251,15 +265,15 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
         let cap = Capability::create_untyped(preserved_region.start, preserved_size, rights::ALL);
         cnode.insert(slot, &cap);
 
-        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
-            paddr: preserved_region.start,
-            size_bits: (preserved_size.ilog2() as u8),
-            is_device: true,
-            padding: [0; 6],
-        };
-        bootinfo.untyped_count += 1;
+        bootinfo.mmio_list[bootinfo.mmio_count] =
+            UntypedDesc { paddr: preserved_region.start, size: preserved_size };
+        bootinfo.mmio_count += 1;
         slot += 1;
     }
+
+    bootinfo.mmio.end = slot - 1;
+
+    bootinfo.untyped.start = slot;
 
     // 2. Free Region (RAM available for allocation)
     let free_size = (free_region.end - free_region.start).as_usize();
@@ -267,17 +281,13 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
         let cap = Capability::create_untyped(free_region.start, free_size, rights::ALL);
         cnode.insert(slot, &cap);
 
-        bootinfo.untyped_list[bootinfo.untyped_count] = UntypedDesc {
-            paddr: free_region.start,
-            size_bits: (free_size.ilog2() as u8),
-            is_device: false,
-            padding: [0; 6],
-        };
+        bootinfo.untyped_list[bootinfo.untyped_count] =
+            UntypedDesc { paddr: free_region.start, size: free_size };
         bootinfo.untyped_count += 1;
         slot += 1;
     }
 
-    bootinfo.untyped.end = slot;
+    bootinfo.untyped.end = slot - 1;
 
     // 插入 IRQ Handler Capabilities
     // 假设系统支持 64 个中断 (与 IRQ_TABLE 大小一致)

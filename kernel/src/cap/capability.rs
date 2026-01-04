@@ -110,7 +110,7 @@ impl Capability {
     }
 
     pub fn create_untyped(start_paddr: PhysAddr, size: usize, rights: u8) -> Self {
-        Self::new(CapType::Untyped { start_paddr, size }, rights)
+        Self::new(CapType::Untyped { start_paddr, size, free_offset: 0 }, rights)
     }
 
     pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
