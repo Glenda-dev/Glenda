@@ -3,7 +3,7 @@ use super::method::{
     untypedmethod,
 };
 use crate::cap::captype::types;
-use crate::cap::{CNode, CapType, Capability, Slot, rights};
+use crate::cap::{Badge, CNode, CapType, Capability, Slot, rights};
 use crate::hart;
 use crate::ipc;
 use crate::irq;
@@ -13,14 +13,14 @@ use crate::trap::syscall::errcode;
 
 pub fn dispatch(cap: &Capability, cptr: usize, method: usize) -> usize {
     // 4. 根据对象类型分发
-    match cap.object {
-        CapType::Endpoint { .. } => invoke_ipc(cap, cptr, method),
-        CapType::Thread { .. } => invoke_tcb(cap, cptr, method),
-        CapType::PageTable { .. } => invoke_pagetable(cap, cptr, method),
-        CapType::CNode { .. } => invoke_cnode(cap, cptr, method),
-        CapType::Untyped { .. } => invoke_untyped(cap, cptr, method),
-        CapType::IrqHandler { .. } => invoke_irq_handler(cap, cptr, method),
-        CapType::Reply { .. } => invoke_reply(cap, cptr, method),
+    match cap.cap_type() {
+        CapType::Endpoint => invoke_ipc(cap, cptr, method),
+        CapType::Thread => invoke_tcb(cap, cptr, method),
+        CapType::PageTable => invoke_pagetable(cap, cptr, method),
+        CapType::CNode => invoke_cnode(cap, cptr, method),
+        CapType::Untyped => invoke_untyped(cap, cptr, method),
+        CapType::IrqHandler => invoke_irq_handler(cap, cptr, method),
+        CapType::Reply => invoke_reply(cap, cptr, method),
         CapType::Console => invoke_console(cap, cptr, method),
         _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
     }
@@ -29,14 +29,15 @@ pub fn dispatch(cap: &Capability, cptr: usize, method: usize) -> usize {
 // --- IPC ipc::Endpoint Methods ---
 
 fn invoke_ipc(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let ep_ptr = match cap.object {
-        CapType::Endpoint { ep_ptr } => ep_ptr,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let ep_ptr = if cap.cap_type() == CapType::Endpoint {
+        cap.obj_ptr()
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     let ep = ep_ptr.as_mut::<ipc::Endpoint>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
-    let badge = cap.get_badge().unwrap_or(0);
+    let badge = cap.get_badge();
 
     // 获取 UTCB 以读取参数 (msg_info)
     let utcb = match tcb.get_utcb() {
@@ -54,7 +55,7 @@ fn invoke_ipc(cap: &Capability, _cptr: usize, method: usize) -> usize {
             let mut cap_to_send = None;
             if tag.has_cap() {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
-                    if (cap.rights & rights::GRANT) != 0 {
+                    if cap.has_rights(rights::GRANT) {
                         cap_to_send = Some(cap);
                     }
                 }
@@ -77,7 +78,7 @@ fn invoke_ipc(cap: &Capability, _cptr: usize, method: usize) -> usize {
             let mut cap_to_send = None;
             if tag.has_cap() {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
-                    if (cap.rights & rights::GRANT) != 0 {
+                    if cap.has_rights(rights::GRANT) {
                         cap_to_send = Some(cap);
                     }
                 }
@@ -97,9 +98,10 @@ fn invoke_ipc(cap: &Capability, _cptr: usize, method: usize) -> usize {
 }
 
 fn invoke_reply(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let tcb_ptr = match cap.object {
-        CapType::Reply { tcb_ptr } => tcb_ptr,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let tcb_ptr = if cap.cap_type() == CapType::Reply {
+        cap.obj_ptr()
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     let target_tcb = tcb_ptr.as_mut::<TCB>();
@@ -116,9 +118,10 @@ fn invoke_reply(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- TCB Methods ---
 
 fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let tcb_ptr = match cap.object {
-        CapType::Thread { tcb_ptr } => tcb_ptr,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let tcb_ptr = if cap.cap_type() == CapType::Thread {
+        cap.obj_ptr()
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     let tcb = tcb_ptr.as_mut::<TCB>();
@@ -176,7 +179,7 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
             let ep_cptr = utcb.mrs_regs[0];
             if let Some(ep_cap) = current_tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
-                if let CapType::Endpoint { .. } = ep_cap.object {
+                if ep_cap.cap_type() == CapType::Endpoint {
                     tcb.set_fault_handler(ep_cap);
                     errcode::SUCCESS
                 } else {
@@ -232,9 +235,10 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- PageTable Methods ---
 
 fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let paddr = match cap.object {
-        CapType::PageTable { paddr, .. } => paddr,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let paddr = if cap.cap_type() == CapType::PageTable {
+        PhysAddr::from(cap.words[0])
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
@@ -258,9 +262,10 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 None => return errcode::INVALID_CAP,
             };
 
-            let (frame_paddr, frame_size) = match frame_cap.object {
-                CapType::Frame { paddr, page_count } => (paddr, page_count * PGSIZE),
-                _ => return errcode::INVALID_OBJ_TYPE,
+            let (frame_paddr, frame_size) = if frame_cap.cap_type() == CapType::Frame {
+                (PhysAddr::from(frame_cap.words[0]), frame_cap.frame_page_count() * PGSIZE)
+            } else {
+                return errcode::INVALID_OBJ_TYPE;
             };
 
             // 执行映射
@@ -280,9 +285,10 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 None => return errcode::INVALID_CAP,
             };
 
-            let table_paddr = match table_cap.object {
-                CapType::PageTable { paddr, .. } => paddr,
-                _ => return errcode::INVALID_OBJ_TYPE,
+            let table_paddr = if table_cap.cap_type() == CapType::PageTable {
+                PhysAddr::from(table_cap.words[0])
+            } else {
+                return errcode::INVALID_OBJ_TYPE;
             };
 
             match pt.map_table(vaddr, table_paddr, level) {
@@ -315,9 +321,10 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- CNode methods ---
 
 fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let paddr = match cap.object {
-        CapType::CNode { paddr } => paddr,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let paddr = if cap.cap_type() == CapType::CNode {
+        PhysAddr::from(cap.words[0])
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     let mut cnode = CNode::from_addr(paddr);
@@ -333,22 +340,21 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
             let _src_cptr = utcb.mrs_regs[0];
             let src_cptr = utcb.mrs_regs[0];
             let dest_slot = utcb.mrs_regs[1];
-            let badge_val = utcb.mrs_regs[2];
+            let new_badge = Badge::from(utcb.mrs_regs[2]);
             let req_rights = utcb.mrs_regs[3] as u8;
-            let new_badge = if badge_val == 0 { None } else { Some(badge_val) };
 
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
                 // 1. 权限收缩：新权限必须是源权限的子集
-                let final_rights = req_rights & src_cap.rights;
+                let final_rights = req_rights & src_cap.rights();
 
                 // 2. Badge 检查：
                 // - 如果源 Cap 已有 Badge，则不能再次设置新 Badge (seL4 语义)
                 // - 新 Cap 必须继承源 Cap 的 Badge (如果存在)
                 let src_badge = src_cap.get_badge();
-                if src_badge.is_some() && new_badge.is_some() {
+                if !src_badge.is_null() && !new_badge.is_null() {
                     return errcode::INVALID_CAP; // Cannot re-badge an already badged cap
                 }
-                let final_badge = src_badge.or(new_badge);
+                let final_badge = if !src_badge.is_null() { src_badge } else { new_badge };
 
                 let new_cap = src_cap.mint(final_badge, final_rights);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
@@ -367,7 +373,7 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
             let rights = utcb.mrs_regs[2] as u8;
 
             if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
-                let new_cap = src_cap.mint(None, rights);
+                let new_cap = src_cap.mint(Badge::null(), rights);
                 if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
                     errcode::SUCCESS
                 } else {
@@ -400,7 +406,7 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
             }
         }
         cnodemethod::DEBUG_PRINT => {
-            cnode.print();
+            cnode.debug_print();
             errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,
@@ -408,12 +414,11 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
 }
 
 fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
-    let (start, total_pages, free_pages) = match cap.object {
-        CapType::Untyped { start_paddr, total_pages, free_pages } => {
-            (start_paddr, total_pages, free_pages)
-        }
-        _ => return errcode::INVALID_OBJ_TYPE,
-    };
+    if cap.cap_type() != CapType::Untyped {
+        return errcode::INVALID_OBJ_TYPE;
+    }
+    let start = PhysAddr::from(cap.words[0]);
+    let (total_pages, free_pages) = cap.untyped_info();
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
@@ -437,7 +442,8 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                 None => return errcode::INVALID_CAP,
             };
 
-            if let CapType::CNode { paddr: cn_paddr } = dest_cnode_cap.object {
+            if dest_cnode_cap.cap_type() == CapType::CNode {
+                let cn_paddr = PhysAddr::from(dest_cnode_cap.words[0]);
                 let mut dest_cnode = crate::cap::CNode::from_addr(cn_paddr);
 
                 // 检查总大小
@@ -477,10 +483,10 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     let new_cap = match obj_type {
                         // CNode
                         types::CNODE => {
-                            if obj_pages != 1 {
+                            if obj_pages != 4 {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
-                            let _ = CNode::new(obj_paddr);
+                            CNode::init(obj_paddr);
                             Capability::create_cnode(obj_paddr, rights::ALL)
                         }
                         // TCB
@@ -527,8 +533,8 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     let slot_ptr = slot_paddr.as_mut::<Slot>();
                     // 我们需要构造一个新的 Capability，或者直接修改现有的
                     // 由于 Capability 是 Copy，我们可以直接修改 slot_ptr.cap
-                    if let CapType::Untyped { free_pages, .. } = &mut slot_ptr.cap.object {
-                        *free_pages = new_free_pages;
+                    if slot_ptr.cap.cap_type() == CapType::Untyped {
+                        slot_ptr.cap.set_untyped_free(new_free_pages);
                     }
                 }
 
@@ -542,9 +548,10 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
 }
 
 fn invoke_irq_handler(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let irq = match cap.object {
-        CapType::IrqHandler { irq } => irq,
-        _ => return errcode::INVALID_OBJ_TYPE,
+    let irq = if cap.cap_type() == CapType::IrqHandler {
+        cap.words[0]
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
     };
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
@@ -560,7 +567,7 @@ fn invoke_irq_handler(cap: &Capability, _cptr: usize, method: usize) -> usize {
 
             if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
-                if let CapType::Endpoint { .. } = ep_cap.object {
+                if ep_cap.cap_type() == CapType::Endpoint {
                     irq::bind_notification(irq, ep_cap.clone());
                     errcode::SUCCESS
                 } else {

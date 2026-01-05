@@ -1,42 +1,110 @@
 use super::CapType;
 use super::rights;
+use crate::cap::Badge;
 use crate::cap::cnode::CNodeHeader;
 use crate::ipc::Endpoint;
 use crate::mem::PGSIZE;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::TCB;
+use core::fmt::Debug;
+use core::mem::transmute;
 use core::sync::atomic::Ordering;
 
-/// 能力 (Capability)
-/// 包含对象引用、权限和 Badge
-#[derive(Debug)]
+/// Capability (Compressed to 16 bytes)
+/// Word 0: Object Pointer / Data
+/// Word 1: Metadata (Type, Rights, Badge, etc.)
+#[repr(C)]
 pub struct Capability {
-    pub object: CapType,
-    pub badge: Option<usize>, // Badge 用于服务端识别客户端身份
-    pub rights: u8,
+    pub words: [usize; 2],
+}
+
+impl Debug for Capability {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let cap_type = self.cap_type();
+        let mut s = f.debug_struct("Capability");
+        s.field("type", &cap_type);
+        s.field("rights", &self.rights());
+
+        match cap_type {
+            CapType::Untyped => {
+                let (total, free) = self.untyped_info();
+                s.field("start_paddr", &PhysAddr::from(self.words[0]));
+                s.field("total_pages", &total);
+                s.field("free_pages", &free);
+            }
+            CapType::Thread => {
+                s.field("tcb_ptr", &VirtAddr::from(self.words[0]));
+            }
+            CapType::Endpoint => {
+                s.field("ep_ptr", &VirtAddr::from(self.words[0]));
+                s.field("badge", &self.get_badge());
+            }
+            CapType::Reply => {
+                s.field("tcb_ptr", &VirtAddr::from(self.words[0]));
+            }
+            CapType::Frame => {
+                s.field("paddr", &PhysAddr::from(self.words[0]));
+                s.field("page_count", &self.frame_page_count());
+            }
+            CapType::PageTable => {
+                s.field("paddr", &PhysAddr::from(self.words[0]));
+                s.field("level", &self.pt_level());
+            }
+            CapType::CNode => {
+                s.field("paddr", &PhysAddr::from(self.words[0]));
+            }
+            CapType::IrqHandler => {
+                s.field("irq", &self.words[0]);
+            }
+            CapType::MMIO => {
+                s.field("paddr", &PhysAddr::from(self.words[0]));
+                s.field("size", &(self.words[1] >> DATA_SHIFT));
+            }
+            _ => {}
+        }
+        s.finish()
+    }
 }
 
 impl Clone for Capability {
     fn clone(&self) -> Self {
         self.inc_ref();
-        Self { object: self.object, badge: self.badge, rights: self.rights }
+        Self { words: self.words }
     }
 }
 
-// TODO: Use template method to reduce code duplication
+// Bitfield constants
+pub const TYPE_MASK: usize = 0x1F; // 5 bits (32 types)
+pub const RIGHTS_SHIFT: usize = 5;
+pub const RIGHTS_MASK: usize = 0xFF; // 8 bits
+pub const DATA_SHIFT: usize = 13;
 
 impl Capability {
+    // Helper to extract type
+    pub fn cap_type(&self) -> CapType {
+        let tag = self.words[1] & TYPE_MASK;
+        unsafe { transmute(tag) }
+    }
+
+    // Helper to extract rights
+    pub fn rights(&self) -> u8 {
+        ((self.words[1] >> RIGHTS_SHIFT) & RIGHTS_MASK) as u8
+    }
+
     fn inc_ref(&self) {
-        match self.object {
-            CapType::Thread { tcb_ptr } => {
+        match self.cap_type() {
+            CapType::Thread => {
+                let tcb_ptr = VirtAddr::from(self.words[0]);
                 let tcb = tcb_ptr.as_ref::<TCB>();
                 tcb.ref_count.fetch_add(1, Ordering::Relaxed);
             }
-            CapType::Endpoint { ep_ptr } => {
+            CapType::Endpoint => {
+                let ep_ptr = VirtAddr::from(self.words[0]);
                 let ep = ep_ptr.as_ref::<Endpoint>();
                 ep.ref_count.fetch_add(1, Ordering::Relaxed);
             }
-            CapType::CNode { paddr, .. } => {
+            CapType::CNode => {
+                let paddr = PhysAddr::from(self.words[0]);
                 let header = paddr.as_ref::<CNodeHeader>();
                 header.ref_count.fetch_add(1, Ordering::Relaxed);
             }
@@ -45,48 +113,53 @@ impl Capability {
         }
     }
 
-    pub const fn new(object: CapType, rights: u8) -> Self {
-        Self { object, badge: None, rights }
-    }
-
     pub const fn empty() -> Self {
-        Self { object: CapType::Empty, badge: None, rights: 0 }
+        Self { words: [0, 0] }
     }
 
-    pub fn mint(&self, badge: Option<usize>, rights: u8) -> Self {
+    pub fn mint(&self, badge: Badge, rights: u8) -> Self {
         let mut new_cap = self.clone();
 
-        // 规范化：0 视为 None
-        let effective_badge = match badge {
-            Some(0) => None,
-            b => b,
-        };
-
         // 只有原始能力未标记，且新标记有效时，才允许注入
-        if self.badge.is_none() && effective_badge.is_some() {
-            new_cap.badge = effective_badge;
+        // 目前仅 Endpoint 支持 Badge
+        if self.cap_type() == CapType::Endpoint {
+            let current_badge = self.get_badge();
+            if current_badge.is_null() && !badge.is_null() {
+                let b = badge;
+                // 清除旧 Badge (虽然是0) 并设置新 Badge
+                // 注意：这里假设 Badge 在高位，且没有其他数据
+                new_cap.set_badge(b);
+            }
         }
 
-        new_cap.rights &= rights;
+        // 更新权限
+        let current_rights = new_cap.rights();
+        let new_rights = current_rights & rights;
+
+        // 清除旧权限位并设置新权限
+        let rights_clear_mask = !(RIGHTS_MASK << RIGHTS_SHIFT);
+        new_cap.words[1] =
+            (new_cap.words[1] & rights_clear_mask) | ((new_rights as usize) << RIGHTS_SHIFT);
+
         new_cap
     }
 
     pub fn obj_ptr(&self) -> VirtAddr {
-        match self.object {
-            CapType::Untyped { start_paddr, .. } => start_paddr.to_va(),
-            CapType::Thread { tcb_ptr } => tcb_ptr,
-            CapType::Endpoint { ep_ptr } => ep_ptr,
-            CapType::Reply { tcb_ptr } => tcb_ptr,
-            CapType::Frame { paddr, .. } => paddr.to_va(),
-            CapType::PageTable { paddr, .. } => paddr.to_va(),
-            CapType::CNode { paddr, .. } => paddr.to_va(),
+        match self.cap_type() {
+            CapType::Untyped => PhysAddr::from(self.words[0]).to_va(),
+            CapType::Thread => VirtAddr::from(self.words[0]),
+            CapType::Endpoint => VirtAddr::from(self.words[0]),
+            CapType::Reply => VirtAddr::from(self.words[0]),
+            CapType::Frame => PhysAddr::from(self.words[0]).to_va(),
+            CapType::PageTable => PhysAddr::from(self.words[0]).to_va(),
+            CapType::CNode => PhysAddr::from(self.words[0]).to_va(),
             _ => VirtAddr::null(),
         }
     }
 
     /// 检查是否拥有指定权限
     pub fn has_rights(&self, required: u8) -> bool {
-        (self.rights & required) == required
+        (self.rights() & required) == required
     }
 
     /// 检查是否允许 Invoke (Call)
@@ -100,65 +173,135 @@ impl Capability {
     }
 
     /// 获取 Badge 值，若无则返回 0
-    pub fn get_badge(&self) -> Option<usize> {
-        self.badge
+    pub fn get_badge(&self) -> Badge {
+        if self.cap_type() == CapType::Endpoint {
+            Badge::from(self.words[1] >> DATA_SHIFT)
+        } else {
+            Badge::null()
+        }
     }
 
     /// 检查是否已被标记
     pub fn is_badged(&self) -> bool {
-        self.badge.is_some()
+        !self.get_badge().is_null()
+    }
+
+    pub fn set_badge(&mut self, badge: Badge) {
+        if self.cap_type() == CapType::Endpoint {
+            let mask = !((!0usize) << DATA_SHIFT);
+            self.words[1] = (self.words[1] & mask) | (badge.get() << DATA_SHIFT);
+        }
     }
 
     pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: u8) -> Self {
-        Self::new(CapType::Untyped { start_paddr, total_pages, free_pages: 0 }, rights)
+        let w0 = start_paddr.as_usize();
+        // Word 1: Type (5) | Rights (8) | TotalPages (25) | FreePages (25)
+        let w1 = (CapType::Untyped as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | ((total_pages & 0x1FFFFFF) << 13)
+            | (0usize << 38); // free_pages starts at 0
+
+        Self { words: [w0, w1] }
+    }
+
+    // Helper for Untyped to get fields
+    pub fn untyped_info(&self) -> (usize, usize) {
+        let total_pages = (self.words[1] >> 13) & 0x1FFFFFF;
+        let free_pages = (self.words[1] >> 38) & 0x1FFFFFF;
+        (total_pages, free_pages)
+    }
+
+    // Helper to update Untyped free pages
+    pub fn set_untyped_free(&mut self, free: usize) {
+        let mask = !(0x1FFFFFFusize << 38);
+        self.words[1] = (self.words[1] & mask) | ((free & 0x1FFFFFF) << 38);
     }
 
     pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
-        Self::new(CapType::Thread { tcb_ptr }, rights)
+        let w0 = tcb_ptr.as_usize();
+        let w1 = (CapType::Thread as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_endpoint(ep_ptr: VirtAddr, rights: u8) -> Self {
-        Self::new(CapType::Endpoint { ep_ptr }, rights)
+        let w0 = ep_ptr.as_usize();
+        let w1 = (CapType::Endpoint as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_reply(ro_ptr: VirtAddr, rights: u8) -> Self {
-        Self::new(CapType::Reply { tcb_ptr: ro_ptr }, rights)
+        let w0 = ro_ptr.as_usize();
+        let w1 = (CapType::Reply as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_frame(paddr: PhysAddr, page_count: usize, rights: u8) -> Self {
         assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
-        Self::new(CapType::Frame { paddr, page_count }, rights)
+        let w0 = paddr.as_usize();
+        let w1 = (CapType::Frame as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | (page_count << DATA_SHIFT);
+        Self { words: [w0, w1] }
+    }
+
+    pub fn frame_page_count(&self) -> usize {
+        self.words[1] >> DATA_SHIFT
     }
 
     pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: u8) -> Self {
-        Self::new(CapType::PageTable { paddr, level }, rights)
+        let w0 = paddr.as_usize();
+        let w1 = (CapType::PageTable as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | (level << DATA_SHIFT);
+        Self { words: [w0, w1] }
+    }
+
+    pub fn pt_level(&self) -> usize {
+        self.words[1] >> DATA_SHIFT
     }
 
     pub fn create_cnode(paddr: PhysAddr, rights: u8) -> Self {
-        Self::new(CapType::CNode { paddr }, rights)
+        let w0 = paddr.as_usize();
+        let w1 = (CapType::CNode as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_irqhandler(irq: usize, rights: u8) -> Self {
-        Self::new(CapType::IrqHandler { irq }, rights)
+        let w0 = irq;
+        let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_console(rights: u8) -> Self {
-        Self::new(CapType::Console, rights)
+        let w0 = 0;
+        let w1 = (CapType::Console as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        Self { words: [w0, w1] }
     }
 
     pub fn create_mmio(paddr: PhysAddr, size: usize, rights: u8) -> Self {
-        Self::new(CapType::MMIO { paddr, size }, rights)
+        let w0 = paddr.as_usize();
+        let w1 = (CapType::MMIO as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | (size << DATA_SHIFT);
+        Self { words: [w0, w1] }
     }
 
     pub fn is_null(&self) -> bool {
-        matches!(self.object, CapType::Empty)
+        self.cap_type() == CapType::Empty
     }
 }
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        match self.object {
-            CapType::Thread { tcb_ptr } => {
+        match self.cap_type() {
+            CapType::Thread => {
+                let tcb_ptr = VirtAddr::from(self.words[0]);
                 let tcb = tcb_ptr.as_ref::<TCB>();
                 if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
@@ -169,14 +312,16 @@ impl Drop for Capability {
                     // 简单起见，我们假设 TCB 内存由 Untyped 管理，这里只做逻辑销毁
                 }
             }
-            CapType::Endpoint { ep_ptr } => {
+            CapType::Endpoint => {
+                let ep_ptr = VirtAddr::from(self.words[0]);
                 let ep = ep_ptr.as_ref::<Endpoint>();
                 if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy Endpoint
                 }
             }
-            CapType::CNode { paddr, .. } => {
+            CapType::CNode => {
+                let paddr = PhysAddr::from(self.words[0]);
                 let header = paddr.as_ref::<CNodeHeader>();
                 if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);

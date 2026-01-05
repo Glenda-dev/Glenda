@@ -3,6 +3,12 @@ use crate::mem::PhysAddr;
 use crate::printk;
 use core::sync::atomic::AtomicUsize;
 
+pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
+pub const CNODE_HEADER_SIZE: usize = core::mem::size_of::<CNodeHeader>();
+pub const CNODE_SIZE: usize = CNODE_HEADER_SIZE + SLOT_SIZE * CNODE_SLOTS;
+pub const CNODE_BITS: usize = 8; // 256 slots per CNode
+pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
+
 /// CNode 在物理内存中的布局头
 #[repr(C)]
 pub struct CNodeHeader {
@@ -38,9 +44,6 @@ pub struct Slot {
     pub cdt: CDTNode,
 }
 
-pub const CNODE_BITS: usize = 12; // 4096 slots per CNode
-pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
-
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
 pub struct CNode {
@@ -48,7 +51,7 @@ pub struct CNode {
 }
 
 impl CNode {
-    pub fn new(paddr: PhysAddr) -> Self {
+    pub fn init(paddr: PhysAddr) {
         // 初始化 Header
         let header_ptr = paddr.as_mut::<CNodeHeader>();
         unsafe {
@@ -63,7 +66,10 @@ impl CNode {
                 );
             }
         }
-        Self { paddr }
+    }
+
+    pub const fn new() -> Self {
+        CNode { paddr: PhysAddr::null() }
     }
 
     pub fn from_addr(paddr: PhysAddr) -> Self {
@@ -98,7 +104,7 @@ impl CNode {
         }
         let ptr = self.get_slots_ptr();
         let cap = unsafe { (*ptr.add(slot)).cap.clone() };
-        if let CapType::Empty = cap.object { None } else { Some(cap) }
+        if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
     }
 
     pub fn insert(&mut self, slot: usize, cap: &Capability) -> bool {
@@ -156,7 +162,7 @@ impl CNode {
 
             // 注意：remove 不会自动处理 CDT 关系，通常用于 Move
             // 如果是彻底删除，应该使用 delete_recursive
-            if let CapType::Empty = cap.object { None } else { Some(cap) }
+            if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
         }
     }
 
@@ -176,7 +182,7 @@ impl CNode {
         delete_recursive(slot_addr);
     }
 
-    pub fn print(&self) {
+    pub fn debug_print(&self) {
         printk!("CNode at paddr {:x}:\n", self.paddr.as_usize());
         let slots_ptr = self.get_slots_ptr();
         for i in 0..self.size() {

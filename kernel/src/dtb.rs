@@ -1,4 +1,4 @@
-use crate::mem::{PGSIZE, PhysAddr};
+use crate::mem::PhysAddr;
 use crate::printk;
 use crate::printk::uart::Config as UartConfig;
 use core::cell::UnsafeCell;

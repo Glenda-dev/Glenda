@@ -1,8 +1,7 @@
-use crate::printk;
+use crate::cap::Badge;
 use crate::proc::thread::TCB;
 use crate::trap::interrupt;
 use core::sync::atomic::AtomicUsize;
-use riscv::register::sstatus;
 use spin::Mutex;
 
 /// IPC 通信端点
@@ -138,26 +137,26 @@ impl Endpoint {
         ret
     }
 
-    pub fn notify(&self, badge: usize) {
+    pub fn notify(&self, badge: Badge) {
         let sie = interrupt::is_enabled();
         interrupt::disable();
         {
             let mut inner = self.inner.lock();
-            inner.notification_word |= badge;
+            inner.notification_word |= badge.get();
         }
         if sie {
             interrupt::enable();
         }
     }
 
-    pub fn poll_notification(&self) -> usize {
+    pub fn poll_notification(&self) -> Badge {
         let sie = interrupt::is_enabled();
         interrupt::disable();
         let ret = {
             let mut inner = self.inner.lock();
             let word = inner.notification_word;
             inner.notification_word = 0;
-            word
+            Badge::from(word)
         };
         if sie {
             interrupt::enable();

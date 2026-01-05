@@ -2,7 +2,6 @@ use super::context::switch_context;
 use super::thread::{TCB, ThreadState};
 use crate::hart;
 use crate::hart::MAX_HARTS;
-use crate::printk;
 use crate::sbi;
 use riscv::register::sstatus;
 
@@ -83,11 +82,7 @@ fn kick_harts() {
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
     let current_hart_id = hart::getid();
-    printk!(
-        "add_thread: adding thread with priority {} to hart {}\n",
-        tcb.priority,
-        current_hart_id
-    );
+
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_HARTS，则表示不绑定，默认使用当前核心
     let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };

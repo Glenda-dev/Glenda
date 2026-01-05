@@ -1,6 +1,5 @@
 use super::{PGSIZE, PhysAddr};
-use crate::cap::CNODE_BITS;
-use crate::cap::cnode::CNodeHeader;
+use crate::cap::CNODE_SIZE;
 use crate::cap::{CNode, Capability, Slot, rights};
 use crate::dtb;
 use crate::mem::PageTable;
@@ -90,11 +89,10 @@ pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
 }
 
 pub fn alloc_cnode_cap() -> Option<Capability> {
-    let size =
-        (1 << CNODE_BITS) * core::mem::size_of::<Slot>() + core::mem::size_of::<CNodeHeader>();
+    let size = CNODE_SIZE;
     let align = core::mem::align_of::<Slot>();
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        CNode::new(paddr);
+        CNode::init(paddr);
         Capability::create_cnode(paddr, rights::ALL)
     })
 }

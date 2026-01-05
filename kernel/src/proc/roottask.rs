@@ -54,7 +54,7 @@ fn alloc_root_caps() -> RootCaps {
         tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
         kstack: pmem::alloc_frame_cap(KSTACK_PAGES).expect("Failed to alloc root Kernel Stack"),
         bootinfo: pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo"),
-        console: Capability::new(crate::cap::CapType::Console, rights::ALL),
+        console: Capability::create_console(rights::ALL),
     }
 }
 
@@ -78,8 +78,9 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     let initrd_range = initrd::range();
     let initrd_start = initrd_range.start.align_down(PGSIZE);
     let initrd_page_count = (initrd_range.size + PGSIZE - 1) / PGSIZE;
-    let initrd_cap = Capability::new(
-        crate::cap::CapType::Frame { paddr: initrd_start, page_count: initrd_page_count },
+    let initrd_cap = Capability::create_frame(
+        initrd_start,
+        initrd_page_count,
         rights::READ | rights::WRITE | rights::GRANT,
     );
     cspace.insert(INITRD_SLOT, &initrd_cap);
@@ -87,8 +88,9 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     let dtb_range = dtb::dtb_range();
     let dtb_start = dtb_range.start.align_down(PGSIZE);
     let dtb_page_count = (dtb_range.size + PGSIZE - 1) / PGSIZE;
-    let dtb_cap = Capability::new(
-        crate::cap::CapType::Frame { paddr: dtb_start, page_count: dtb_page_count },
+    let dtb_cap = Capability::create_frame(
+        dtb_start,
+        dtb_page_count,
         rights::READ | rights::WRITE | rights::GRANT,
     );
     cspace.insert(DTB_SLOT, &dtb_cap);
@@ -305,7 +307,7 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     // 假设系统支持 64 个中断 (与 IRQ_TABLE 大小一致)
     bootinfo.irq.start = slot;
     for irq in 0..64 {
-        let cap = Capability::new(crate::cap::CapType::IrqHandler { irq }, rights::ALL);
+        let cap = Capability::create_irqhandler(irq, rights::ALL);
         cnode.insert(slot, &cap);
         slot += 1;
     }

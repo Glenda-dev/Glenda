@@ -105,13 +105,12 @@ impl VSpace {
     }
 
     pub fn configure(&mut self, cap: &Capability) {
-        match cap.object {
-            CapType::PageTable { paddr, level, .. } => {
-                assert!(level == 2, "Root page table must be level 2");
-                assert!(paddr.is_aligned(PGSIZE), "Page table address must be page-aligned");
-                self.root_paddr = paddr;
-            }
-            _ => return,
+        if cap.cap_type() == CapType::PageTable {
+            let paddr = PhysAddr::from(cap.words[0]);
+            let level = cap.pt_level();
+            assert!(level == 2, "Root page table must be level 2");
+            assert!(paddr.is_aligned(PGSIZE), "Page table address must be page-aligned");
+            self.root_paddr = paddr;
         }
     }
 }

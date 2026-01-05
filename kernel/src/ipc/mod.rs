@@ -5,7 +5,7 @@ pub mod utcb;
 pub use message::{MsgTag, label};
 pub use utcb::UTCB;
 
-use crate::cap::{CapType, Capability, Slot, rights};
+use crate::cap::{Badge, CapType, Capability, Slot, rights};
 use crate::mem::VirtAddr;
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
@@ -15,8 +15,8 @@ pub use utcb::{BUFFER_MAX_SIZE, MAX_MRS};
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
-        if let CapType::Frame { paddr, .. } = cap.object {
-            return Some(paddr.to_va().as_mut_ptr::<UTCB>());
+        if cap.cap_type() == CapType::Frame {
+            return Some(cap.obj_ptr().as_mut_ptr::<UTCB>());
         }
     }
     None
@@ -27,7 +27,7 @@ fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
 unsafe fn copy_msg(
     sender: &TCB,
     receiver: &mut TCB,
-    badge: usize,
+    badge: Badge,
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
 ) {
@@ -73,9 +73,9 @@ unsafe fn copy_msg(
     }
 }
 
-fn set_badge(tcb: &mut TCB, badge: usize) {
+fn set_badge(tcb: &mut TCB, badge: Badge) {
     let tf = tcb.get_tf();
-    tf.a1 = badge;
+    tf.a1 = badge.get();
 }
 
 /// 发送操作
@@ -84,7 +84,7 @@ fn set_badge(tcb: &mut TCB, badge: usize) {
 /// * `ep`: 目标 Endpoint 对象
 /// * `badge`: 发送 Capability 携带的身份标识
 /// * `cap`: 可选的要传递的能力
-pub fn send(current: &mut TCB, ep: &Endpoint, badge: usize, cap: Option<Capability>) {
+pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
@@ -110,16 +110,14 @@ pub fn send(current: &mut TCB, ep: &Endpoint, badge: usize, cap: Option<Capabili
 
 /// Call 操作 (sys_call)
 /// 发送消息并等待回复，是原子的 Send + Recv
-pub fn call(current: &mut TCB, ep: &Endpoint, badge: usize, cap: Option<Capability>) {
+pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
-        let reply_cap = Capability::new(
-            CapType::Reply { tcb_ptr: VirtAddr::from(current as *const TCB as usize) },
-            rights::ALL,
-        );
+        let reply_cap =
+            Capability::create_reply(VirtAddr::from(current as *const TCB as usize), rights::ALL);
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap)) };
@@ -147,7 +145,7 @@ pub fn reply(current: &mut TCB, target: &mut TCB) {
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
         // Reply 不产生新的 Reply Cap
-        unsafe { copy_msg(current, target, 0, None, None) };
+        unsafe { copy_msg(current, target, Badge::from(0), None, None) };
 
         // 唤醒目标线程
         scheduler::wake_up(target);
@@ -155,7 +153,7 @@ pub fn reply(current: &mut TCB, target: &mut TCB) {
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
-pub fn notify(ep: &Endpoint, badge: usize) {
+pub fn notify(ep: &Endpoint, badge: Badge) {
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
 
@@ -178,7 +176,7 @@ pub fn notify(ep: &Endpoint, badge: usize) {
 pub fn recv(current: &mut TCB, ep: &Endpoint) {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     let pending = ep.poll_notification();
-    if pending != 0 {
+    if !pending.is_null() {
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
@@ -196,8 +194,8 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 
         // 如果发送者是在执行 Call，我们需要为接收者生成一个 Reply Cap
         let reply_cap = if sender.state == ThreadState::BlockedCall {
-            Some(Capability::new(
-                CapType::Reply { tcb_ptr: VirtAddr::from(sender as *const TCB as usize) },
+            Some(Capability::create_reply(
+                VirtAddr::from(sender as *const TCB as usize),
                 rights::ALL,
             ))
         } else {

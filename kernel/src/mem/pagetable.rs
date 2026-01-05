@@ -1,4 +1,4 @@
-use riscv::asm::{sfence_vma, sfence_vma_all};
+use riscv::asm::sfence_vma_all;
 
 use super::Pte;
 use super::pte::perms;

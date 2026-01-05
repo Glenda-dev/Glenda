@@ -70,9 +70,10 @@ fn exception_handler(
             }
 
             // 2. 提取 Endpoint
-            if let CapType::Endpoint { ep_ptr } = handler_cap.object {
+            if handler_cap.cap_type() == CapType::Endpoint {
+                let ep_ptr = handler_cap.obj_ptr();
                 let ep = ep_ptr.as_mut::<ipc::Endpoint>();
-                let badge = handler_cap.badge.unwrap_or(0);
+                let badge = handler_cap.get_badge();
 
                 // 3. 执行发送 (这会阻塞当前线程)
                 ipc::send(tcb, ep, badge, None);

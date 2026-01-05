@@ -1,6 +1,5 @@
 use super::ProcContext;
-use super::scheduler;
-use crate::cap::{CNode, CapType, Capability};
+use crate::cap::{Badge, CNode, CapType, Capability};
 use crate::hart;
 use crate::ipc::UTCB;
 use crate::mem::pmem;
@@ -60,7 +59,7 @@ pub struct TCB {
     pub ipc_partner: Option<*mut TCB>,
 
     // IPC state when blocked
-    pub ipc_badge: usize,
+    pub ipc_badge: Badge,
     pub ipc_cap: Option<Capability>,
 
     // --- UTCB (User Thread Control Block) ---
@@ -89,7 +88,7 @@ impl TCB {
             prev: None,
             next: None,
             ipc_partner: None,
-            ipc_badge: 0,
+            ipc_badge: Badge::null(),
             ipc_cap: None,
             utcb_frame: None,
             privileged: false,
@@ -231,9 +230,9 @@ impl TCB {
             return None;
         }
         // 1. 获取 Root CNode
-        if let CapType::CNode { paddr } =
-            self.cspace_root.as_ref().expect("CSpace root not configured").object
-        {
+        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        if root_cap.cap_type() == CapType::CNode {
+            let paddr = PhysAddr::from(root_cap.words[0]);
             let cnode = CNode::from_addr(paddr);
             // 2. 在 CNode 中查找
             cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))

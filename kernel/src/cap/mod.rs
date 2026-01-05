@@ -1,12 +1,14 @@
+pub mod badge;
 pub mod capability;
 pub mod captype;
 pub mod cnode;
 pub mod invoke;
 pub mod method;
 
+pub use badge::Badge;
 pub use capability::Capability;
 pub use captype::CapType;
-pub use cnode::{CNODE_BITS, CNODE_SLOTS};
+pub use cnode::{CNODE_BITS, CNODE_SIZE};
 pub use cnode::{CNode, Slot};
 
 use crate::ipc::MAX_MRS;
