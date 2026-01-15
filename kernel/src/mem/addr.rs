@@ -1,7 +1,10 @@
 use super::VA_MAX;
-use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::{
+    fmt::Debug,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct PhysAddr(usize);
 
@@ -78,8 +81,13 @@ impl SubAssign<usize> for PhysAddr {
         self.0 -= rhs;
     }
 }
+impl Debug for PhysAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
+    }
+}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
 pub struct VirtAddr(usize);
 impl VirtAddr {
     pub const fn from(addr: usize) -> Self {
@@ -156,6 +164,11 @@ impl AddAssign<usize> for VirtAddr {
 impl SubAssign<usize> for VirtAddr {
     fn sub_assign(&mut self, rhs: usize) {
         self.0 -= rhs;
+    }
+}
+impl Debug for VirtAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
     }
 }
 

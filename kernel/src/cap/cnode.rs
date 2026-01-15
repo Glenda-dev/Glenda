@@ -183,7 +183,7 @@ impl CNode {
     }
 
     pub fn debug_print(&self) {
-        printk!("CNode at paddr {:x}:\n", self.paddr.as_usize());
+        printk!("CNode at paddr {:?}:\n", self.paddr);
         let slots_ptr = self.get_slots_ptr();
         for i in 0..self.size() {
             let slot = unsafe { &*slots_ptr.add(i) };
