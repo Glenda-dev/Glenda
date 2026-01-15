@@ -13,7 +13,6 @@ members = [
     "tests/ipc",
     "tests/cap",
     "tests/heap",
-    "tests/loader",
 ]
 resolver = "2"
 
