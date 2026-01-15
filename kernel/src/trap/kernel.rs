@@ -50,6 +50,17 @@ fn exception_handler(
 ) {
     // 其他同步异常交给 handle_exception 处理
     let sc = scause::read().bits();
+
+    // 0. Environment call from U-mode (syscall)
+    if e == 8 {
+        user::syscall_handler(ctx);
+        // advance sepc to next instruction
+        unsafe {
+            sepc::write(epc.wrapping_add(4));
+        }
+        return;
+    }
+
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
 
@@ -81,15 +92,6 @@ fn exception_handler(
                 panic!("Fault handler is not an Endpoint");
             }
         } else {
-            // 8: Environment call from U-mode (syscall)
-            if e == 8 {
-                user::syscall_handler(ctx);
-                // advance sepc to next instruction
-                unsafe {
-                    sepc::write(epc.wrapping_add(4));
-                }
-                return;
-            }
             printk!(
                 "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
                 ANSI_RED,

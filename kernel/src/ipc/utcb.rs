@@ -38,8 +38,8 @@ impl UTCB {
         dest.tail = self.tail;
         unsafe {
             core::ptr::copy_nonoverlapping(
-                &self.ipc_buffer as *const [u8; BUFFER_MAX_SIZE],
-                &mut dest.ipc_buffer as *mut [u8; BUFFER_MAX_SIZE],
+                self.ipc_buffer.as_ptr(),
+                dest.ipc_buffer.as_mut_ptr(),
                 BUFFER_MAX_SIZE,
             );
         }
