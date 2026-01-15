@@ -1,4 +1,4 @@
-use crate::bootloader::initrd;
+use crate::boot::initrd;
 use spin::Once;
 
 static BL_INIT: Once<()> = Once::new();

@@ -1,4 +1,3 @@
-use crate::hart;
 use core::arch::global_asm;
 
 pub mod info;

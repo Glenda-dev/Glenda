@@ -1,8 +1,8 @@
 use super::KSTACK_PAGES;
 use super::scheduler;
 use super::{TCB, ThreadState};
-use crate::bootloader::initrd;
-use crate::bootloader::{BootInfo, UntypedDesc};
+use crate::boot::initrd;
+use crate::boot::{BootInfo, UntypedDesc};
 use crate::cap::CNODE_BITS;
 use crate::cap::CNode;
 use crate::cap::Capability;
@@ -20,9 +20,8 @@ pub const NULL_SLOT: usize = 0;
 pub const CSPACE_SLOT: usize = 1;
 pub const VSPACE_SLOT: usize = 2;
 pub const TCB_SLOT: usize = 3;
-pub const UTCB_SLOT: usize = 4;
-pub const MEM_SLOT: usize = 5;
-pub const CONSOLE_SLOT: usize = 7;
+pub const CONSOLE_SLOT: usize = 6;
+pub const UTCB_SLOT: usize = 7;
 pub const INITRD_SLOT: usize = 8;
 pub const DTB_SLOT: usize = 9;
 

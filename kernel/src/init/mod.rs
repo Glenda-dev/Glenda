@@ -1,4 +1,4 @@
-mod bootloader;
+mod boot;
 mod dtb;
 mod hart;
 mod irq;
@@ -19,12 +19,16 @@ pub fn init(hartid: usize, dtb: *const u8) {
     dtb::init(hartid, dtb);
     uart::init(hartid, dtb);
     pmem::init(hartid, dtb);
-    bootloader::init(hartid, dtb);
+    boot::init(hartid, dtb);
     trap::init(hartid, dtb);
     irq::init(hartid, dtb);
     vm::init(hartid, dtb);
     proc::init(hartid, dtb);
     hart::init(hartid, dtb);
+    init_guard(hartid);
+}
+
+fn init_guard(hartid: usize) {
     if hartid == 0 {
         printk!("{}", logo::LOGO);
         if let Some(args) = crate::dtb::bootargs() {

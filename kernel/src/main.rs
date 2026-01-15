@@ -2,7 +2,7 @@
 #![no_main]
 #![allow(dead_code)]
 
-mod bootloader;
+mod boot;
 mod cap;
 mod dtb;
 mod hart;
@@ -33,7 +33,7 @@ use riscv::asm::wfi;
 */
 #[unsafe(no_mangle)]
 pub extern "C" fn glenda_main(a0: usize, a1: usize) -> ! {
-    let (hartid, dtb) = bootloader::detect(a0, a1);
+    let (hartid, dtb) = boot::detect(a0, a1);
     init::init(hartid, dtb);
     printk!("{}Hart {} entering scheduler{}\n", ANSI_BLUE, hartid, ANSI_RESET);
     proc::scheduler::scheduler();
