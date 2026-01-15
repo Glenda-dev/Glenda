@@ -110,7 +110,7 @@ pub fn init() {
         printk!("{}[WARN] Invalid payload magic: {:#x}{}\n", ANSI_RED, magic, ANSI_RESET);
         return;
     }
-    printk!("initrd: Initrd found, {} entries\n", count);
+    printk!("initrd: Initrd found, {} entries, {} KB\n", count, total_size / 1024);
 
     if count == 0 {
         printk!("{}[WARN] Initrd is empty{}\n", ANSI_RED, ANSI_RESET);
