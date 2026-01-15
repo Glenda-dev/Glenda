@@ -145,7 +145,7 @@ pub fn reply(current: &mut TCB, target: &mut TCB) {
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
         // Reply 不产生新的 Reply Cap
-        unsafe { copy_msg(current, target, Badge::from(0), None, None) };
+        unsafe { copy_msg(current, target, Badge::null(), None, None) };
 
         // 唤醒目标线程
         scheduler::wake_up(target);

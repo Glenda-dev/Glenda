@@ -231,8 +231,8 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_reply(ro_ptr: VirtAddr, rights: u8) -> Self {
-        let w0 = ro_ptr.as_usize();
+    pub fn create_reply(tcb_ptr: VirtAddr, rights: u8) -> Self {
+        let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::Reply as usize) & TYPE_MASK
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
