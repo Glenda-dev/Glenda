@@ -1,6 +1,42 @@
 [[services]]
-name = "hello"
-path = "examples/hello"
-build_cmd = "bash build.sh"
-output = "build/hello.elf"
+name = "loader"
+path = "tests/loader"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"
+output = "build/loader.elf"
 kind = "root_task"
+
+[[services]]
+name = "heap"
+path = "tests/heap"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"
+output = "build/heap.elf"
+kind = "test"
+
+[[services]]
+name = "cap"
+path = "tests/cap"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"
+output = "build/cap.elf"
+kind = "test"
+
+[[services]]
+name = "ipc"
+path = "tests/ipc"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"
+output = "build/ipc.elf"
+kind = "test"
+[[services]]
+name = "manifest"
+path = "tests"
+output = "manifest.json"
+kind = "file"
+
+[[libraries]]
+name = "libglenda-rs"
+path = "lib/libglenda-rs"
+build_cmd_release = "bash build.sh --release"
+build_cmd_debug = "bash build.sh"

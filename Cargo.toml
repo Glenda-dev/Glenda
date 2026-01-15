@@ -10,6 +10,10 @@ members = [
     "drivers/virtio/block",
     "drivers/ns16550a",
     "examples/hello",
+    "tests/ipc",
+    "tests/cap",
+    "tests/heap",
+    "tests/loader",
 ]
 resolver = "2"
 

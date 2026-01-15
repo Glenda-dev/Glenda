@@ -1,0 +1,18 @@
+{
+    "tests": [
+        {
+            "name": "heap",
+            "binary": "heap"
+        },
+        {
+            "name": "cap",
+            "binary": "cap"
+        },
+        {
+            "name": "ipc",
+            "binary": "ipc"
+        }
+    ],
+    "services": [],
+    "drivers": []
+}
