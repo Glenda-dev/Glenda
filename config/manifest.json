@@ -1,0 +1,26 @@
+{
+    "services": [
+        {
+            "name": "unicorn",
+            "binary": "unicorn"
+        }
+    ],
+    "drivers": [
+        {
+            "name": "ns16550a",
+            "binary": "ns16550a",
+            "compatible": [
+                "ns16550a",
+                "snps,dw-apb-uart"
+            ]
+        },
+        {
+            "name": "virtio-blk",
+            "binary": "virtio-blk",
+            "compatible": [
+                "virtio,mmio"
+            ]
+        }
+    ],
+    "tests": []
+}

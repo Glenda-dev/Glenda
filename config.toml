@@ -36,7 +36,7 @@ kind = "driver"
 [[services]]
 name = "manifest"
 path = "config"
-output = "manifest.toml"
+output = "manifest.json"
 kind = "file"
 [[libraries]]
 name = "libglenda-rs"
