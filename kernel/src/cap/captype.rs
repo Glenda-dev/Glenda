@@ -7,7 +7,7 @@
 pub enum CapType {
     Empty = 0,
     Untyped = 1,
-    Thread = 2,
+    TCB = 2,
     Endpoint = 3,
     Reply = 4,
     Frame = 5,
@@ -16,18 +16,22 @@ pub enum CapType {
     IrqHandler = 8,
     Console = 9,
     MMIO = 10,
+    VSpace = 11,
 }
 
 pub mod types {
-    pub const UNTYPED: usize = 0;
-    pub const CNODE: usize = 1;
+    pub const EMPTY: usize = 0;
+    pub const UNTYPED: usize = 1;
     pub const TCB: usize = 2;
     pub const ENDPOINT: usize = 3;
-    pub const FRAME: usize = 4;
-    pub const PAGETABLE: usize = 5;
-    pub const IRQHANDLER: usize = 6;
-    pub const CONSOLE: usize = 7;
-    pub const MMIO: usize = 8;
+    pub const REPLY: usize = 4;
+    pub const FRAME: usize = 5;
+    pub const PAGETABLE: usize = 6;
+    pub const CNODE: usize = 7;
+    pub const IRQ_HANDLER: usize = 8;
+    pub const CONSOLE: usize = 9;
+    pub const MMIO: usize = 10;
+    pub const VSPACE: usize = 11;
 }
 
 impl CapType {
@@ -38,7 +42,7 @@ impl CapType {
 
     /// 判断是否为可调度的对象 (TCB)
     pub fn is_schedulable(&self) -> bool {
-        matches!(self, CapType::Thread)
+        matches!(self, CapType::TCB)
     }
 
     /// 判断是否为 IPC 端点
@@ -79,5 +83,10 @@ impl CapType {
     // 判断是否为MMIO
     pub fn is_mmio(&self) -> bool {
         matches!(self, CapType::MMIO)
+    }
+
+    /// 判断是否为虚拟地址空间
+    pub fn is_vspace(&self) -> bool {
+        matches!(self, CapType::VSpace)
     }
 }

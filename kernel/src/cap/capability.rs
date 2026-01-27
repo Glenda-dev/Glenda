@@ -32,7 +32,7 @@ impl Debug for Capability {
                 s.field("total_pages", &total);
                 s.field("free_pages", &free);
             }
-            CapType::Thread => {
+            CapType::TCB => {
                 s.field("tcb_ptr", &VirtAddr::from(self.words[0]));
             }
             CapType::Endpoint => {
@@ -59,6 +59,10 @@ impl Debug for Capability {
             CapType::MMIO => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
                 s.field("size", &(self.words[1] >> DATA_SHIFT));
+            }
+            CapType::VSpace => {
+                s.field("paddr", &PhysAddr::from(self.words[0]));
+                s.field("asid", &(self.words[1] >> DATA_SHIFT));
             }
             _ => {}
         }
@@ -93,7 +97,7 @@ impl Capability {
 
     fn inc_ref(&self) {
         match self.cap_type() {
-            CapType::Thread => {
+            CapType::TCB => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
                 let tcb = tcb_ptr.as_ref::<TCB>();
                 tcb.ref_count.fetch_add(1, Ordering::Relaxed);
@@ -147,12 +151,13 @@ impl Capability {
     pub fn obj_ptr(&self) -> VirtAddr {
         match self.cap_type() {
             CapType::Untyped => PhysAddr::from(self.words[0]).to_va(),
-            CapType::Thread => VirtAddr::from(self.words[0]),
+            CapType::TCB => VirtAddr::from(self.words[0]),
             CapType::Endpoint => VirtAddr::from(self.words[0]),
             CapType::Reply => VirtAddr::from(self.words[0]),
             CapType::Frame => PhysAddr::from(self.words[0]).to_va(),
             CapType::PageTable => PhysAddr::from(self.words[0]).to_va(),
             CapType::CNode => PhysAddr::from(self.words[0]).to_va(),
+            CapType::VSpace => PhysAddr::from(self.words[0]).to_va(),
             _ => VirtAddr::null(),
         }
     }
@@ -219,8 +224,8 @@ impl Capability {
 
     pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
         let w0 = tcb_ptr.as_usize();
-        let w1 = (CapType::Thread as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        let w1 =
+            (CapType::TCB as usize) & TYPE_MASK | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
@@ -292,6 +297,20 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
+    pub fn create_vspace(paddr: PhysAddr, asid: usize, rights: u8) -> Self {
+        let w0 = paddr.as_usize();
+        let w1 = (CapType::VSpace as usize) & TYPE_MASK
+            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | (asid << DATA_SHIFT);
+        Self { words: [w0, w1] }
+    }
+
+    pub fn vspace_info(&self) -> (PhysAddr, usize) {
+        let paddr = PhysAddr::from(self.words[0]);
+        let asid = self.words[1] >> DATA_SHIFT;
+        (paddr, asid)
+    }
+
     pub fn is_null(&self) -> bool {
         self.cap_type() == CapType::Empty
     }
@@ -300,7 +319,7 @@ impl Capability {
 impl Drop for Capability {
     fn drop(&mut self) {
         match self.cap_type() {
-            CapType::Thread => {
+            CapType::TCB => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
                 let tcb = tcb_ptr.as_ref::<TCB>();
                 if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {

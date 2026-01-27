@@ -15,7 +15,7 @@ pub fn dispatch(cap: &Capability, cptr: usize, method: usize) -> usize {
     // 4. 根据对象类型分发
     match cap.cap_type() {
         CapType::Endpoint => invoke_ipc(cap, cptr, method),
-        CapType::Thread => invoke_tcb(cap, cptr, method),
+        CapType::TCB => invoke_tcb(cap, cptr, method),
         CapType::PageTable => invoke_pagetable(cap, cptr, method),
         CapType::CNode => invoke_cnode(cap, cptr, method),
         CapType::Untyped => invoke_untyped(cap, cptr, method),
@@ -118,7 +118,7 @@ fn invoke_reply(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- TCB Methods ---
 
 fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let tcb_ptr = if cap.cap_type() == CapType::Thread {
+    let tcb_ptr = if cap.cap_type() == CapType::TCB {
         cap.obj_ptr()
     } else {
         return errcode::INVALID_OBJ_TYPE;
@@ -516,6 +516,13 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                             }
                             // 初始化页表 (清零已在上面完成)
                             Capability::create_pagetable(obj_paddr, 0, rights::ALL)
+                        }
+                        types::VSPACE => {
+                            if obj_pages != 1 {
+                                return errcode::INVALID_OBJ_TYPE;
+                            }
+                            // 初始化虚拟地址空间 (清零已在上面完成)
+                            Capability::create_vspace(obj_paddr, 0, rights::ALL)
                         }
                         _ => return errcode::INVALID_OBJ_TYPE,
                     };
