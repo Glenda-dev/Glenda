@@ -1,78 +1,72 @@
 # Glenda OS - AI Coding Instructions
 
-You are working on **Glenda**, a microkernel operating system written in Rust for RISC-V (rv64gc). It combines design principles from seL4 (capabilities, microkernel) and Plan 9 (namespaces, file-oriented).
+You are working on **Glenda**, a research microkernel operating system written in Rust for RISC-V (rv64gc). It combines **seL4** design principles (capabilities, strict microkernel) with **Plan 9** concepts (namespaces, file-oriented).
 
-## 1. Project Architecture & Structure
+## 1. Project Structure & Architecture
 
-The project is organized as a workspace with several key components:
+The workspace consists of distinct components with strict boundaries:
 
-- **Kernel (`kernel/`)**: The core microkernel.
-  - `src/cap/`: Capability system (CNode, Capability, Rights) - seL4 inspired.
-  - `src/ipc/`: Inter-Process Communication (Endpoint, Message).
-  - `src/proc/`: Process and Thread management (Scheduler, Context).
-  - `src/mem/`: Memory management (PageTable, Frame Allocator).
-  - `src/trap/`: Exception handling.
-  - `src/irq/`: Interrupt handling。
-  - `src/main.rs`: Kernel entry point (`glenda_main`).
+- **Kernel (\`kernel/\`)**: \`no_std\`. The core microkernel.
+  - **Capabilities**: \`src/cap/\` (CNode, Capability, Rights, invocation). Resources are capabilities.
+  - **IPC**: \`src/ipc/\` (Endpoint, Message). Synchronous IPC.
+  - **Memory**: \`src/mem/\` (PageTable, Frame Allocator). Custom allocator.
+  - **Traps**: \`src/trap/\` (Syscall dispatch, IRQ, Exceptions).
+  - **Process**: \`src/proc/\` (Scheduler, Context).
+- **Userspace Library (\`lib/libglenda-rs/\`)**: The standard library for apps/drivers.
+  - Wraps syscalls (\`src/syscall.rs\`).
+  - Provides runtime support (\`crt0\`, heap).
+- **Services (\`service/\`)**: Userspace servers.
+  - \`9ball\`: Init/Root task.
+  - \`factotum\`: Service manager.
+  - \`unicorn\`: Device manager.
+- **Drivers (\`drivers/\`)**: Userspace drivers (e.g., \`ns16550a\`, \`virtio\`).
+- **Build System (\`xtask/\`)**: Rust-based build/run tooling.
 
-- **Services (`service/`)**: Userspace servers that provide OS functionality.
-  - `9ball`: Init Manager.
-  - `factotum`: Process and Resource Manager.
-  - `unicorn`: Device Manager.
+## 2. Workflows & Commands
 
-- **Drivers (`drivers/`)**: Userspace drivers.
-  - `ns16550a`: UART driver.
-  - `virtio`: VirtIO drivers (Block, Net, etc.).
-
-- **Libraries (`lib/`)**: Shared code.
-  - `libglenda-rs`: The standard library for userspace applications, providing syscall wrappers and runtime support.
-
-- **Build System (`xtask/`)**: A Rust-based build system replacing Makefiles.
-
-## 2. Critical Workflows
-
-**Do not use `cargo build` directly for the kernel.** Use the `xtask` system.
+**ALWAYS** use \`cargo xtask\` instead of \`cargo build\` directly for the kernel/system.
 
 ### Build & Run
-- **Build Kernel**: `cargo xtask build`
-- **Run in QEMU**: `cargo xtask run` (Builds kernel + generates fs + runs QEMU)
-- **Run Tests**: `cargo xtask test`
-- **Debug (GDB)**: `cargo xtask gdb` (Starts QEMU in suspended state listening on port 1234)
-- **Generate Filesystem**: `cargo xtask mkfs`
+- **Build System**: \`cargo xtask build\` (Compile kernel & services defined in config).
+- **Run QEMU**: \`cargo xtask run\` (Builds, creates fs, boots QEMU).
+  - Options: \`--cpus <N>\`, \`--mem <SIZE>\`, \`--display <TYPE>\`.
+- **Debug (GDB)**: \`cargo xtask gdb\` (Starts QEMU paused on port 1234).
+- **Generate FS**: \`cargo xtask mkfs\` (Creates \`disk.img\`).
 
-### Configuration
-- **Release Mode**: Add `--release` flag (e.g., `cargo xtask --release run`).
+### Testing
+- Integration tests are defined in \`test.toml\`.
+- To run tests (if the \`test\` command is unavailable/custom):
+  - Check \`test.toml\` for test definitions.
+  - Use \`cargo xtask --config test.toml run\` to boot into test/verification mode.
+  - (Note: \`README.md\` mentions \`cargo xtask test\`, but verify availability in \`xtask/src/main.rs\`).
 
+## 3. Development Conventions
 
-## 3. Coding Conventions & Patterns
+### Systems Programming
+- **\`no_std\`**: Kernel and services do not use the standard library.
+- **Memory**:
+  - **Kernel**: strict manual compilation of page tables/frames.
+  - **Userspace**: Use \`extern crate alloc\` via \`libglenda-rs\`.
+- **Panics**: Kernel panics halt the system (\`panic_handler\` in \`main.rs\`). Userspace panics abort the thread.
 
-### Rust & System Programming
-- **`no_std`**: The kernel and most services are `no_std`.
-- **Unsafe Code**: Permitted for hardware interaction, raw pointer manipulation, and FFI. Always verify safety invariants.
-- **Memory Management**:
-  - Kernel uses a custom allocator.
-  - Userspace relies on `libglenda-rs` for heap allocation.
+### Kernel Patterns
+- **Logging**: Use \`printk!\` macro (kernel-only).
+- **Capabilities**: All resource access (memory, IRQ, endpoints) MUST go through capability lookups (\`tcb.cap_lookup(cptr)\`).
+- **Syscall Dispatch**:
+  1. Trap handler (\`trap/mod.rs\`) calls \`syscall::dispatch\`.
+  2. \`syscall::dispatch\` looks up capability -> checks rights -> calls \`invoke::dispatch\`.
 
-### Kernel Specifics
-- **Logging**: Use the `printk!` macro for kernel-level logging.
-- **Capabilities**: Access control is capability-based. Resources are represented as capabilities in a CNode (Capability Node).
-- **Entry Point**: The kernel starts at `_start` (assembly) which calls `glenda_main` (Rust).
+### Adding Features
+- **New Syscall**:
+  1. Add constant in \`lib/libglenda-rs/include/glenda.h\`.
+  2. Implement handler in \`kernel/src/trap/invoke.rs\` (or specific resource file).
+  3. Expose wrapper in \`lib/libglenda-rs/src/syscall.rs\`.
+- **New Service/Driver**:
+  1. Create crate in \`service/\` or \`drivers/\`.
+  2. Add entry to \`config/manifest.json\` (for default boot) or create a test config.
+  3. Ensure it depends on \`libglenda-rs\` for syscalls/runtime.
 
-### Userspace Services
-- **Dependencies**: Services should depend on `libglenda-rs` for system interaction.
-- **Structure**: Each service is a separate Cargo package in the `service/` directory.
-
-## 4. Integration & Communication
-- **IPC**: Processes communicate via IPC endpoints. Messages are passed using the `ipc` module in the kernel and syscall wrappers in `libglenda-rs`.
-- **Syscalls**: Defined in `include/kernel/syscall/` and implemented in `kernel/src/trap/`.
-- **Device Tree**: The kernel parses the Flattened Device Tree (DTB) passed by OpenSBI to discover hardware.
-
-## 5. Common Tasks
-- **Adding a Syscall**:
-  1. Define the syscall number in `include/kernel/syscall/num.h` (or equivalent Rust file).
-  2. Implement the handler in `kernel/src/trap/`.
-  3. Expose it to userspace via `libglenda-rs`.
-- **Adding a Driver**:
-  1. Create a new crate in `drivers/`.
-  2. Implement the driver logic using `libglenda-rs` for MMIO and interrupts.
-  3. Register the driver in the system manifest or startup scripts.
+## 4. Integration
+- **Manifest**: \`config/manifest.json\` controls which services/drivers are packed into the boot image.
+- **IPC**: Primary communication mechanism. Services expose endpoints.
+- **DTB**: Device Tree passed by OpenSBI is parsed in \`kernel/src/dtb.rs\` to detect hardware.
