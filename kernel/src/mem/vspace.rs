@@ -1,7 +1,7 @@
 use crate::cap::CapType;
 use crate::cap::Capability;
+use crate::hal;
 use crate::mem::{PGSIZE, PhysAddr};
-use riscv::asm::sfence_vma_all;
 use spin::Mutex;
 
 /// ASID 管理器 (单例)
@@ -37,7 +37,7 @@ impl AsidManager {
 
             // 关键：刷新所有 TLB，因为我们即将复用 ASID 1
             // 在 RISC-V 中，这会使所有旧的 ASID 条目失效
-            sfence_vma_all();
+            hal::mem::flush_tlb(None);
 
             (self.current_asid, self.generation)
         }

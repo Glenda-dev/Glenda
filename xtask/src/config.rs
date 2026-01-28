@@ -1,23 +1,31 @@
+use crate::arch::Arch;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
 #[derive(Debug, Deserialize)]
 pub struct Service {
     pub name: String,
     pub path: String,
-    pub build_cmd_debug: Option<String>,
-    pub build_cmd_release: Option<String>,
+    pub build: String,
     pub output: String,
-    #[serde(default)]
-    pub kind: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Library {
     pub name: String,
     pub path: String,
-    pub build_cmd_debug: Option<String>,
-    pub build_cmd_release: Option<String>,
+    pub build: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SystemConfig {
+    #[serde(default)]
+    pub arch: Arch,
+    #[serde(default = "release")]
+    pub profile: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,7 +35,9 @@ pub struct Config {
     #[serde(default)]
     pub libraries: Vec<Library>,
     #[serde(default)]
-    pub features: std::collections::HashMap<String, Vec<String>>,
+    pub features: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub system: SystemConfig,
 }
 
 impl Config {
@@ -35,5 +45,15 @@ impl Config {
         let s = fs::read_to_string(p)?;
         let cfg: Config = toml::from_str(&s)?;
         Ok(cfg)
+    }
+}
+
+fn release() -> String {
+    "release".into()
+}
+
+impl Default for SystemConfig {
+    fn default() -> Self {
+        Self { arch: Arch::default(), profile: release() }
     }
 }

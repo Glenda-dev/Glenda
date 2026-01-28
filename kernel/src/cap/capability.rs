@@ -2,11 +2,11 @@ use super::CapType;
 use super::rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNodeHeader;
+use crate::hal::mem::PGSIZE;
 use crate::ipc::Endpoint;
-use crate::mem::PGSIZE;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::TCB;
-use core::fmt::Debug;
+use core::fmt::Display;
 use core::mem::transmute;
 use core::sync::atomic::Ordering;
 
@@ -14,11 +14,12 @@ use core::sync::atomic::Ordering;
 /// Word 0: Object Pointer / Data
 /// Word 1: Metadata (Type, Rights, Badge, etc.)
 #[repr(C)]
+#[derive(Debug)]
 pub struct Capability {
     pub words: [usize; 2],
 }
 
-impl Debug for Capability {
+impl Display for Capability {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let cap_type = self.cap_type();
         let mut s = f.debug_struct("Capability");
@@ -27,10 +28,10 @@ impl Debug for Capability {
 
         match cap_type {
             CapType::Untyped => {
-                let (total, free) = self.untyped_info();
+                let (total, watermark) = self.untyped_info();
                 s.field("start_paddr", &PhysAddr::from(self.words[0]));
                 s.field("total_pages", &total);
-                s.field("free_pages", &free);
+                s.field("watermark", &watermark);
             }
             CapType::TCB => {
                 s.field("tcb_ptr", &VirtAddr::from(self.words[0]));
@@ -56,7 +57,7 @@ impl Debug for Capability {
             CapType::IrqHandler => {
                 s.field("irq", &self.words[0]);
             }
-            CapType::MMIO => {
+            CapType::Mmio => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
                 s.field("size", &(self.words[1] >> DATA_SHIFT));
             }
@@ -108,8 +109,8 @@ impl Capability {
                 ep.ref_count.fetch_add(1, Ordering::Relaxed);
             }
             CapType::CNode => {
-                let paddr = PhysAddr::from(self.words[0]);
-                let header = paddr.as_ref::<CNodeHeader>();
+                let vaddr = VirtAddr::from(self.words[0]);
+                let header = vaddr.as_ref::<CNodeHeader>();
                 header.ref_count.fetch_add(1, Ordering::Relaxed);
             }
             // 其他类型暂不引用计数
@@ -204,7 +205,7 @@ impl Capability {
         let w1 = (CapType::Untyped as usize) & TYPE_MASK
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | ((total_pages & 0x1FFFFFF) << 13)
-            | (0usize << 38); // free_pages starts at 0
+            | (0 << 38); // watermark starts at 0
 
         Self { words: [w0, w1] }
     }
@@ -212,14 +213,14 @@ impl Capability {
     // Helper for Untyped to get fields
     pub fn untyped_info(&self) -> (usize, usize) {
         let total_pages = (self.words[1] >> 13) & 0x1FFFFFF;
-        let free_pages = (self.words[1] >> 38) & 0x1FFFFFF;
-        (total_pages, free_pages)
+        let watermark = (self.words[1] >> 38) & 0x1FFFFFF;
+        (total_pages, watermark)
     }
 
-    // Helper to update Untyped free pages
-    pub fn set_untyped_free(&mut self, free: usize) {
+    // Helper to update Untyped watermark
+    pub fn set_untyped_watermark(&mut self, watermark: usize) {
         let mask = !(0x1FFFFFFusize << 38);
-        self.words[1] = (self.words[1] & mask) | ((free & 0x1FFFFFF) << 38);
+        self.words[1] = (self.words[1] & mask) | ((watermark & 0x1FFFFFF) << 38);
     }
 
     pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
@@ -291,7 +292,7 @@ impl Capability {
 
     pub fn create_mmio(paddr: PhysAddr, size: usize, rights: u8) -> Self {
         let w0 = paddr.as_usize();
-        let w1 = (CapType::MMIO as usize) & TYPE_MASK
+        let w1 = (CapType::Mmio as usize) & TYPE_MASK
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (size << DATA_SHIFT);
         Self { words: [w0, w1] }
@@ -340,8 +341,8 @@ impl Drop for Capability {
                 }
             }
             CapType::CNode => {
-                let paddr = PhysAddr::from(self.words[0]);
-                let header = paddr.as_ref::<CNodeHeader>();
+                let vaddr = VirtAddr::from(self.words[0]);
+                let header = vaddr.as_ref::<CNodeHeader>();
                 if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode

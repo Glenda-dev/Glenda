@@ -1,8 +1,7 @@
-use super::VA_MAX;
-use core::{
-    fmt::Debug,
-    ops::{Add, AddAssign, Sub, SubAssign},
-};
+// TODO: Check address validity
+use crate::hal::mem::VA_MAX;
+use core::fmt::{Debug, Display};
+use core::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
 #[repr(transparent)]
@@ -21,6 +20,9 @@ impl PhysAddr {
     pub const fn to_ppn(&self) -> PPN {
         PPN(self.0 >> 12)
     }
+    pub const fn null() -> Self {
+        Self(0)
+    }
     pub fn as_mut_ptr<T>(&self) -> *mut T {
         self.0 as *mut T
     }
@@ -33,11 +35,8 @@ impl PhysAddr {
     pub fn as_mut<T>(&self) -> &'static mut T {
         unsafe { &mut *(self.as_mut_ptr::<T>()) }
     }
-    pub const fn null() -> Self {
-        Self(0)
-    }
     pub fn align_down(&self, align: usize) -> Self {
-        PhysAddr((self.0 + align - 1) & !(align - 1))
+        PhysAddr(self.0 & !(align - 1))
     }
     pub fn align_up(&self, align: usize) -> Self {
         PhysAddr((self.0 + align - 1) & !(align - 1))
@@ -81,6 +80,13 @@ impl SubAssign<usize> for PhysAddr {
         self.0 -= rhs;
     }
 }
+
+impl Display for PhysAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
+    }
+}
+
 impl Debug for PhysAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "0x{:x}", self.0)
@@ -99,9 +105,6 @@ impl VirtAddr {
     }
     pub fn to_pa(&self) -> PhysAddr {
         PhysAddr(self.0)
-    }
-    pub const fn vpn(&self) -> [VPN; 3] {
-        [VPN((self.0 >> 12) & 0x1FF), VPN((self.0 >> 21) & 0x1FF), VPN((self.0 >> 30) & 0x1FF)]
     }
     pub fn as_mut_ptr<T>(&self) -> *mut T {
         self.0 as *mut T
@@ -166,6 +169,11 @@ impl SubAssign<usize> for VirtAddr {
         self.0 -= rhs;
     }
 }
+impl Display for VirtAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
+    }
+}
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "0x{:x}", self.0)
@@ -176,7 +184,6 @@ impl Debug for VirtAddr {
 pub struct PPN(usize);
 impl PPN {
     pub const fn from(ppn: usize) -> Self {
-        assert!(ppn < (VA_MAX >> 12), "PPN out of range");
         Self(ppn)
     }
     pub const fn as_usize(&self) -> usize {
@@ -187,7 +194,6 @@ impl PPN {
 pub struct VPN(usize);
 impl VPN {
     pub const fn from(vpn: usize) -> Self {
-        assert!(vpn < 0x200, "VPN out of range");
         Self(vpn)
     }
     pub const fn as_usize(&self) -> usize {

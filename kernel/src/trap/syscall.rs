@@ -1,7 +1,7 @@
 use crate::cap::CapPtr;
 use crate::cap::{invoke, rights};
+use crate::hal::trap::TrapContext;
 use crate::proc::scheduler;
-use crate::trap::TrapContext;
 
 pub mod errcode {
     pub const SUCCESS: usize = 0;
@@ -16,7 +16,7 @@ pub mod errcode {
 }
 
 pub fn dispatch(ctx: &mut TrapContext) -> usize {
-    let cptr = ctx.a0;
+    let (cptr, method) = ctx.get_syscall_args();
 
     // 获取当前线程
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
@@ -32,8 +32,6 @@ pub fn dispatch(ctx: &mut TrapContext) -> usize {
         return errcode::PERMISSION_DENIED; // Error: Permission Denied
     }
 
-    // 3. 提取参数 (Method ID 通常在 a7)
-    let method = ctx.a7;
     // 4. 分发调用
     invoke::dispatch(&cap, CapPtr::from(cptr), method)
 }

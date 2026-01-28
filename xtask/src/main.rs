@@ -1,16 +1,17 @@
 use clap::{Parser, Subcommand};
+mod arch;
 mod build;
 mod config;
 mod fs;
 mod qemu;
 mod util;
 
+use config::Config;
+use std::path::Path;
+
 #[derive(Parser, Debug)]
 #[command(name = "xtask", version, about = "Glenda Build System")]
 struct Xtask {
-    #[arg(long, global = true)]
-    release: bool,
-
     #[arg(short, long, global = true)]
     config: Option<String>,
 
@@ -29,7 +30,7 @@ enum Cmd {
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
-        #[arg(long, default_value = "128M")]
+        #[arg(long, default_value = "1G")]
         mem: String,
 
         /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
@@ -43,7 +44,7 @@ enum Cmd {
         cpus: u32,
 
         /// Memory for QEMU (e.g. 128M, 1G)
-        #[arg(long, default_value = "128M")]
+        #[arg(long, default_value = "1G")]
         mem: String,
 
         /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
@@ -66,7 +67,7 @@ enum Cmd {
         cpus: u32,
 
         /// Memory for QEMU
-        #[arg(long, default_value = "128M")]
+        #[arg(long, default_value = "1G")]
         mem: String,
     },
     Clean,
@@ -79,24 +80,30 @@ fn main() -> anyhow::Result<()> {
     std::env::set_current_dir(root)?;
 
     let xtask = Xtask::parse();
-    let mode = if xtask.release { "release" } else { "debug" };
+    let default_path = "config.toml";
+    let cfg_path = Path::new(xtask.config.as_deref().unwrap_or(default_path));
+    if !cfg_path.exists() {
+        eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
+        return Ok(());
+    }
+    let cfg = Config::from_path(cfg_path)?;
 
     match xtask.cmd {
-        Cmd::Build => build::build(mode, xtask.config.as_deref())?,
+        Cmd::Build => build::build(&cfg)?,
         Cmd::Run { cpus, mem, display } => {
-            build::build(mode, xtask.config.as_deref())?;
+            build::build(&cfg)?;
             fs::mkfs()?;
-            qemu::qemu_run(mode, cpus, &mem, &display)?;
+            qemu::qemu_run(&cfg, cpus, &mem, &display)?;
         }
         Cmd::Gdb { cpus, mem, display, port } => {
-            build::build(mode, xtask.config.as_deref())?;
+            build::build(&cfg)?;
             fs::mkfs()?;
-            qemu::qemu_gdb(mode, cpus, &mem, &display, port)?;
+            qemu::qemu_gdb(&cfg, cpus, &mem, &display, port)?;
         }
-        Cmd::Objdump => util::objdump(mode)?,
-        Cmd::Size => util::size(mode)?,
+        Cmd::Objdump => util::objdump(&cfg)?,
+        Cmd::Size => util::size(&cfg)?,
         Cmd::Mkfs => fs::mkfs()?,
-        Cmd::DumpDtb { cpus, mem } => qemu::qemu_dump_dtb(cpus, &mem)?,
+        Cmd::DumpDtb { cpus, mem } => qemu::qemu_dump_dtb(&cfg, cpus, &mem)?,
         Cmd::Clean => build::clean()?,
     }
     Ok(())

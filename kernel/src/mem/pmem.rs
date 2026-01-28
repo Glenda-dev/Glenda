@@ -1,8 +1,8 @@
 use super::{PGSIZE, PhysAddr};
 use crate::cap::CNODE_SIZE;
 use crate::cap::{CNode, Capability, Slot, rights};
-use crate::dtb;
-use crate::mem::PageTable;
+use crate::hal;
+use crate::hal::mem::PageTable;
 use crate::printk;
 use crate::proc::TCB;
 use core::ptr::addr_of_mut;
@@ -58,7 +58,7 @@ impl PmemManager {
 static PMEM: Mutex<PmemManager> = Mutex::new(PmemManager::new());
 
 pub fn initialize_regions(_hartid: usize) {
-    let mem_range = dtb::memory_range().expect("Memory range not found in DTB");
+    let mem_range = hal::platform::memory_range().expect("Memory range not found in DTB");
     let mem_start = mem_range.start;
     let mem_end = mem_range.start + mem_range.size;
 
@@ -92,7 +92,7 @@ pub fn alloc_cnode_cap() -> Option<Capability> {
     let size = CNODE_SIZE;
     let align = core::mem::align_of::<Slot>();
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        CNode::init(paddr);
+        CNode::init(paddr.to_va());
         Capability::create_cnode(paddr, rights::ALL)
     })
 }

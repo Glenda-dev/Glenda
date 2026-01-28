@@ -1,13 +1,15 @@
-mod boot;
-mod dtb;
+mod console;
 mod hart;
+mod initrd;
 mod irq;
+mod platform;
 mod pmem;
 mod proc;
 mod trap;
-mod uart;
 mod vm;
 
+use crate::hal;
+use crate::hal::platform::PlatformInfo;
 use crate::logo;
 use crate::printk;
 use core::hint::spin_loop;
@@ -15,23 +17,23 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 static INIT_DONE: AtomicBool = AtomicBool::new(false);
 
-pub fn init(hartid: usize, dtb: *const u8) {
-    dtb::init(hartid, dtb);
-    uart::init(hartid, dtb);
-    pmem::init(hartid, dtb);
-    boot::init(hartid, dtb);
-    trap::init(hartid, dtb);
-    irq::init(hartid, dtb);
-    vm::init(hartid, dtb);
-    proc::init(hartid, dtb);
-    hart::init(hartid, dtb);
-    init_guard(hartid);
+pub fn init(cpuid: usize, info: PlatformInfo) {
+    platform::init(cpuid, info);
+    console::init(cpuid, info);
+    pmem::init(cpuid, info);
+    vm::init(cpuid, info);
+    trap::init(cpuid, info);
+    irq::init(cpuid, info);
+    initrd::init(cpuid, info);
+    proc::init(cpuid, info);
+    hart::init(cpuid, info);
+    init_guard(cpuid);
 }
 
-fn init_guard(hartid: usize) {
-    if hartid == 0 {
+fn init_guard(cpuid: usize) {
+    if cpuid == 0 {
         printk!("{}", logo::LOGO);
-        if let Some(args) = crate::dtb::bootargs() {
+        if let Some(args) = hal::platform::bootargs() {
             printk!("bootargs: {}\n", args);
         }
         // 标记初始化完成，允许其他核心进入调度器

@@ -1,6 +1,7 @@
+use crate::config::Config;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use which::which;
-use std::path::PathBuf;
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Running: $ {:?}", cmd);
@@ -12,25 +13,25 @@ pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn objdump(mode: &str) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel");
-    let tool = which("riscv64-elf-objdump")
-        .or_else(|_| which("llvm-objdump"))
-        .map_err(|_| anyhow::anyhow!("[ ERROR ] install objdump first"))?;
+pub fn objdump(cfg: &Config) -> anyhow::Result<()> {
+    let elf = PathBuf::from("target")
+        .join(cfg.system.arch.target_triple())
+        .join(cfg.system.profile.as_str())
+        .join("kernel");
+    let bin = format!("{}objdump", cfg.system.arch.binutils_prefix());
+    let tool = which(&bin).map_err(|_| anyhow::anyhow!("[ ERROR ] install {} first", bin))?;
     let mut cmd = Command::new(tool);
-    if cmd.get_program().to_string_lossy().contains("llvm-objdump") {
-        cmd.args(["-d", "--all-headers", "--source", elf.to_str().unwrap()]);
-    } else {
-        cmd.args(["-d", "--all-headers", "--source", elf.to_str().unwrap()]);
-    }
+    cmd.args(["-d", "--all-headers", "--source", elf.to_str().unwrap()]);
     run(&mut cmd)
 }
 
-pub fn size(mode: &str) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel");
-    let tool = which("riscv64-elf-size")
-        .or_else(|_| which("size"))
-        .map_err(|_| anyhow::anyhow!("[ ERROR ] install size first"))?;
+pub fn size(cfg: &Config) -> anyhow::Result<()> {
+    let elf = PathBuf::from("target")
+        .join(cfg.system.arch.target_triple())
+        .join(cfg.system.profile.as_str())
+        .join("kernel");
+    let bin = format!("{}size", cfg.system.arch.binutils_prefix());
+    let tool = which(&bin).map_err(|_| anyhow::anyhow!("[ ERROR ] install {} first", bin))?;
     let mut cmd = Command::new(tool);
     cmd.args(["-A", elf.to_str().unwrap()]);
     run(&mut cmd)

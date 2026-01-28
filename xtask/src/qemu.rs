@@ -1,20 +1,25 @@
 use crate::util::run;
 use std::path::PathBuf;
 use std::process::Command;
+use crate::config::Config;
 use which::which;
 
-pub fn qemu_cmd() -> anyhow::Result<String> {
-    let qemu = which("qemu-system-riscv64")
-        .map_err(|_| anyhow::anyhow!("[ ERROR ] qemu-system-riscv64 not found in PATH"))?;
+pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<String> {
+    let qemu_arch = cfg.system.arch.qemu_binary();
+    let qemu = which(qemu_arch)
+        .map_err(|_| anyhow::anyhow!("[ ERROR ] {} not found in PATH", qemu_arch))?;
     Ok(qemu.to_string_lossy().into_owned())
 }
 
-pub fn qemu_run(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel");
+pub fn qemu_run(cfg: &Config, cpus: u32, mem: &str, display: &str) -> anyhow::Result<()> {
+    let elf = PathBuf::from("target")
+        .join(cfg.system.arch.target_triple())
+        .join(cfg.system.profile.as_str())
+        .join("kernel");
     if !elf.exists() {
         return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
     }
-    let qemu = qemu_cmd()?;
+    let qemu = qemu_cmd(cfg)?;
     let mut cmd = Command::new(&qemu);
     cmd.arg("-machine").arg("virt");
     // CPUs
@@ -40,12 +45,18 @@ pub fn qemu_run(mode: &str, cpus: u32, mem: &str, display: &str) -> anyhow::Resu
     run(&mut cmd)
 }
 
-pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str, port: u16) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target").join("riscv64gc-unknown-none-elf").join(mode).join("kernel");
+pub fn qemu_gdb(
+    cfg: &Config,
+    cpus: u32,
+    mem: &str,
+    display: &str,
+    port: u16,
+) -> anyhow::Result<()> {
+    let elf = PathBuf::from("target").join(cfg.system.arch.target_triple()).join(cfg.system.profile.as_str()).join("kernel");
     if !elf.exists() {
         return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
     }
-    let qemu = qemu_cmd()?;
+    let qemu = qemu_cmd(cfg)?;
     let mut cmd = Command::new(&qemu);
     cmd.arg("-machine").arg("virt");
     // CPUs
@@ -81,8 +92,8 @@ pub fn qemu_gdb(mode: &str, cpus: u32, mem: &str, display: &str, port: u16) -> a
     run(&mut cmd)
 }
 
-pub fn qemu_dump_dtb(cpus: u32, mem: &str) -> anyhow::Result<()> {
-    let qemu = qemu_cmd()?;
+pub fn qemu_dump_dtb(cfg: &Config, cpus: u32, mem: &str) -> anyhow::Result<()> {
+    let qemu = qemu_cmd(cfg)?;
     let mut cmd = Command::new(&qemu);
     let dtb_path = "target/virt.dtb";
     cmd.arg("-machine").arg(format!("virt,dumpdtb={}", dtb_path));

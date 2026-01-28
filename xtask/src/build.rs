@@ -1,178 +1,155 @@
-use crate::config::Config;
+use crate::config::{Config, Service};
 use crate::util::run;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn build(mode: &str, config_path: Option<&str>) -> anyhow::Result<()> {
-    let default_path = "config.toml";
-    let cfg_path = Path::new(config_path.unwrap_or(default_path));
-    if !cfg_path.exists() {
-        eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
-        return Ok(());
-    }
-    let cfg = Config::from_path(cfg_path)?;
+pub fn build(cfg: &Config) -> anyhow::Result<()> {
     // Build libraries
-    build_libraries(mode, &cfg)?;
+    build_libraries(&cfg)?;
     // Process workspace services and generate initrd for kernel embedding
-    build_initrd(mode, &cfg)?;
+    build_initrd(&cfg)?;
     // Build the kernel
-    build_kernel(mode, &cfg)?;
+    build_kernel(&cfg)?;
     Ok(())
 }
 
-pub fn build_kernel(mode: &str, cfg: &Config) -> anyhow::Result<()> {
+pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     let features = cfg.features.get("kernel").map(|arr| arr.join(",")).unwrap_or_default();
     let mut cmd = Command::new("cargo");
     cmd.current_dir("kernel");
-    cmd.arg("build").arg("--target").arg("riscv64gc-unknown-none-elf");
+    cmd.arg("build").arg("--target").arg(cfg.system.arch.target_triple());
 
     // Inject kernel linker script with absolute path
     let cwd = std::env::current_dir()?;
-    let linker_script = cwd.join("kernel/src/linker.ld");
+    let linker_script = cwd.join("kernel/src/hal").join(cfg.system.arch.as_str()).join("linker.ld");
     let rustflags = format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display());
     cmd.env("RUSTFLAGS", rustflags);
-
-    if mode == "release" {
-        cmd.arg("--release");
-    }
+    cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
         cmd.arg("--features").arg(features);
     }
     run(&mut cmd)?;
 
     // Copy binary to root target
-    let profile = if mode == "release" { "release" } else { "debug" };
-    let src = Path::new("target/riscv64gc-unknown-none-elf").join(profile).join("kernel");
+    let profile = &cfg.system.profile;
+    let src =
+        Path::new("target").join(cfg.system.arch.target_triple()).join(profile).join("kernel");
     let dst = Path::new("target/kernel");
     fs::create_dir_all("target")?;
     fs::copy(src, dst)?;
     Ok(())
 }
 
-pub fn build_libraries(mode: &str, cfg: &Config) -> anyhow::Result<()> {
-    for c in cfg.libraries.iter() {
-        let cmd_str = if mode == "release" {
-            c.build_cmd_release.as_ref()
-        } else {
-            c.build_cmd_debug.as_ref()
-        };
-        let name = &c.name;
-        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
+/// Run cargo build for a component
+fn run_cargo_build(cfg: &Config, path: &Path, features: &str) -> anyhow::Result<()> {
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(path);
+    cmd.arg("build");
+    cmd.arg("--target").arg(cfg.system.arch.target_triple());
+    cmd.arg("--profile").arg(&cfg.system.profile);
+    if !features.is_empty() {
+        cmd.arg("--features").arg(features);
+    }
+    run(&mut cmd)
+}
 
-        if let Some(cmd_str) = cmd_str {
-            eprintln!("[ INFO ] Building Library {} with: {}", c.name, cmd_str);
-            // run via shell so build_cmd can be arbitrary
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c").arg(cmd_str).current_dir(&c.path);
-            if !features.is_empty() {
-                cmd.arg("--features").arg(features);
-            }
-            let status = cmd.status()?;
-            if !status.success() {
-                return Err(anyhow::anyhow!("build command failed for {}", c.name));
-            }
+pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
+    for c in cfg.libraries.iter() {
+        let features = cfg.features.get(&c.name).map(|arr| arr.join(",")).unwrap_or_default();
+        eprintln!("[ INFO ] Building Library {} with: {}", c.name, c.build);
+
+        if c.build == "cargo" {
+            run_cargo_build(cfg, Path::new(&c.path), &features)?;
+        } else {
+            anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name);
         }
     }
+
     Ok(())
+}
+
+/// Build a service with Cargo and return the path to the installed artifact
+fn build_cargo_service(cfg: &Config, service: &Service) -> anyhow::Result<PathBuf> {
+    let features = cfg.features.get(&service.name).map(|arr| arr.join(",")).unwrap_or_default();
+    eprintln!("[ INFO ] Building Service {} with: cargo", service.name);
+
+    // 1. Run Cargo Build
+    run_cargo_build(cfg, Path::new(&service.path), &features)?;
+
+    // 2. Identify Source Artifact
+    // Assumption: Binary name matches service name
+    // Artifact location: workspace_target_dir/target_triple/profile/name
+    // Note: We assume we are running from workspace root
+    let target_triple = cfg.system.arch.target_triple();
+    let profile = &cfg.system.profile;
+    let src_path = Path::new("target").join(target_triple).join(profile).join(&service.name);
+
+    if !src_path.exists() {
+        anyhow::bail!("Cargo build artifact not found at: {}", src_path.display());
+    }
+
+    // 3. Move/Copy to Output
+    let dst_path = Path::new(&service.path).join(&service.output);
+    if let Some(parent) = dst_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(&src_path, &dst_path)?;
+
+    Ok(dst_path)
 }
 
 const ENTRY_SIZE: usize = 48; // as in design
 
-pub fn build_initrd(mode: &str, cfg: &Config) -> anyhow::Result<()> {
+pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
     // Ensure target dir
     fs::create_dir_all("target")?;
 
     // collect binaries
     let mut entries: Vec<(u8, String, Vec<u8>)> = Vec::new();
 
-    // 1. Find and process Root Task first
-    if let Some(root_task_cfg) =
-        cfg.services.iter().find(|c| c.kind.as_deref() == Some("root_task"))
-    {
-        let cmd_str = if mode == "release" {
-            root_task_cfg.build_cmd_release.as_ref()
-        } else {
-            root_task_cfg.build_cmd_debug.as_ref()
+    // Helper to process a service and get its data
+    let process_service = |c: &Service| -> anyhow::Result<(String, Vec<u8>)> {
+        let artifact_path = match c.build.as_str() {
+            "cargo" => build_cargo_service(cfg, c)?,
+            "manifest" => Path::new(&c.path).join(&c.output),
+            _ => anyhow::bail!("Unknown build method '{}' for service '{}'", c.build, c.name),
         };
 
-        let name = &root_task_cfg.name;
-
-        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
-
-        if let Some(cmd_str) = cmd_str {
-            eprintln!("[ INFO ] Building Root Task {} with: {}", root_task_cfg.name, cmd_str);
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c").arg(cmd_str).current_dir(&root_task_cfg.path);
-            if !features.is_empty() {
-                cmd.arg("--features").arg(features);
-            }
-            let status = cmd.status()?;
-            if !status.success() {
-                return Err(anyhow::anyhow!("build command failed for {}", root_task_cfg.name));
-            }
-        }
-        let out_path = Path::new(&(root_task_cfg.path)).join(&root_task_cfg.output);
-        if !out_path.exists() {
-            return Err(anyhow::anyhow!("output binary not found: {}", root_task_cfg.output));
+        if !artifact_path.exists() {
+            anyhow::bail!("Service artifact not found at: {}", artifact_path.display());
         }
 
-        // Copy to root target
-        let dst = Path::new("target").join(format!("{}.bin", root_task_cfg.name));
-        fs::copy(&out_path, &dst)?;
+        let data = fs::read(&artifact_path)?;
+        Ok((c.name.clone(), data))
+    };
 
-        let data = fs::read(&dst)?;
-        entries.push((0, root_task_cfg.name.clone(), data));
+    // 1. Find and process Root Task first
+    if let Some(root_task_cfg) = cfg.services.iter().find(|c| c.kind == "root_task") {
+        let (name, data) = process_service(root_task_cfg)?;
+        entries.push((0, name, data));
     } else {
         eprintln!("[ WARN ] No root_task defined in config.toml");
     }
 
     // 2. Process other services
     for c in cfg.services.iter() {
-        if c.kind.as_deref() == Some("root_task") {
+        if c.kind == "root_task" {
             continue; // Already processed
         }
-        let cmd_str = if mode == "release" {
-            c.build_cmd_release.as_ref()
-        } else {
-            c.build_cmd_debug.as_ref()
-        };
-        let name = &c.name;
-        let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();
 
-        if let Some(cmd_str) = cmd_str {
-            eprintln!("[ INFO ] Building component {} with: {}", c.name, cmd_str);
-            // run via shell so build_cmd can be arbitrary
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c").arg(cmd_str).current_dir(&c.path);
-            if !features.is_empty() {
-                cmd.arg("--features").arg(features);
-            }
-            let status = cmd.status()?;
-            if !status.success() {
-                return Err(anyhow::anyhow!("build command failed for {}", c.name));
-            }
-        }
-        let out_path = Path::new(&(c.path)).join(&c.output);
-        if !out_path.exists() {
-            return Err(anyhow::anyhow!("output binary not found: {}", c.output));
-        }
+        let (name, data) = process_service(c)?;
 
-        // Copy to root target
-        let dst = Path::new("target").join(format!("{}.bin", c.name));
-        fs::copy(&out_path, &dst)?;
-
-        let data = fs::read(&dst)?;
         // kind mapping
-        let t: u8 = match c.kind.as_deref().unwrap_or("file") {
+        let t: u8 = match c.kind.as_str() {
             "driver" => 1,
             "server" => 2,
             "test" => 3,
             "file" => 4,
             _ => 4,
         };
-        entries.push((t, c.name.clone(), data));
+        entries.push((t, name, data));
     }
 
     // build modules.bin in target/modules.bin

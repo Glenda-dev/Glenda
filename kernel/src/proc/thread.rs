@@ -1,11 +1,12 @@
-use super::ProcContext;
 use crate::cap::{Badge, CNode, CapType, Capability};
-use crate::hart;
+use crate::hal;
+use crate::hal::mem::{PGSIZE, PageTable};
+use crate::hal::proc::ProcContext;
+use crate::hal::trap::TrapFrame;
+use crate::hal::trap::{trap_user_handler, trap_user_return};
 use crate::ipc::UTCB;
 use crate::mem::pmem;
-use crate::mem::{PGSIZE, PageTable, PhysAddr, VirtAddr};
-use crate::trap::TrapFrame;
-use crate::trap::user::{trap_user_handler, trap_user_return};
+use crate::mem::{PhysAddr, VirtAddr};
 use core::sync::atomic::AtomicUsize;
 
 pub const KSTACK_PAGES: usize = 4; // 16KB
@@ -133,12 +134,11 @@ impl TCB {
         let mut tcb = Self::new();
         tcb.privileged = true;
         tcb.kstack = pmem::alloc_frame_cap(KSTACK_PAGES);
-
+        let sp = tcb.get_kstack_top().as_usize();
         // 设置上下文以跳转到入口函数
-        tcb.context.ra = entry;
-        tcb.context.sp = tcb.get_kstack_top().as_usize();
+        tcb.context.configure(entry, sp);
         // s0 (fp) 设为 0，方便调试回溯终止
-        tcb.context.s0 = 0;
+        tcb.context.set_fp(0);
         unimplemented!()
     }
 
@@ -182,16 +182,12 @@ impl TCB {
         let tf = self.get_tf();
 
         // 3. 设置用户态初始状态
-        tf.sp = stack_top; // 用户栈顶
-        tf.kernel_epc = entry_point; // sepc
-        tf.kernel_satp = satp; // 使用该线程自己的页表
-        tf.kernel_hartid = hart::getid(); // hartid
-        tf.kernel_sp = kstack_top; // 内核栈顶
-        tf.kernel_trapvector = trap_user_handler as usize;
+        tf.configure(entry_point, stack_top);
+        tf.configure_kernel(satp, hal::cpu::cpu_id(), kstack_top, trap_user_handler as usize);
 
         // 4. 设置内核上下文，使其在被调度时跳转到 trap_user_return
-        self.context.ra = trap_user_return as usize;
-        self.context.sp = kstack_top;
+        let ra = trap_user_return as usize;
+        self.context.configure(ra, kstack_top);
     }
 
     pub fn set_fault_handler(&mut self, ep: Capability) {
@@ -225,15 +221,15 @@ impl TCB {
         self.cap_lookup_slot(cptr).map(|(cap, _)| cap)
     }
 
-    pub fn cap_lookup_slot(&self, cptr: usize) -> Option<(Capability, PhysAddr)> {
+    pub fn cap_lookup_slot(&self, cptr: usize) -> Option<(Capability, VirtAddr)> {
         if cptr == 0 {
             return None;
         }
         // 1. 获取 Root CNode
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         if root_cap.cap_type() == CapType::CNode {
-            let paddr = PhysAddr::from(root_cap.words[0]);
-            let cnode = CNode::from_addr(paddr);
+            let vaddr = VirtAddr::from(root_cap.words[0]);
+            let cnode = CNode::from_addr(vaddr);
             // 2. 在 CNode 中查找
             cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))
         } else {

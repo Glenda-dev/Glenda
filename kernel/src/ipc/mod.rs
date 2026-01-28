@@ -11,7 +11,7 @@ use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
-pub use utcb::{BUFFER_MAX_SIZE, MAX_MRS};
+pub use utcb::MAX_MRS;
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
@@ -58,7 +58,7 @@ unsafe fn copy_msg(
 
 fn set_badge(tcb: &mut TCB, badge: Badge) {
     let tf = tcb.get_tf();
-    tf.a1 = badge.get();
+    tf.set_badge(badge.get());
 }
 
 /// 发送操作

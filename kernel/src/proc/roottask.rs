@@ -1,19 +1,19 @@
 use super::KSTACK_PAGES;
 use super::scheduler;
 use super::{TCB, ThreadState};
-use crate::boot::initrd;
 use crate::boot::{BootInfo, UntypedDesc};
 use crate::cap::CNODE_BITS;
 use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
-use crate::dtb;
+use crate::hal;
+use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
+use crate::initrd;
 use crate::mem::pmem;
-use crate::mem::pte::perms;
 use crate::mem::{
     HEAP_SIZE, HEAP_VA, RES_VA_BASE, STACK_SIZE, STACK_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA,
 };
-use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::mem::{PhysAddr, VirtAddr};
 use crate::printk;
 
 pub const NULL_SLOT: usize = 0;
@@ -23,7 +23,7 @@ pub const TCB_SLOT: usize = 3;
 pub const CONSOLE_SLOT: usize = 6;
 pub const UTCB_SLOT: usize = 7;
 pub const INITRD_SLOT: usize = 8;
-pub const DTB_SLOT: usize = 9;
+pub const PLATFORM_SLOT: usize = 9;
 
 pub const BOOTINFO_SLOT_START: usize = 32;
 
@@ -74,7 +74,7 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     cspace.insert(UTCB_SLOT, &caps.utcb);
     cspace.insert(CONSOLE_SLOT, &caps.console);
 
-    let initrd_range = initrd::range();
+    let initrd_range = hal::platform::initrd().expect("Initrd range not found");
     let initrd_start = initrd_range.start.align_down(PGSIZE);
     let initrd_page_count = (initrd_range.size + PGSIZE - 1) / PGSIZE;
     let initrd_cap = Capability::create_frame(
@@ -84,27 +84,24 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     );
     cspace.insert(INITRD_SLOT, &initrd_cap);
 
-    let dtb_range = dtb::dtb_range();
-    let dtb_start = dtb_range.start.align_down(PGSIZE);
-    let dtb_page_count = (dtb_range.size + PGSIZE - 1) / PGSIZE;
-    let dtb_cap = Capability::create_frame(
-        dtb_start,
-        dtb_page_count,
-        rights::READ | rights::WRITE | rights::GRANT,
-    );
-    cspace.insert(DTB_SLOT, &dtb_cap);
+    match hal::platform::range() {
+        Some(range) => {
+            let platform_start = range.start.align_down(PGSIZE);
+            let platform_page_count = (range.size + PGSIZE - 1) / PGSIZE;
+            let platform_cap = Capability::create_frame(
+                platform_start,
+                platform_page_count,
+                rights::READ | rights::WRITE | rights::GRANT,
+            );
+            cspace.insert(PLATFORM_SLOT, &platform_cap);
+        }
+        None => printk!("proc: Warning: Platform range not found\n"),
+    }
 }
 
 fn start_root_task(tcb: &mut TCB, entry_point: usize, stack_top: usize) {
     tcb.set_priority(253);
     tcb.set_registers(entry_point, stack_top);
-
-    // Initialize TrapFrame (User context)
-    let tf = tcb.get_tf();
-    tf.kernel_epc = entry_point;
-    tf.sp = stack_top;
-    // sstatus is not in TrapFrame, handled by trap return logic
-
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
     printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
@@ -131,7 +128,7 @@ pub fn init() {
     init_bootinfo(bootinfo);
 
     // 5. Setup CSpace
-    let mut cspace = CNode::from_addr(caps.cspace.obj_ptr().to_pa());
+    let mut cspace = CNode::from_addr(caps.cspace.obj_ptr());
     init_cspace(&mut cspace, bootinfo);
     fill_root_cspace(&mut cspace, &caps);
 
@@ -181,7 +178,7 @@ fn init_vspace(
         VirtAddr::from(TRAMPOLINE_VA),
         tramp_pa,
         PGSIZE,
-        PteFlags::from(perms::READ | perms::EXECUTE),
+        PteFlags::from(PtePerms::READ | PtePerms::EXECUTE),
     );
     // 2. 映射 TrapFrame (Trampoline 下方)
     // TrapFrame 仅由 S 态的 user_vector/user_return 访问
@@ -189,7 +186,7 @@ fn init_vspace(
         VirtAddr::from(TRAPFRAME_VA),
         tf_paddr,
         PGSIZE,
-        PteFlags::from(perms::READ | perms::WRITE),
+        PteFlags::from(PtePerms::READ | PtePerms::WRITE),
     );
 
     // 映射 UTCB 到固定位置
@@ -197,7 +194,7 @@ fn init_vspace(
         VirtAddr::from(UTCB_VA),
         utcb_paddr,
         PGSIZE,
-        PteFlags::from(perms::USER | perms::READ | perms::WRITE),
+        PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
     );
 
     // 映射 BootInfo 到固定位置
@@ -205,16 +202,16 @@ fn init_vspace(
         VirtAddr::from(BOOTINFO_VA),
         bootinfo_paddr,
         PGSIZE,
-        PteFlags::from(perms::USER | perms::READ), // 只读
+        PteFlags::from(PtePerms::USER | PtePerms::READ), // 只读
     );
 
     // 映射 Initrd 到固定位置
-    let range = initrd::range();
+    let range = hal::platform::initrd().expect("Initrd range not found");
     vspace.map_with_alloc(
         VirtAddr::from(INITRD_VA),
         range.start.align_down(PGSIZE),
         range.size,
-        PteFlags::from(perms::USER | perms::READ),
+        PteFlags::from(PtePerms::USER | PtePerms::READ),
     );
 
     let stack_va_start = STACK_VA;
@@ -227,7 +224,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(perms::USER | perms::READ | perms::WRITE),
+            PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
         );
         core::mem::forget(frame);
     }
@@ -245,7 +242,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(perms::USER | perms::READ | perms::WRITE),
+            PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
         );
         core::mem::forget(frame);
     }
@@ -260,7 +257,7 @@ fn init_cspace(cnode: &mut CNode, bootinfo: &mut BootInfo) {
     bootinfo.mmio.start = slot;
 
     // 1. mmio Region (OpenSBI, Kernel, etc.)
-    for mmio_region in dtb::mmio_ranges() {
+    for mmio_region in hal::platform::mmio_ranges() {
         let mmio_size = mmio_region.size;
         if mmio_size > 0 {
             let cap = Capability::create_mmio(mmio_region.start, mmio_size, rights::ALL);
@@ -321,14 +318,14 @@ fn init_bootinfo(bootinfo: &mut BootInfo) {
     // 初始化 BootInfo
     *bootinfo = BootInfo::new();
 
-    // 填充 DTB 信息
-    if let Some((dtb_paddr, dtb_size)) = dtb::dtb_info() {
-        bootinfo.dtb_paddr = dtb_paddr;
-        bootinfo.dtb_size = dtb_size;
+    // 填充 PLATFORM 信息
+    if let Some(range) = hal::platform::range() {
+        bootinfo.info_paddr = range.start.as_usize();
+        bootinfo.info_size = range.size;
     }
 
     // 填充启动参数
-    if let Some(args) = dtb::bootargs() {
+    if let Some(args) = hal::platform::bootargs() {
         let bytes = args.as_bytes();
         let len = core::cmp::min(bytes.len(), bootinfo.cmdline.len() - 1);
         bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);

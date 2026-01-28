@@ -1,23 +1,23 @@
-pub mod plic;
+pub mod timer;
 
 use crate::cap;
 use crate::cap::Capability;
+use crate::cpu;
+use crate::hal;
+use crate::hal::irq::MAX_IRQS;
 use crate::ipc;
 use crate::printk;
 use spin::Mutex;
 
-const MAX_IRQS: usize = 128;
-
 pub fn init() {
     // 初始化 IRQ 表与定时器
-    // init_table(); // No longer needed
+    hal::irq::init();
     printk!("irq: Initialized global IRQs\n");
 }
 
-pub fn init_hart(hartid: usize) {
-    // 设置 PLIC 阈值为 0，允许所有优先级 > 0 的中断
-    plic::set_threshold_s(hartid, 0);
-    printk!("irq: Initialized for hart {}\n", hartid);
+pub fn init_hart(cpuid: usize) {
+    hal::irq::init_cpu(cpuid);
+    printk!("irq: Initialized for cpu {}\n", cpuid);
 }
 
 #[derive(Clone)]
@@ -56,14 +56,13 @@ pub fn clear_notification(irq: usize) -> bool {
 }
 
 /// 内核在 trap 中调用：处理 claim 到的 IRQ（mask + notify + complete）
-pub fn handle_claimed(hartid: usize, id: usize) {
+pub fn handle_claimed(cpuid: usize, id: usize) {
     // 先屏蔽该 IRQ，交给驱动通过 Ack 重新打开
-    plic::set_enable_s(hartid, id, false);
+    hal::irq::mask(id as u32, cpuid);
     let tbl = IRQ_TABLE.lock();
     if id >= MAX_IRQS {
         // still complete the IRQ
-        plic::set_claim_s(hartid, id);
-        return;
+        panic!("IRQ id {} out of range of MAX_IRQS {}", id, MAX_IRQS);
     }
 
     if let Some(cap) = &tbl[id].notification {
@@ -75,12 +74,24 @@ pub fn handle_claimed(hartid: usize, id: usize) {
             ipc::notify(ep, badge);
         }
     }
-
-    // 对 PLIC 做 Complete（claim/complete 寄存器写入）
-    plic::set_claim_s(hartid, id);
 }
 
-/// 驱动调用：处理 IRQ Ack（解除屏蔽）
-pub fn ack_irq(hartid: usize, irq: usize) {
-    plic::set_enable_s(hartid, irq, true);
+pub fn ack_irq(cpuid: usize, irq: usize) {
+    // 对 PLIC 做 Complete（claim/complete 寄存器写入）
+    hal::irq::complete(irq as u32, cpuid);
+    // 重新打开该 IRQ
+    hal::irq::unmask(irq as u32, cpuid);
+}
+
+/// 进入中断上下文
+pub fn enter() {
+    let hart = cpu::get();
+    hart.nest_count += 1;
+}
+/// 退出中断上下文
+pub fn exit() {
+    let hart = cpu::get();
+    if hart.nest_count > 0 {
+        hart.nest_count -= 1;
+    }
 }

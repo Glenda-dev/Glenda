@@ -1,6 +1,6 @@
 use crate::cap::Badge;
+use crate::hal;
 use crate::proc::thread::TCB;
-use crate::trap::interrupt;
 use core::sync::atomic::AtomicUsize;
 use spin::Mutex;
 
@@ -40,29 +40,33 @@ impl Endpoint {
     }
 
     pub fn enqueue_send(&self, tcb: *mut TCB) {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
-        {
-            let mut inner = self.inner.lock();
-            unsafe {
-                (*tcb).prev = inner.send_queue_tail;
-                (*tcb).next = None;
-                if let Some(tail) = inner.send_queue_tail {
-                    (*tail).next = Some(tcb);
-                } else {
-                    inner.send_queue_head = Some(tcb);
-                }
-                inner.send_queue_tail = Some(tcb);
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
+        }
+        let mut inner = self.inner.lock();
+        unsafe {
+            (*tcb).prev = inner.send_queue_tail;
+            (*tcb).next = None;
+            if let Some(tail) = inner.send_queue_tail {
+                (*tail).next = Some(tcb);
+            } else {
+                inner.send_queue_head = Some(tcb);
             }
+            inner.send_queue_tail = Some(tcb);
         }
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
     }
 
     pub fn dequeue_send(&self) -> Option<*mut TCB> {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
+        }
         let ret = {
             let mut inner = self.inner.lock();
             if let Some(head) = inner.send_queue_head {
@@ -83,35 +87,42 @@ impl Endpoint {
             }
         };
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
         ret
     }
 
     pub fn enqueue_recv(&self, tcb: *mut TCB) {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
-        {
-            let mut inner = self.inner.lock();
-            unsafe {
-                (*tcb).prev = inner.recv_queue_tail;
-                (*tcb).next = None;
-                if let Some(tail) = inner.recv_queue_tail {
-                    (*tail).next = Some(tcb);
-                } else {
-                    inner.recv_queue_head = Some(tcb);
-                }
-                inner.recv_queue_tail = Some(tcb);
-            }
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
         }
+        let mut inner = self.inner.lock();
+        unsafe {
+            (*tcb).prev = inner.recv_queue_tail;
+            (*tcb).next = None;
+            if let Some(tail) = inner.recv_queue_tail {
+                (*tail).next = Some(tcb);
+            } else {
+                inner.recv_queue_head = Some(tcb);
+            }
+            inner.recv_queue_tail = Some(tcb);
+        }
+
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
     }
 
     pub fn dequeue_recv(&self) -> Option<*mut TCB> {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
+        }
         let ret = {
             let mut inner = self.inner.lock();
             if let Some(head) = inner.recv_queue_head {
@@ -132,26 +143,32 @@ impl Endpoint {
             }
         };
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
         ret
     }
 
     pub fn notify(&self, badge: Badge) {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
-        {
-            let mut inner = self.inner.lock();
-            inner.notification_word |= badge.get();
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
         }
+        let mut inner = self.inner.lock();
+        inner.notification_word |= badge.get();
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
     }
 
     pub fn poll_notification(&self) -> Badge {
-        let sie = interrupt::is_enabled();
-        interrupt::disable();
+        let sie = hal::irq::is_enabled();
+        unsafe {
+            hal::irq::disable();
+        }
         let ret = {
             let mut inner = self.inner.lock();
             let word = inner.notification_word;
@@ -159,7 +176,9 @@ impl Endpoint {
             Badge::from(word)
         };
         if sie {
-            interrupt::enable();
+            unsafe {
+                hal::irq::enable();
+            }
         }
         ret
     }

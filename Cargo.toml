@@ -3,7 +3,7 @@ members = [
     "kernel",
     "xtask",
     "lib/libglenda-rs",
-    "service/9ball",
+    "service/nineball",
     "service/factotum",
     "service/unicorn",
     "drivers/virtio/common",
@@ -16,10 +16,7 @@ members = [
 ]
 resolver = "2"
 
-[profile.dev]
-panic = "abort"
 
-[profile.release]
-panic = "abort"
-lto = true
-codegen-units = 1
+[profile.relwithdebuginfo]
+inherits = "release"
+debug = true         # 保留一些调试信息

@@ -1,46 +1,8 @@
-use crate::hart;
-use crate::printk;
-use crate::printk::{ANSI_RED, ANSI_RESET};
-use crate::sbi;
-use core::sync::atomic::{AtomicBool, Ordering};
+use crate::cpu;
+use crate::hal;
+use crate::hal::platform::PlatformInfo;
 
-static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
-/*
- 由主 hart 通过 HSM 启动次级 hart 的入口
-
- Also see:
- Glenda/kernel/src/boot.rs
-*/
-unsafe extern "C" {
-    fn secondary_start(hartid: usize, dtb: *const u8) -> !;
-}
-
-// 由第一个进来的 hart 调用一次，启动其余参与测试的次级 hart
-pub fn bootstrap_secondary_harts(hartid: usize, dtb: *const u8) {
-    if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-        return;
-    }
-    let start_addr = secondary_start as usize;
-    let opaque = dtb as usize;
-    let harts = crate::dtb::hart_count();
-    for target in 0..harts {
-        if target == hartid {
-            continue;
-        }
-        match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => printk!("harts: Started hart {} via SBI\n", target),
-            Err(err) => printk!(
-                "{}harts: Failed to start hart {} via SBI: error {}{}\n",
-                ANSI_RED,
-                target,
-                err,
-                ANSI_RESET
-            ),
-        }
-    }
-}
-
-pub fn init(hartid: usize, dtb: *const u8) {
-    hart::init(hartid);
-    bootstrap_secondary_harts(hartid, dtb);
+pub fn init(cpuid: usize, info: PlatformInfo) {
+    cpu::init(cpuid);
+    hal::platform::bootstrap_cpus(cpuid, info);
 }

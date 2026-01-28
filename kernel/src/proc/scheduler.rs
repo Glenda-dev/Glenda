@@ -1,9 +1,7 @@
-use super::context::switch_context;
 use super::thread::{TCB, ThreadState};
-use crate::hart;
-use crate::hart::MAX_HARTS;
-use crate::sbi;
-use riscv::register::sstatus;
+use crate::cpu;
+use crate::hal;
+use crate::hal::cpu::MAX_CPUS;
 
 // 最大优先级数量 (0-255)
 pub const MAX_PRIORITY: usize = 256;
@@ -60,13 +58,13 @@ impl TcbQueue {
 // static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
 //     Mutex::new([const { TcbQueue::new() }; MAX_PRIORITY]);
 
-static mut CURRENT_TCB: [Option<*mut TCB>; MAX_HARTS] = [None; MAX_HARTS];
+static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
 
 fn kick_harts() {
     // 发送 IPI 给所有其他核心，唤醒它们或触发抢占
     // 这里的 mask 应该根据实际启用的 hart 计算，暂时广播给所有
     // 忽略错误
-    let _ = sbi::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
+    let _ = hal::platform::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
     // SBI v0.2: hart_mask, hart_mask_base.
     // To send to all harts: mask pointer? No, it's a bitmask if < XLEN.
     // But sbi_send_ipi takes a pointer in newer spec?
@@ -75,21 +73,20 @@ fn kick_harts() {
     // If we want to broadcast, we usually need to know the topology.
     // For now, let's assume a small number of harts and use a mask.
     // Assuming MAX_HARTS <= 64.
-    let mask = (1 << MAX_HARTS) - 1;
-    let _ = sbi::send_ipi(mask, 0);
+    let mask = (1 << MAX_CPUS) - 1;
+    let _ = hal::platform::send_ipi(mask, 0);
 }
 
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
-    let current_hart_id = hart::getid();
+    let current_hart_id = hal::cpu::cpu_id();
 
     // 根据 affinity 决定目标核心
-    // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_HARTS，则表示不绑定，默认使用当前核心
-    let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };
-
+    // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_CPUS，则表示不绑定，默认使用当前核心
+    let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
     // 获取目标 Hart 的运行队列
     // 注意：访问全局 HARTS 数组需要 unsafe，且要小心死锁（这里只持有一个锁，是安全的）
-    let target_hart = unsafe { &hart::HARTS[target_hart_id] };
+    let target_hart = unsafe { &cpu::CPUS[target_hart_id] };
     let mut queues = target_hart.ready_queues.lock();
     let prio = tcb.priority as usize;
 
@@ -103,7 +100,7 @@ pub fn add_thread(tcb: &mut TCB) {
     // 这样目标核心如果处于 WFI 状态会被唤醒，或者在运行其他线程时触发调度检查
     if target_hart_id != current_hart_id {
         let mask = 1 << target_hart_id;
-        let _ = sbi::send_ipi(mask, 0);
+        let _ = hal::platform::send_ipi(mask, 0);
     }
 }
 
@@ -113,13 +110,13 @@ pub fn scheduler() -> ! {
     loop {
         // 1. 关闭中断以保护调度逻辑
         // 在 RISC-V 中，这通常在进入异常处理时自动完成，但在 idle loop 中需要手动管理
-        unsafe { sstatus::clear_sie() };
+        unsafe { hal::irq::disable() };
 
         let mut next_thread: Option<*mut TCB> = None;
 
         // 2. 寻找最高优先级的 Ready 线程
         {
-            let hart = hart::get();
+            let hart = cpu::get();
             let mut queues = hart.ready_queues.lock();
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
@@ -138,13 +135,13 @@ pub fn scheduler() -> ! {
             tcb.state = ThreadState::Running;
 
             // 获取当前 CPU 的 Hart 结构
-            let hart = hart::get();
+            let hart = cpu::get();
             // 设置当前运行的线程
             set_current(tcb_ptr);
 
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
-                switch_context(&mut hart.context, &mut tcb.context);
+                hal::proc::switch_context(&mut hart.context, &mut tcb.context);
             }
             set_current(core::ptr::null_mut());
 
@@ -153,8 +150,8 @@ pub fn scheduler() -> ! {
         } else {
             // 没有可运行的线程，进入低功耗等待
             unsafe {
-                riscv::register::sstatus::set_sie();
-                riscv::asm::wfi();
+                hal::irq::enable();
+                hal::irq::wfi();
             }
         }
     }
@@ -167,7 +164,7 @@ pub fn yield_proc() {
         Some(ptr) => ptr,
         None => return,
     };
-    let mut context = hart::get().context;
+    let mut context = cpu::get().context;
 
     let tcb = unsafe { &mut *tcb_ptr };
 
@@ -179,7 +176,7 @@ pub fn yield_proc() {
 
     // 切换回调度器 (context)
     unsafe {
-        switch_context(&mut tcb.context, &mut context);
+        hal::proc::switch_context(&mut tcb.context, &mut context);
     }
 }
 
@@ -190,7 +187,7 @@ pub fn block_current_thread() {
         Some(ptr) => ptr,
         None => return,
     };
-    let mut context = hart::get().context;
+    let mut context = cpu::get().context;
 
     let tcb = unsafe { &mut *tcb_ptr };
 
@@ -202,7 +199,7 @@ pub fn block_current_thread() {
 
     // 直接切换回调度器，不加入 Ready 队列
     unsafe {
-        switch_context(&mut tcb.context, &mut context);
+        hal::proc::switch_context(&mut tcb.context, &mut context);
     }
 }
 
@@ -214,8 +211,8 @@ pub fn wake_up(tcb: &mut TCB) {
         add_thread(tcb);
 
         // 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
-        let current_hart_id = hart::getid();
-        let target_hart_id = if tcb.affinity < MAX_HARTS { tcb.affinity } else { current_hart_id };
+        let current_hart_id = hal::cpu::cpu_id();
+        let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
 
         if target_hart_id == current_hart_id {
             if let Some(curr_ptr) = current() {
@@ -236,7 +233,7 @@ pub fn reschedule() {
         Some(ptr) => ptr,
         None => return,
     };
-    let mut context = hart::get().context;
+    let mut context = cpu::get().context;
     let tcb = unsafe { &mut *tcb_ptr };
     // 将当前线程状态设置为 Ready 并加入队列
     if tcb.state == ThreadState::Running {
@@ -245,18 +242,18 @@ pub fn reschedule() {
     }
     // 切换回调度器
     unsafe {
-        switch_context(&mut tcb.context, &mut context);
+        hal::proc::switch_context(&mut tcb.context, &mut context);
     }
 }
 
 pub fn current() -> Option<*mut TCB> {
-    let hart = hart::getid();
+    let hart = hal::cpu::cpu_id();
     let tcb_ptr = unsafe { CURRENT_TCB[hart] };
     if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
 }
 
 fn set_current(tcb_ptr: *mut TCB) {
-    let hart = hart::getid();
+    let hart = hal::cpu::cpu_id();
     unsafe {
         if tcb_ptr.is_null() {
             CURRENT_TCB[hart] = None;

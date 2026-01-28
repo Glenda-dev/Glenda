@@ -1,16 +1,15 @@
-pub mod context;
 pub mod elf;
 pub mod roottask;
 pub mod scheduler;
 pub mod thread;
 
-pub use context::ProcContext;
+use crate::hal::platform::PlatformInfo;
 pub use elf::ElfFile;
 pub use thread::KSTACK_PAGES;
 pub use thread::{TCB, ThreadState};
 
-pub fn init(hartid: usize, _dtb: *const u8) {
-    if hartid == 0 {
+pub fn init(cpuid: usize, _info: PlatformInfo) {
+    if cpuid == 0 {
         roottask::init();
     }
 }

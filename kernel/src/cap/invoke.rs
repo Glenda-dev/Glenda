@@ -1,13 +1,11 @@
-use super::method::{
-    cnodemethod, consolemethod, ipcmethod, irqmethod, pagetablemethod, replymethod, tcbmethod,
-    untypedmethod,
-};
-use crate::cap::captype::types;
+use super::method::*;
+use crate::cap::captype::{sizes, types};
 use crate::cap::{Badge, CNode, CapType, Capability, Slot, rights};
-use crate::hart;
+use crate::hal;
+use crate::hal::mem::{PGSIZE, PageTable, PteFlags};
 use crate::ipc;
 use crate::irq;
-use crate::mem::{PGSIZE, PageTable, PhysAddr, PteFlags, VirtAddr};
+use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::errcode;
 
@@ -190,9 +188,9 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
             }
         }
         tcbmethod::SET_AFFINITY => {
-            // SetAffinity: (hart_id)
-            let hart_id = utcb.mrs_regs[0];
-            tcb.set_affinity(hart_id);
+            // SetAffinity: (cpu_id)
+            let cpu_id = utcb.mrs_regs[0];
+            tcb.set_affinity(cpu_id);
             errcode::SUCCESS
         }
         tcbmethod::RESUME => {
@@ -202,11 +200,11 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
             scheduler::add_thread(tcb);
             // 2. 抢占检查
             // 如果目标核心是当前核心，且优先级高于当前线程，则触发重新调度
-            let current_hart = hart::getid();
-            let target_hart =
-                if tcb.affinity < hart::MAX_HARTS { tcb.affinity } else { current_hart };
+            let current_cpu = hal::cpu::cpu_id();
+            let target_cpu =
+                if tcb.affinity < hal::cpu::MAX_CPUS { tcb.affinity } else { current_cpu };
 
-            if target_hart == current_hart {
+            if target_cpu == current_cpu {
                 if let Some(curr_ptr) = scheduler::current() {
                     // SAFETY: current() 返回的指针在内核运行期间有效
                     let curr = unsafe { &*curr_ptr };
@@ -321,13 +319,13 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
 // --- CNode methods ---
 
 fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
-    let paddr = if cap.cap_type() == CapType::CNode {
-        PhysAddr::from(cap.words[0])
+    let vaddr = if cap.cap_type() == CapType::CNode {
+        VirtAddr::from(cap.words[0])
     } else {
         return errcode::INVALID_OBJ_TYPE;
     };
 
-    let mut cnode = CNode::from_addr(paddr);
+    let mut cnode = CNode::from_addr(vaddr);
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
@@ -387,7 +385,7 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
             // Delete: (slot)
             let slot = utcb.mrs_regs[0];
             let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != PhysAddr::null() {
+            if slot_addr != VirtAddr::null() {
                 cnode.delete(slot);
                 errcode::SUCCESS
             } else {
@@ -398,7 +396,7 @@ fn invoke_cnode(cap: &Capability, _cptr: usize, method: usize) -> usize {
             // Revoke: (slot)
             let slot = utcb.mrs_regs[0];
             let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != PhysAddr::null() {
+            if slot_addr != VirtAddr::null() {
                 cnode.revoke(slot);
                 errcode::SUCCESS
             } else {
@@ -418,7 +416,7 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
         return errcode::INVALID_OBJ_TYPE;
     }
     let start = PhysAddr::from(cap.words[0]);
-    let (total_pages, free_pages) = cap.untyped_info();
+    let (total_pages, watermark) = cap.untyped_info();
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
@@ -443,20 +441,19 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
             };
 
             if dest_cnode_cap.cap_type() == CapType::CNode {
-                let cn_paddr = PhysAddr::from(dest_cnode_cap.words[0]);
-                let mut dest_cnode = crate::cap::CNode::from_addr(cn_paddr);
+                let cn_vaddr = VirtAddr::from(dest_cnode_cap.words[0]);
+                let mut dest_cnode = CNode::from_addr(cn_vaddr);
 
                 // 检查总大小
                 let needed_pages = n_objects * obj_pages;
-                if free_pages + needed_pages > total_pages {
+                if watermark + needed_pages > total_pages {
                     return errcode::UNTYPE_OOM;
                 }
-                // [FIX] 预先检查所有目标槽位是否可用，确保操作原子性
-                // 防止中途失败导致物理内存已分配但 free_pages 未更新（Double Allocation）
+
                 for i in 0..n_objects {
                     let slot_idx = dest_slot_offset + i;
                     let slot_addr = dest_cnode.get_slot_addr(slot_idx);
-                    if slot_addr == PhysAddr::null() {
+                    if slot_addr == VirtAddr::null() {
                         return errcode::INVALID_SLOT; // 槽位越界
                     }
                     let slot = unsafe { &*slot_addr.as_mut_ptr::<Slot>() };
@@ -465,7 +462,7 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     }
                 }
 
-                let current_page_offset = free_pages;
+                let current_page_offset = watermark;
 
                 for i in 0..n_objects {
                     let page_idx = current_page_offset + i * obj_pages;
@@ -483,15 +480,15 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     let new_cap = match obj_type {
                         // CNode
                         types::CNODE => {
-                            if obj_pages != 4 {
+                            if obj_pages != sizes::CNODE {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
-                            CNode::init(obj_paddr);
+                            CNode::init(obj_vaddr);
                             Capability::create_cnode(obj_paddr, rights::ALL)
                         }
                         // TCB
                         types::TCB => {
-                            if obj_pages != 1 {
+                            if obj_pages != sizes::TCB {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
@@ -500,7 +497,7 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                         }
                         // ipc::Endpoint
                         types::ENDPOINT => {
-                            if obj_pages != 1 {
+                            if obj_pages != sizes::ENDPOINT {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
@@ -511,14 +508,14 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                         types::FRAME => Capability::create_frame(obj_paddr, obj_pages, rights::ALL),
                         // PageTable
                         types::PAGETABLE => {
-                            if obj_pages != 1 {
+                            if obj_pages != sizes::PAGETABLE {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             // 初始化页表 (清零已在上面完成)
                             Capability::create_pagetable(obj_paddr, 0, rights::ALL)
                         }
                         types::VSPACE => {
-                            if obj_pages != 1 {
+                            if obj_pages != sizes::VSPACE {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             // 初始化虚拟地址空间 (清零已在上面完成)
@@ -532,16 +529,15 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                     }
                 }
 
-                // 更新 Untyped Cap 的 free_pages
-                let new_free_pages = current_page_offset + n_objects * obj_pages;
+                // 更新 Untyped Cap 的 watermark
+                let new_watermark = current_page_offset + n_objects * obj_pages;
 
-                // 写回 CSpace
                 if let Some((_, slot_paddr)) = tcb.cap_lookup_slot(cptr) {
                     let slot_ptr = slot_paddr.as_mut::<Slot>();
                     // 我们需要构造一个新的 Capability，或者直接修改现有的
                     // 由于 Capability 是 Copy，我们可以直接修改 slot_ptr.cap
                     if slot_ptr.cap.cap_type() == CapType::Untyped {
-                        slot_ptr.cap.set_untyped_free(new_free_pages);
+                        slot_ptr.cap.set_untyped_watermark(new_watermark);
                     }
                 }
 
@@ -586,8 +582,8 @@ fn invoke_irq_handler(cap: &Capability, _cptr: usize, method: usize) -> usize {
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
-            let hartid = hart::getid();
-            irq::ack_irq(hartid, irq);
+            let cpuid = hal::cpu::cpu_id();
+            irq::ack_irq(cpuid, irq);
             errcode::SUCCESS
         }
         irqmethod::CLEAR_NOTIFICATION => {
@@ -598,7 +594,7 @@ fn invoke_irq_handler(cap: &Capability, _cptr: usize, method: usize) -> usize {
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority
             let priority = utcb.mrs_regs[0];
-            irq::plic::set_priority(irq, priority);
+            hal::irq::set_priority(irq as u32, priority as u8);
             errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,

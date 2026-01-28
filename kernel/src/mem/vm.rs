@@ -1,13 +1,10 @@
 use super::PGSIZE;
-use super::pte::perms;
-use super::{PageTable, PhysAddr, PteFlags, VirtAddr};
-use crate::boot::initrd;
-use crate::dtb;
-use crate::mem::TRAMPOLINE_VA;
+use super::PhysAddr;
+use crate::hal;
+use crate::hal::mem::{PageTable, PteFlags, PtePerms};
+use crate::initrd;
+use crate::mem::VirtAddr;
 use crate::printk;
-use crate::printk::uart;
-use riscv::asm::sfence_vma_all;
-use riscv::register::satp;
 use spin::Once;
 
 // TODO: HHDM support
@@ -22,7 +19,6 @@ unsafe extern "C" {
     static __data_end: u8;
     static __bss_start: u8;
     static __bss_end: u8;
-    static __trampoline: u8;
 }
 
 pub static KERNEL_PAGE_TABLE: Once<PageTable> = Once::new();
@@ -33,7 +29,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 1. 映射所有物理内存 (Identity Mapping)
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
-    let mem = dtb::memory_range().expect("Memory range not found in DTB");
+    let mem = hal::platform::memory_range().expect("Memory range not found in DTB");
     let mem_start_pa = mem.start;
     let mem_start_va = mem_start_pa.to_va();
     let mem_size = mem.size;
@@ -48,7 +44,13 @@ pub fn init_kernel_vm(hartid: usize) {
         mem_start_va,
         mem_start_pa,
         mem_size,
-        PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL),
+        PteFlags::from(
+            PtePerms::READ
+                | PtePerms::WRITE
+                | PtePerms::ACCESSED
+                | PtePerms::DIRTY
+                | PtePerms::GLOBAL,
+        ),
     );
 
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
@@ -68,7 +70,7 @@ pub fn init_kernel_vm(hartid: usize) {
         text_va,
         text_pa,
         text_size,
-        PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED | perms::GLOBAL),
+        PteFlags::from(PtePerms::READ | PtePerms::EXECUTE | PtePerms::ACCESSED | PtePerms::GLOBAL),
     );
 
     let rodata_start = PhysAddr::from(unsafe { &__rodata_start as *const u8 as usize });
@@ -87,68 +89,13 @@ pub fn init_kernel_vm(hartid: usize) {
         rodata_va,
         rodata_pa,
         rodata_size,
-        PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
+        PteFlags::from(PtePerms::READ | PtePerms::ACCESSED | PtePerms::GLOBAL),
     );
 
     // .data 和 .bss 已经是 RW 了，不需要额外重映射，但为了逻辑完整也可以做
 
-    // 3. 映射 Trampoline (高地址)
-    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
-    assert!(tramp_pa.is_aligned(PGSIZE));
-    let tramp_va = VirtAddr::from(TRAMPOLINE_VA);
-    printk!(
-        "vm: Map TRAMPOLINE [{:#x}, {:#x}) -> [{:#x}, {:#x}) RX\n",
-        tramp_pa.as_usize(),
-        (tramp_pa + PGSIZE).as_usize(),
-        tramp_va.as_usize(),
-        (tramp_va + PGSIZE).as_usize()
-    );
-    kpt.map_with_alloc(
-        tramp_va,
-        tramp_pa,
-        PGSIZE,
-        PteFlags::from(perms::READ | perms::EXECUTE | perms::ACCESSED | perms::GLOBAL),
-    );
-
-    // 4. 映射 MMIO (UART, PLIC)
-    let uart_base = PhysAddr::from(dtb::uart_config().unwrap_or(uart::DEFAULT_QEMU_VIRT).base);
-    let uart_pa = uart_base.align_down(PGSIZE);
-    let uart_va = uart_pa.to_va();
-    printk!(
-        "vm: Map UART [{:#x}, {:#x}) -> [{:#x}, {:#x}) RW\n",
-        uart_base.as_usize(),
-        (uart_base + PGSIZE).as_usize(),
-        uart_va.as_usize(),
-        (uart_va + PGSIZE).as_usize()
-    );
-    kpt.map_with_alloc(
-        uart_va,
-        uart_pa,
-        PGSIZE,
-        PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL),
-    );
-
-    let plic_range = dtb::plic().expect("No PLIC found");
-    let plic_pa = plic_range.start;
-    let plic_va = plic_pa.to_va();
-    let plic_size = plic_range.size;
-    printk!(
-        "vm: Map PLIC [{:#x}, {:#x}) -> [{:#x}, {:#x}) RW\n",
-        plic_pa.as_usize(),
-        (plic_pa + plic_range.size).as_usize(),
-        plic_va.as_usize(),
-        (plic_va + plic_size).as_usize()
-    );
-    // 映射整个 PLIC 区域
-    kpt.map_with_alloc(
-        plic_va,
-        plic_pa,
-        plic_size,
-        PteFlags::from(perms::READ | perms::WRITE | perms::ACCESSED | perms::DIRTY | perms::GLOBAL),
-    );
-
     // 映射initrd
-    let initrd = initrd::range();
+    let initrd = hal::platform::initrd().expect("Initrd range not found");
     let initrd_start = initrd.start;
     let initrd_end = initrd.start + initrd.size;
     let initrd_size = initrd.size;
@@ -165,30 +112,28 @@ pub fn init_kernel_vm(hartid: usize) {
         initrd_va,
         initrd_pa,
         initrd_size,
-        PteFlags::from(perms::READ | perms::ACCESSED | perms::GLOBAL),
+        PteFlags::from(PtePerms::READ | PtePerms::ACCESSED | PtePerms::GLOBAL),
     );
+
+    hal::mem::kpt_setup(&mut kpt);
 
     printk!("vm: Root page table built by hart {}\n", hartid);
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
 
 pub fn switch_to_kernel(hartid: usize) {
-    let root_ppn = {
-        let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
-        (&*kpt as *const PageTable as usize) >> 12
-    };
-    // set SATP to the new page table in Sv39 mode (ASID=0)
+    let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
+    let kpt_va = VirtAddr::from(kpt as *const _ as usize);
+    let kpt_pa = kpt_va.to_pa();
     unsafe {
-        satp::set(satp::Mode::Sv39, 0, root_ppn);
-        sfence_vma_all();
+        hal::mem::activate_pagetable(kpt_pa);
     }
     printk!("vm: Hart {} switched to kernel page table\n", hartid);
 }
 
 pub fn switch_off(hartid: usize) {
     unsafe {
-        satp::set(satp::Mode::Bare, 0, 0);
-        sfence_vma_all();
+        hal::mem::deactivate_pagetable();
     }
     printk!("vm: Hart {} switching off vm\n", hartid);
 }

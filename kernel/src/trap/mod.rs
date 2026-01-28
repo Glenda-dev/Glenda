@@ -1,25 +1,16 @@
-pub mod context;
+pub mod cause;
+pub mod handler;
 pub mod info;
-pub mod interrupt;
-pub mod kernel;
 pub mod syscall;
-pub mod timer;
-pub mod user;
-pub mod vector;
 
-pub use context::{TrapContext, TrapFrame};
+pub use cause::{TrapCause, TrapException, TrapInterrupt};
 
+use crate::hal;
 use crate::printk;
 
-pub fn init() {
-    // 初始化定时器
-    timer::create();
-    printk!("trap: Initialized global traps\n");
-}
-
 pub fn init_hart(hartid: usize) {
-    vector::init();
-    // 启用 S-mode 中断
-    interrupt::init();
+    unsafe {
+        hal::trap::vector_init();
+    }
     printk!("trap: Initialized for hart {}\n", hartid);
 }

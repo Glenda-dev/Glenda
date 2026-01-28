@@ -1,5 +1,5 @@
 use super::{CapType, Capability};
-use crate::mem::PhysAddr;
+use crate::mem::VirtAddr;
 use crate::printk;
 use core::sync::atomic::AtomicUsize;
 
@@ -20,19 +20,19 @@ pub struct CNodeHeader {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct CDTNode {
-    pub parent: PhysAddr,
-    pub first_child: PhysAddr,
-    pub next_sibling: PhysAddr,
-    pub prev_sibling: PhysAddr,
+    pub parent: VirtAddr,
+    pub first_child: VirtAddr,
+    pub next_sibling: VirtAddr,
+    pub prev_sibling: VirtAddr,
 }
 
 impl CDTNode {
     pub const fn new() -> Self {
         Self {
-            parent: PhysAddr::null(),
-            first_child: PhysAddr::null(),
-            next_sibling: PhysAddr::null(),
-            prev_sibling: PhysAddr::null(),
+            parent: VirtAddr::null(),
+            first_child: VirtAddr::null(),
+            next_sibling: VirtAddr::null(),
+            prev_sibling: VirtAddr::null(),
         }
     }
 }
@@ -47,18 +47,18 @@ pub struct Slot {
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
 pub struct CNode {
-    paddr: PhysAddr,
+    vaddr: VirtAddr,
 }
 
 impl CNode {
-    pub fn init(paddr: PhysAddr) {
+    pub fn init(vaddr: VirtAddr) {
         // 初始化 Header
-        let header_ptr = paddr.as_mut::<CNodeHeader>();
+        let header_ptr = vaddr.as_mut::<CNodeHeader>();
         unsafe {
             (*header_ptr).ref_count = AtomicUsize::new(1);
             // 初始化所有 Slot 为 Empty
             let slots_ptr =
-                (paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
+                (vaddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
             for i in 0..(1 << CNODE_BITS) {
                 core::ptr::write(
                     slots_ptr.add(i),
@@ -69,11 +69,11 @@ impl CNode {
     }
 
     pub const fn new() -> Self {
-        CNode { paddr: PhysAddr::null() }
+        CNode { vaddr: VirtAddr::null() }
     }
 
-    pub fn from_addr(paddr: PhysAddr) -> Self {
-        Self { paddr }
+    pub fn from_addr(vaddr: VirtAddr) -> Self {
+        Self { vaddr }
     }
 
     pub fn size(&self) -> usize {
@@ -81,21 +81,21 @@ impl CNode {
     }
 
     fn get_header(&self) -> *mut CNodeHeader {
-        self.paddr.as_mut::<CNodeHeader>()
+        self.vaddr.as_mut::<CNodeHeader>()
     }
 
     fn get_slots_ptr(&self) -> *mut Slot {
         // Slots 紧跟在 Header 之后
         unsafe {
-            (self.paddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot
+            (self.vaddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot
         }
     }
 
-    pub fn get_slot_addr(&self, slot: usize) -> PhysAddr {
+    pub fn get_slot_addr(&self, slot: usize) -> VirtAddr {
         if slot >= self.size() {
-            return PhysAddr::null();
+            return VirtAddr::null();
         }
-        unsafe { PhysAddr::from(self.get_slots_ptr().add(slot) as usize) }
+        unsafe { VirtAddr::from(self.get_slots_ptr().add(slot) as usize) }
     }
 
     pub fn lookup_cap(&self, slot: usize) -> Option<Capability> {
@@ -120,12 +120,12 @@ impl CNode {
     }
 
     /// 插入能力并建立 CDT 关系
-    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: PhysAddr) -> bool {
+    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: VirtAddr) -> bool {
         if slot >= self.size() {
             return false;
         }
         let slot_ptr = unsafe { self.get_slots_ptr().add(slot) };
-        let slot_addr = PhysAddr::from(slot_ptr as usize);
+        let slot_addr = VirtAddr::from(slot_ptr as usize);
 
         unsafe {
             // 1. 插入能力
@@ -134,12 +134,12 @@ impl CNode {
             let mut cdt = CDTNode::new();
             cdt.parent = parent_addr;
 
-            if parent_addr != PhysAddr::null() {
+            if parent_addr != VirtAddr::null() {
                 let parent_slot = &mut *(parent_addr.as_mut::<Slot>());
                 let old_first_child = parent_slot.cdt.first_child;
 
                 cdt.next_sibling = old_first_child;
-                if old_first_child != PhysAddr::null() {
+                if old_first_child != VirtAddr::null() {
                     let next_sib_slot = &mut *(old_first_child.as_mut::<Slot>());
                     next_sib_slot.cdt.prev_sibling = slot_addr;
                 }
@@ -183,30 +183,30 @@ impl CNode {
     }
 
     pub fn debug_print(&self) {
-        printk!("CNode at paddr {:?}:\n", self.paddr);
+        printk!("CNode at vaddr {}:\n", self.vaddr);
         let slots_ptr = self.get_slots_ptr();
         for i in 0..self.size() {
             let slot = unsafe { &*slots_ptr.add(i) };
             if slot.cap.is_null() {
                 continue;
             }
-            printk!("  Slot {}: {:?}\n", i, slot.cap);
+            printk!("  Slot {}: {}\n", i, slot.cap);
         }
     }
 }
 
-fn revoke_recursive(slot_addr: PhysAddr) {
+fn revoke_recursive(slot_addr: VirtAddr) {
     let slot = slot_addr.as_mut::<Slot>();
     let mut child_addr = slot.cdt.first_child;
-    while child_addr != PhysAddr::null() {
+    while child_addr != VirtAddr::null() {
         let next_sibling = (*(child_addr.as_mut::<Slot>())).cdt.next_sibling;
         delete_recursive(child_addr);
         child_addr = next_sibling;
     }
-    slot.cdt.first_child = PhysAddr::null();
+    slot.cdt.first_child = VirtAddr::null();
 }
 
-fn delete_recursive(slot_addr: PhysAddr) {
+fn delete_recursive(slot_addr: VirtAddr) {
     // 1. 递归撤销所有子能力
     revoke_recursive(slot_addr);
 
@@ -216,13 +216,13 @@ fn delete_recursive(slot_addr: PhysAddr) {
     let next = slot.cdt.next_sibling;
     let parent = slot.cdt.parent;
 
-    if prev != PhysAddr::null() {
+    if prev != VirtAddr::null() {
         (*(prev.as_mut::<Slot>())).cdt.next_sibling = next;
-    } else if parent != PhysAddr::null() {
+    } else if parent != VirtAddr::null() {
         (*(parent.as_mut::<Slot>())).cdt.first_child = next;
     }
 
-    if next != PhysAddr::null() {
+    if next != VirtAddr::null() {
         (*(next.as_mut::<Slot>())).cdt.prev_sibling = prev;
     }
 
