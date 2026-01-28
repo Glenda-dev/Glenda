@@ -286,7 +286,7 @@ impl PageTable {
             }
         }
     }
-    pub fn map_trampoline(&mut self) -> Result<(), ()> {
+    pub fn setup(&mut self) -> Result<(), ()> {
         let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
         self.map(
             VirtAddr::from(TRAMPOLINE_VA),

@@ -23,7 +23,7 @@ pub mod pagetablemethod {
     pub const MAP: usize = 1;
     pub const UNMAP: usize = 2;
     pub const MAP_TABLE: usize = 3;
-    pub const MAP_TRAMPOLINE: usize = 4;
+    pub const SETUP: usize = 4;
     pub const DEBUG_PRINT: usize = 5;
 }
 
