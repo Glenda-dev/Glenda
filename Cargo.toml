@@ -16,7 +16,10 @@ members = [
 ]
 resolver = "2"
 
+[profile.dev]
+panic = "abort"
 
 [profile.relwithdebuginfo]
+panic = "abort"
 inherits = "release"
 debug = true         # 保留一些调试信息

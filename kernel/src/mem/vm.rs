@@ -2,7 +2,6 @@ use super::PGSIZE;
 use super::PhysAddr;
 use crate::hal;
 use crate::hal::mem::{PageTable, PteFlags, PtePerms};
-use crate::initrd;
 use crate::mem::VirtAddr;
 use crate::printk;
 use spin::Once;

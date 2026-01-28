@@ -2,7 +2,6 @@ use crate::hal;
 use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
 use crate::mem::pmem;
 use crate::mem::{STACK_VA, VirtAddr};
-use crate::platform::MemoryRange;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use crate::proc::ElfFile;

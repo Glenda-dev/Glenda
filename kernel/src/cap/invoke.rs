@@ -303,7 +303,7 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
-        pagetablemethod::MAP_TRAMPOLINE => match pt.map_trampoline() {
+        pagetablemethod::SETUP => match pt.setup() {
             Ok(()) => errcode::SUCCESS,
             Err(_) => errcode::MAPPING_FAILED,
         },

@@ -5,8 +5,8 @@ use crate::hal::proc::ProcContext;
 use crate::hal::trap::TrapFrame;
 use crate::hal::trap::{trap_user_handler, trap_user_return};
 use crate::ipc::UTCB;
+use crate::mem::VirtAddr;
 use crate::mem::pmem;
-use crate::mem::{PhysAddr, VirtAddr};
 use core::sync::atomic::AtomicUsize;
 
 pub const KSTACK_PAGES: usize = 4; // 16KB

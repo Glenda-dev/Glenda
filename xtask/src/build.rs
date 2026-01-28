@@ -43,7 +43,7 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
 }
 
 /// Run cargo build for a component
-fn run_cargo_build(cfg: &Config, path: &Path, features: &str) -> anyhow::Result<()> {
+fn run_cargo_build(cfg: &Config, path: &Path, features: &str, flags: &str) -> anyhow::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(path);
     cmd.arg("build");
@@ -51,6 +51,9 @@ fn run_cargo_build(cfg: &Config, path: &Path, features: &str) -> anyhow::Result<
     cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
         cmd.arg("--features").arg(features);
+    }
+    if !flags.is_empty() {
+        cmd.env("RUSTFLAGS", flags);
     }
     run(&mut cmd)
 }
@@ -61,7 +64,7 @@ pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
         eprintln!("[ INFO ] Building Library {} with: {}", c.name, c.build);
 
         if c.build == "cargo" {
-            run_cargo_build(cfg, Path::new(&c.path), &features)?;
+            run_cargo_build(cfg, Path::new(&c.path), &features, "")?;
         } else {
             anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name);
         }
@@ -75,9 +78,19 @@ fn build_cargo_service(cfg: &Config, service: &Service) -> anyhow::Result<PathBu
     let features = cfg.features.get(&service.name).map(|arr| arr.join(",")).unwrap_or_default();
     eprintln!("[ INFO ] Building Service {} with: cargo", service.name);
 
-    // 1. Run Cargo Build
-    run_cargo_build(cfg, Path::new(&service.path), &features)?;
+    let linker_script = {
+        // Drivers may need special linker script
+        let cwd = std::env::current_dir()?;
+        cwd.join("lib/libglenda-rs/src/arch").join(cfg.system.arch.as_str()).join("linker.ld")
+    };
 
+    // 1. Run Cargo Build
+    run_cargo_build(
+        cfg,
+        Path::new(&service.path),
+        &features,
+        format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display()).as_str(),
+    )?;
     // 2. Identify Source Artifact
     // Assumption: Binary name matches service name
     // Artifact location: workspace_target_dir/target_triple/profile/name
