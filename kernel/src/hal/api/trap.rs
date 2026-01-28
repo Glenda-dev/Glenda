@@ -46,6 +46,10 @@ impl TrapFrame {
     pub fn update_context(&mut self, ctx: &TrapContext) {
         unimplemented!()
     }
+    /// 配置用户态返回信息
+    pub fn configure(&mut self, entry_point: usize, stack_pointer: usize) {
+        unimplemented!()
+    }
     /// 配置内核态返回信息
     pub fn configure_kernel(
         &mut self,

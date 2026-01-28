@@ -1,3 +1,4 @@
+#[derive(Clone, Copy, Debug)]
 pub struct ProcContext;
 /// 切换进程上下文
 pub unsafe fn switch_context(old: *mut ProcContext, new: *const ProcContext) {

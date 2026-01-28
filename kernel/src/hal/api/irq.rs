@@ -29,12 +29,12 @@ pub fn wfi() {
 pub const MAX_IRQS: usize = 0;
 
 /// 初始化中断控制器
-pub unsafe fn init() {
+pub fn init() {
     unimplemented!()
 }
 
 /// 初始化当前 CPU 的中断控制器相关设置
-pub unsafe fn init_cpu(cpuid: usize) {
+pub fn init_cpu(cpuid: usize) {
     unimplemented!()
 }
 

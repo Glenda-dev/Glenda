@@ -5,7 +5,7 @@ use core::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub};
 /// 页大小
 pub const PGSIZE: usize = 0;
 /// 最大虚拟地址
-pub const VA_MAX: usize = 0;
+pub const VA_MAX: usize = 0xFFFFFFFFFFFFFFFF;
 /// HHDM: 物理内存线性映射的虚拟基地址 (例如 0xFFFF_8000_0000_0000)
 pub const PHYS_MAP_BASE: usize = 0;
 /// 内核代码段加载的虚拟基地址 (例如 0xFFFF_FFFF_8020_0000)
@@ -27,6 +27,7 @@ pub struct PteFlags;
 pub struct PageTable {
     pub entries: [Pte; PGNUM],
 }
+pub use perms as PtePerms;
 
 /// 刷新 TLB
 ///
@@ -231,6 +232,18 @@ impl PageTable {
     /// 如果中间页表不存在，则分配新的页表页。
     /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
     pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: PteFlags) {
+        unimplemented!()
+    }
+
+    /// 设置页表 (例如映射 trampoline)
+    ///
+    pub fn setup(&mut self) -> Result<(), ()> {
+        unimplemented!()
+    }
+
+    /// 调试打印页表内容
+    ///
+    pub fn debug_print(&self) {
         unimplemented!()
     }
 }

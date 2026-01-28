@@ -1,6 +1,7 @@
 use crate::platform::MemoryRange;
 
 /// 平台信息结构体
+#[derive(Clone, Copy, Debug)]
 pub struct PlatformInfo;
 
 /// 获取引导参数
@@ -20,7 +21,7 @@ pub fn reboot() -> ! {
 /// 发送核间中断 (IPI)
 ///
 /// `mask`: 目标 CPU 的掩码 (通常是 bit mask 或类似于 sbi 的 hart_mask)
-pub fn send_ipi(mask: usize) {
+pub fn send_ipi(mask: usize, mask_base: usize) {
     unimplemented!()
 }
 
@@ -30,7 +31,7 @@ pub fn memory_range() -> Option<MemoryRange> {
 }
 
 /// 平台初始化
-pub fn init(dtb: usize) {
+pub fn init(dtb: PlatformInfo) {
     unimplemented!()
 }
 
@@ -44,7 +45,12 @@ pub fn range() -> Option<MemoryRange> {
     unimplemented!()
 }
 
+/// 获取设备内存
+pub fn mmio_ranges() -> &'static [MemoryRange] {
+    unimplemented!()
+}
+
 /// 引导其他 CPU
-pub fn bootstrap_cpus() -> ! {
+pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) -> ! {
     unimplemented!()
 }
