@@ -8,28 +8,51 @@ pub mod method;
 pub use badge::Badge;
 pub use capability::Capability;
 pub use captype::CapType;
-pub use cnode::{CNODE_BITS, CNODE_SIZE};
-pub use cnode::{CNode, Slot};
+pub use cnode::{CNODE_BITS, CNODE_PAGES, ROOT_BITS};
+pub use cnode::{CNode, CapPtr, Slot};
 
 use crate::ipc::MAX_MRS;
+use bitflags::bitflags;
+use core::fmt::Display;
 
-pub type CapPtr = usize;
 pub type Args = [usize; MAX_MRS];
 
-/// 能力权限位 (Bitmask)
-pub mod rights {
-    // 通用权限
-    pub const READ: u8 = 1 << 0; // 允许读取寄存器/内存
-    pub const WRITE: u8 = 1 << 1; // 允许写入寄存器/内存
-    pub const GRANT: u8 = 1 << 2; // 允许传递此 Cap (Grant)
+bitflags! {
+    #[derive(Clone,Copy)]
+    pub struct Rights: u8 {
+        const READ = 1 << 0; // 允许读取寄存器/内存
+        const WRITE = 1 << 1; // 允许写入寄存器/内存
+        const GRANT = 1 << 2; // 允许传递此 Cap (Grant)
+        const SEND = 1 << 3; // 允许发送消息 (sys_send)
+        const RECV = 1 << 4; // 允许接收消息 (sys_recv)
+        const CALL = 1 << 5; // 允许调用对象方法 (sys_invoke)
+        const ALL = 0xFF;
+    }
+}
 
-    // IPC 专属权限
-    pub const SEND: u8 = 1 << 3; // 允许发送消息 (sys_send)
-    pub const RECV: u8 = 1 << 4; // 允许接收消息 (sys_recv)
-    pub const CALL: u8 = 1 << 5; // 允许调用对象方法 (sys_invoke)
-
-    // 组合权限
-    pub const ALL: u8 = 0xFF;
-    pub const RW: u8 = READ | WRITE;
-    pub const MASTER: u8 = ALL;
+impl Display for Rights {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut first = true;
+        let perms = [
+            (Rights::READ, "R"),
+            (Rights::WRITE, "W"),
+            (Rights::GRANT, "G"),
+            (Rights::SEND, "S"),
+            (Rights::RECV, "R"),
+            (Rights::CALL, "C"),
+        ];
+        for (bit, name) in perms.iter() {
+            if self.contains(*bit) {
+                if !first {
+                    write!(f, "|")?;
+                }
+                write!(f, "{}", name)?;
+                first = false;
+            }
+        }
+        if first {
+            write!(f, "NONE")?;
+        }
+        Ok(())
+    }
 }

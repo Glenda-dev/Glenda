@@ -181,12 +181,7 @@ impl PageTable {
                 let entry = unsafe { &mut (*table).entries[idx] };
 
                 if !entry.is_valid() {
-                    // 分配新的页表页
-                    let frame_cap = pmem::alloc_pagetable_cap(level)
-                        .expect("Boot OOM: Failed to allocate page table");
-                    let frame_pa = frame_cap.obj_ptr().to_pa();
-                    // 必须 leak，否则 frame 在作用域结束时会被释放，导致页表损坏
-                    core::mem::forget(frame_cap);
+                    let frame_pa = pmem::alloc_page().expect("Failed to alloc page for page table");
 
                     // 建立中间层级映射 (V=1, 无 R/W/X)
                     *entry = Pte::from(frame_pa, Perms::VALID);

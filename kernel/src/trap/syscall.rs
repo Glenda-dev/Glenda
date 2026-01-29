@@ -1,6 +1,5 @@
 use crate::cap::CapPtr;
-use crate::cap::{invoke, rights};
-use crate::hal::trap::TrapContext;
+use crate::cap::invoke;
 use crate::proc::scheduler;
 
 pub mod errcode {
@@ -15,23 +14,34 @@ pub mod errcode {
     pub const UNTYPE_OOM: usize = 8;
 }
 
-pub fn dispatch(ctx: &mut TrapContext) -> usize {
-    let (cptr, method) = ctx.get_syscall_args();
-
+pub fn dispatch(cptr: usize, method: usize) -> usize {
+    let cptr = CapPtr::from(cptr);
+    if cptr.is_null() {
+        return errcode::INVALID_SLOT;
+    }
     // 获取当前线程
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
-    // 1. 查找 Capability
-    // 注意：这里需要从当前线程的 CSpace 中查找
-    let cap = match tcb.cap_lookup(cptr) {
-        Some(c) => c,
-        None => return errcode::INVALID_CAP, // Error: Invalid Capability
-    };
+    let cspace = tcb.get_cspace();
+    match cspace.lookup_slot_ptr(cptr) {
+        None => errcode::INVALID_SLOT,
+        // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）
+        Some(slot_ptr) => {
+            // 2. 读取 Capability 副本进行操作
+            //    必须使用副本，因为 Rust 不允许同时持有 &mut Slot 和其它引用
+            let mut cap = unsafe { (*slot_ptr).cap.clone() };
 
-    // 2. 检查基本调用权限
-    if !cap.has_rights(rights::CALL) && !cap.has_rights(rights::SEND) {
-        return errcode::PERMISSION_DENIED; // Error: Permission Denied
+            // 3. 执行分发 (invoke_untyped 会修改 cap 的 watermark)
+            let result = invoke::dispatch(&mut cap, method);
+
+            // 4. 【关键】写回逻辑
+            //    仅当操作成功，且 Capability 类型为 Untyped 时需要写回
+            if result == errcode::SUCCESS {
+                unsafe {
+                    (*slot_ptr).cap = cap;
+                }
+            }
+
+            result
+        }
     }
-
-    // 4. 分发调用
-    invoke::dispatch(&cap, CapPtr::from(cptr), method)
 }

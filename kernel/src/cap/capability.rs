@@ -1,7 +1,7 @@
 use super::CapType;
-use super::rights;
+use super::Rights;
 use crate::cap::Badge;
-use crate::cap::cnode::CNodeHeader;
+use crate::cap::cnode::CNode;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::{PhysAddr, VirtAddr};
@@ -17,7 +17,7 @@ use core::sync::atomic::Ordering;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Capability {
-    pub words: [usize; 2],
+    words: [usize; 2],
 }
 
 impl Display for Capability {
@@ -25,7 +25,7 @@ impl Display for Capability {
         let cap_type = self.cap_type();
         let mut s = f.debug_struct("Capability");
         s.field("type", &cap_type);
-        s.field("rights", &self.rights());
+        s.field("rights", &self.rights().bits());
 
         match cap_type {
             CapType::Untyped => {
@@ -46,6 +46,7 @@ impl Display for Capability {
             }
             CapType::Frame => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
+                s.field("pages", &(self.words[1] >> DATA_SHIFT));
             }
             CapType::PageTable => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
@@ -57,7 +58,7 @@ impl Display for Capability {
             CapType::IrqHandler => {
                 s.field("irq", &self.words[0]);
             }
-            CapType::Mmio => {
+            CapType::MMIO => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
                 s.field("size", &(self.words[1] >> DATA_SHIFT));
             }
@@ -91,14 +92,14 @@ const ASID_BITS: usize = 16;
 
 impl Capability {
     // Helper to extract type
-    pub fn cap_type(&self) -> CapType {
+    pub const fn cap_type(&self) -> CapType {
         let tag = self.words[1] & TYPE_MASK;
         unsafe { transmute(tag) }
     }
 
-    // Helper to extract rights
-    pub fn rights(&self) -> u8 {
-        ((self.words[1] >> RIGHTS_SHIFT) & RIGHTS_MASK) as u8
+    // Helper to extract Rights
+    pub const fn rights(&self) -> Rights {
+        Rights::from_bits_truncate(((self.words[1] >> RIGHTS_SHIFT) & RIGHTS_MASK) as u8)
     }
 
     fn inc_ref(&self) {
@@ -115,7 +116,7 @@ impl Capability {
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let header = vaddr.as_ref::<CNodeHeader>();
+                let header = vaddr.as_ref::<CNode>();
                 header.ref_count.fetch_add(1, Ordering::Relaxed);
             }
             // 其他类型暂不引用计数
@@ -127,7 +128,7 @@ impl Capability {
         Self { words: [0, 0] }
     }
 
-    pub fn mint(&self, badge: Badge, rights: u8) -> Self {
+    pub fn mint(&self, badge: Badge, rights: Rights) -> Self {
         let mut new_cap = self.clone();
 
         // 只有原始能力未标记，且新标记有效时，才允许注入
@@ -144,46 +145,63 @@ impl Capability {
 
         // 更新权限
         let current_rights = new_cap.rights();
-        let new_rights = current_rights & rights;
+        let new_rights = current_rights.intersection(rights);
 
         // 清除旧权限位并设置新权限
         let rights_clear_mask = !(RIGHTS_MASK << RIGHTS_SHIFT);
         new_cap.words[1] =
-            (new_cap.words[1] & rights_clear_mask) | ((new_rights as usize) << RIGHTS_SHIFT);
+            (new_cap.words[1] & rights_clear_mask) | ((new_rights.bits() as usize) << RIGHTS_SHIFT);
 
         new_cap
     }
 
-    pub fn obj_ptr(&self) -> VirtAddr {
+    #[inline(always)]
+    pub const fn obj_ptr(&self) -> VirtAddr {
         match self.cap_type() {
-            CapType::Untyped => PhysAddr::from(self.words[0]).to_va(),
             CapType::TCB => VirtAddr::from(self.words[0]),
             CapType::Endpoint => VirtAddr::from(self.words[0]),
             CapType::Reply => VirtAddr::from(self.words[0]),
+            CapType::CNode => VirtAddr::from(self.words[0]),
+            CapType::Untyped => PhysAddr::from(self.words[0]).to_va(),
             CapType::Frame => PhysAddr::from(self.words[0]).to_va(),
             CapType::PageTable => PhysAddr::from(self.words[0]).to_va(),
-            CapType::CNode => PhysAddr::from(self.words[0]).to_va(),
             CapType::VSpace => PhysAddr::from(self.words[0]).to_va(),
             _ => VirtAddr::null(),
         }
     }
 
+    #[inline(always)]
+    pub const fn paddr(&self) -> PhysAddr {
+        match self.cap_type() {
+            CapType::Untyped => PhysAddr::from(self.words[0]),
+            CapType::Frame => PhysAddr::from(self.words[0]),
+            CapType::PageTable => PhysAddr::from(self.words[0]),
+            CapType::VSpace => PhysAddr::from(self.words[0]),
+            _ => PhysAddr::null(),
+        }
+    }
+
+    #[inline(always)]
+    pub const fn value(&self) -> usize {
+        self.words[0]
+    }
+
     /// 检查是否拥有指定权限
-    pub fn has_rights(&self, required: u8) -> bool {
-        (self.rights() & required) == required
+    pub const fn has_rights(&self, required: Rights) -> bool {
+        self.rights().contains(required)
     }
 
     /// 检查是否允许 Invoke (Call)
-    pub fn can_invoke(&self) -> bool {
-        self.has_rights(rights::CALL)
+    pub const fn can_invoke(&self) -> bool {
+        self.has_rights(Rights::CALL)
     }
 
     /// 检查是否允许 Grant (传递)
-    pub fn can_grant(&self) -> bool {
-        self.has_rights(rights::GRANT)
+    pub const fn can_grant(&self) -> bool {
+        self.has_rights(Rights::GRANT)
     }
 
-    pub fn get_data(&self) -> usize {
+    pub const fn get_data(&self) -> usize {
         self.words[1] >> DATA_SHIFT
     }
 
@@ -192,11 +210,11 @@ impl Capability {
         self.words[1] = (self.words[1] & mask) | (data << DATA_SHIFT);
     }
 
-    pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: u8) -> Self {
+    pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: Rights) -> Self {
         let w0 = start_paddr.as_usize();
         // Word 1: Type (5) | Rights (8) | TotalPages (25) | FreePages (25)
         let w1 = (CapType::Untyped as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | ((total_pages & 0x1FFFFFF) << 13)
             | (0 << 38); // watermark starts at 0
 
@@ -216,74 +234,74 @@ impl Capability {
         self.words[1] = (self.words[1] & mask) | ((watermark & 0x1FFFFFF) << 38);
     }
 
-    pub fn create_thread(tcb_ptr: VirtAddr, rights: u8) -> Self {
+    pub fn create_tcb(tcb_ptr: VirtAddr, rights: Rights) -> Self {
         let w0 = tcb_ptr.as_usize();
-        let w1 =
-            (CapType::TCB as usize) & TYPE_MASK | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        let w1 = (CapType::TCB as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_endpoint(ep_ptr: VirtAddr, rights: u8) -> Self {
+    pub fn create_endpoint(ep_ptr: VirtAddr, rights: Rights) -> Self {
         let w0 = ep_ptr.as_usize();
         let w1 = (CapType::Endpoint as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_reply(tcb_ptr: VirtAddr, rights: u8) -> Self {
+    pub fn create_reply(tcb_ptr: VirtAddr, rights: Rights) -> Self {
         let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::Reply as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_frame(paddr: PhysAddr, pages: usize, rights: u8) -> Self {
+    pub fn create_frame(paddr: PhysAddr, pages: usize, rights: Rights) -> Self {
         assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
         let w0 = paddr.as_usize();
         let w1 = (CapType::Frame as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (pages << DATA_SHIFT);
         Self { words: [w0, w1] }
     }
 
-    pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: u8) -> Self {
+    pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: Rights) -> Self {
         let w0 = paddr.as_usize();
         let w1 = (CapType::PageTable as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (level << DATA_SHIFT);
         Self { words: [w0, w1] }
     }
 
-    pub fn create_cnode(paddr: PhysAddr, rights: u8) -> Self {
-        let w0 = paddr.as_usize();
+    pub fn create_cnode(cnode_ptr: VirtAddr, rights: Rights) -> Self {
+        let w0 = cnode_ptr.as_usize();
         let w1 = (CapType::CNode as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_irqhandler(irq: usize, rights: u8) -> Self {
+    pub fn create_irqhandler(irq: usize, rights: Rights) -> Self {
         let w0 = irq;
         let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_console(rights: u8) -> Self {
+    pub fn create_console(rights: Rights) -> Self {
         let w0 = 0;
         let w1 = (CapType::Console as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_mmio(paddr: PhysAddr, size: usize, rights: u8) -> Self {
+    pub fn create_mmio(paddr: PhysAddr, size: usize, rights: Rights) -> Self {
         let w0 = paddr.as_usize();
-        let w1 = (CapType::Mmio as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+        let w1 = (CapType::MMIO as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (size << DATA_SHIFT);
         Self { words: [w0, w1] }
     }
 
-    pub fn create_vspace(paddr: PhysAddr, asid: Asid, rights: u8) -> Self {
+    pub fn create_vspace(paddr: PhysAddr, asid: Asid, rights: Rights) -> Self {
         let asid_val = asid.id as usize & ASID_MASK;
 
         // 获取 Generation (保留低 35 位: 64 - 13 - 16 = 35)
@@ -291,7 +309,7 @@ impl Capability {
         let gen_val = asid.generation as usize; // 高位会被移位自动处理，或者可以按需在这里mask
         let w0 = paddr.as_usize();
         let w1 = (CapType::VSpace as usize) & TYPE_MASK
-            | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (asid_val << DATA_SHIFT)
             | (gen_val << (DATA_SHIFT + ASID_BITS));
         Self { words: [w0, w1] }
@@ -359,7 +377,7 @@ impl Drop for Capability {
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let header = vaddr.as_ref::<CNodeHeader>();
+                let header = vaddr.as_ref::<CNode>();
                 if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode

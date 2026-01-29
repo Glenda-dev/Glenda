@@ -1,7 +1,7 @@
 use super::{TrapCause, TrapException, TrapInterrupt};
 use crate::cap::CapType;
 use crate::hal;
-use crate::hal::trap::TrapContext;
+use crate::hal::trap::TrapFrame;
 use crate::ipc;
 use crate::ipc::MsgTag;
 use crate::irq;
@@ -14,13 +14,12 @@ use crate::proc::scheduler;
 use crate::trap::syscall;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_kernel_handler(ctx: &mut TrapContext) {
+pub extern "C" fn trap_kernel_handler(ctx: &mut TrapFrame) {
     irq::enter();
     let cause = hal::trap::get_cause();
     let pc = hal::trap::get_pc();
     let addr = hal::trap::get_address();
     let status = hal::trap::get_status();
-
     match cause {
         TrapCause::Exception(e) => {
             exception_handler(e, pc, addr, status, ctx);
@@ -47,7 +46,7 @@ fn exception_handler(
     pc: usize,
     addr: VirtAddr,
     status: usize,
-    ctx: &mut TrapContext,
+    ctx: &mut TrapFrame,
 ) {
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
@@ -143,9 +142,20 @@ fn unhandled_interrupt(e: TrapInterrupt, pc: usize, addr: VirtAddr, status: usiz
     );
 }
 
-fn syscall_handler(ctx: &mut TrapContext) {
-    let ret = syscall::dispatch(ctx);
+fn syscall_handler(ctx: &mut TrapFrame) {
+    let (cptr, method) = ctx.get_syscall_args();
+    if cptr == 0 {
+        let epc = ctx.get_epc();
+        let ra = ctx.get_ra();
+        let sp = ctx.get_sp();
+        panic!(
+            "Syscall with null cptr, method={}, epc=0x{:x}, ra=0x{:x}, sp=0x{:x}",
+            method, epc, ra, sp
+        );
+    }
+    let ret = syscall::dispatch(cptr, method);
     ctx.set_return_value(ret);
+    ctx.advance_pc();
 }
 
 // 外设中断处理 (基于PLIC)

@@ -1,7 +1,9 @@
-use super::{PGSIZE, PhysAddr};
-use crate::cap::CNODE_SIZE;
-use crate::cap::{CNode, Capability, Slot, rights};
+use super::PhysAddr;
+use crate::boot::UntypedDesc;
+use crate::cap::CNODE_PAGES;
+use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
+use crate::hal::mem::PGSIZE;
 use crate::hal::mem::PageTable;
 use crate::printk;
 use crate::proc::TCB;
@@ -79,22 +81,23 @@ pub fn initialize_regions(_hartid: usize) {
 pub fn alloc_frame_cap(pages: usize) -> Option<Capability> {
     PMEM.lock()
         .alloc_addr(pages * PGSIZE, PGSIZE)
-        .map(|paddr| Capability::create_frame(paddr, pages, rights::ALL))
+        .map(|paddr| Capability::create_frame(paddr, pages, Rights::ALL))
 }
 
 /// 分配一个 Untyped Capability
 pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
     PMEM.lock()
         .alloc_addr(size, PGSIZE)
-        .map(|paddr| Capability::create_untyped(paddr, size / PGSIZE, rights::ALL))
+        .map(|paddr| Capability::create_untyped(paddr, size / PGSIZE, Rights::ALL))
 }
 
-pub fn alloc_cnode_cap() -> Option<Capability> {
-    let size = CNODE_SIZE;
-    let align = core::mem::align_of::<Slot>();
+pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
+    let size = CNODE_PAGES * PGSIZE;
+    let align = PGSIZE;
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        CNode::init(paddr.to_va());
-        Capability::create_cnode(paddr, rights::ALL)
+        let cnode = paddr.to_va().as_mut::<CNode>();
+        *cnode = CNode::new(bits);
+        Capability::create_cnode(paddr.to_va(), Rights::ALL)
     })
 }
 
@@ -102,7 +105,7 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
-        Capability::create_pagetable(paddr, level, rights::ALL)
+        Capability::create_pagetable(paddr, level, Rights::ALL)
     })
 }
 
@@ -111,7 +114,7 @@ pub fn alloc_vspace_cap() -> Option<Capability> {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
         let asid = asid::alloc();
-        Capability::create_vspace(paddr, asid, rights::ALL)
+        Capability::create_vspace(paddr, asid, Rights::ALL)
     })
 }
 
@@ -120,13 +123,17 @@ pub fn alloc_tcb_cap() -> Option<Capability> {
     PMEM.lock().alloc_addr(core::mem::size_of::<TCB>(), align).map(|paddr| {
         let tcb = paddr.to_va().as_mut::<TCB>();
         *tcb = TCB::new();
-        Capability::create_thread(paddr.to_va(), rights::ALL)
+        Capability::create_tcb(paddr.to_va(), Rights::ALL)
     })
+}
+
+pub fn alloc_page() -> Option<PhysAddr> {
+    PMEM.lock().alloc_addr(PGSIZE, PGSIZE)
 }
 
 /// 获取剩余的 Untyped 内存区域
 /// 这应该在 Root Task 创建完成后调用，用于将剩余内存移交给 Root Task
-pub fn get_untyped() -> impl Iterator<Item = UntypedRegion> {
+pub fn get_untyped() -> UntypedDesc {
     let pmem = PMEM.lock();
-    core::iter::once(UntypedRegion { start: pmem.current, end: pmem.end })
+    UntypedDesc { paddr: pmem.current, size: (pmem.end - pmem.current).as_usize() / PGSIZE }
 }

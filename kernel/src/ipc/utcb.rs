@@ -7,7 +7,7 @@ pub const MAX_MRS: usize = 7; // 最大消息寄存器数量
 /// 用户线程控制块 (UTCB)
 /// 映射到用户地址空间，用于内核与用户态之间的高效数据交换
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct UTCB {
     /// 消息标签 (MR0)
     pub msg_tag: MsgTag,

@@ -7,6 +7,7 @@ pub use pte::Pte;
 
 pub const PGSIZE: usize = 4096;
 pub const VA_MAX: usize = 1 << 38;
+pub const USER_VA: usize = 0x10000;
 pub const PHYS_MAP_BASE: usize = 0;
 pub const KERNEL_BASE: usize = 0;
 pub const PT_LEVELS: usize = 3;
@@ -14,6 +15,7 @@ pub const PGNUM: usize = 512;
 pub const PTEFLAGS_MASK: usize = 0x3FF;
 pub const MAX_ASID: usize = 1 << 16;
 pub const ASID_MASK: usize = 0xFFFF;
+pub const KSTACK_PAGES: usize = 4; // 16KB
 
 use super::asm;
 use crate::mem::{PhysAddr, VPN, VirtAddr};

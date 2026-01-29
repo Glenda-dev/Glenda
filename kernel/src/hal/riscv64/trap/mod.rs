@@ -11,7 +11,7 @@ use vector::kernel_vector;
 
 /// 上下文结构体
 /// 保存寄存器等上下文信息
-pub use context::{TrapContext, TrapFrame};
+pub use context::TrapFrame;
 pub use user::{trap_user_handler, trap_user_return};
 
 /// 初始化异常向量表
@@ -48,7 +48,6 @@ pub fn get_cause() -> TrapCause {
             0 | 4 | 6 => TrapCause::Exception(TrapException::AccessMisaligned),
             1 | 5 | 7 => TrapCause::Exception(TrapException::AccessFault),
             8 => TrapCause::Exception(TrapException::Syscall), // Environment call from U-mode
-            9 => TrapCause::Exception(TrapException::Syscall), // Environment call from S-mode (Kernel Syscall)
             12 | 13 | 15 => TrapCause::Exception(TrapException::PageFault), // Instruction/Load/Store Page Fault
             _ => TrapCause::Unknown(scause),
         }
@@ -57,13 +56,6 @@ pub fn get_cause() -> TrapCause {
 /// 获取 Trap 发生时的程序计数器 (PC/EPC)
 pub fn get_pc() -> usize {
     asm::read_sepc()
-}
-
-/// 修改上下文中的 PC (通常用于 syscall 返回后跳过 ecall 指令)
-pub unsafe fn advance_pc(pc: usize, bytes: usize) {
-    unsafe {
-        asm::write_sepc(pc.wrapping_add(bytes));
-    }
 }
 
 pub fn get_address() -> VirtAddr {

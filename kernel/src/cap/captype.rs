@@ -1,5 +1,3 @@
-// use crate::mem::{PhysAddr, VirtAddr};
-
 /// 内核对象类型
 /// 仅用于标识 Capability 的类型，不再携带数据
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +13,7 @@ pub enum CapType {
     CNode = 7,
     IrqHandler = 8,
     Console = 9,
-    Mmio = 10,
+    MMIO = 10,
     VSpace = 11,
 }
 
@@ -92,7 +90,7 @@ impl CapType {
 
     // 判断是否为Mmio
     pub fn is_mmio(&self) -> bool {
-        matches!(self, CapType::Mmio)
+        matches!(self, CapType::MMIO)
     }
 
     /// 判断是否为虚拟地址空间

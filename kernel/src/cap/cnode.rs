@@ -5,16 +5,32 @@ use crate::printk;
 use core::sync::atomic::AtomicUsize;
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
-pub const CNODE_HEADER_SIZE: usize = core::mem::size_of::<CNodeHeader>();
-pub const CNODE_SIZE: usize = CNODE_HEADER_SIZE + SLOT_SIZE * CNODE_SLOTS;
-pub const CNODE_BITS: usize = 10; // 1024 slots per CNode
+pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
+pub const CNODE_BITS: u8 = 8; // 256 slots per CNode
 pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
 pub const CNODE_PAGES: usize = CNODE_SIZE / PGSIZE; // 4 KiB pages
+pub const ROOT_BITS: u8 = 64;
 
-/// CNode 在物理内存中的布局头
 #[repr(C)]
-pub struct CNodeHeader {
-    pub ref_count: AtomicUsize,
+#[derive(Clone, Copy)]
+pub struct CapPtr(usize);
+
+impl CapPtr {
+    pub const fn from(slot: usize) -> Self {
+        CapPtr(slot)
+    }
+    pub fn next(&self) -> Self {
+        CapPtr(self.0 + 1)
+    }
+    pub fn prev(&self) -> Self {
+        CapPtr(self.0 - 1)
+    }
+    pub const fn bits(&self) -> usize {
+        self.0
+    }
+    pub const fn is_null(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 /// CDT (Capability Derivation Tree) 节点
@@ -48,128 +64,151 @@ pub struct Slot {
 
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
+///
+/// 实现了稀疏树（Radix Tree）结构的 CSpace。
+/// 每个 CNode 节点大小固定（通常为 1 页），包含固定数量的 Slot。
+/// 查找 Capability 时，根据 CPtr 的位段逐级索引。
+#[repr(C)]
 pub struct CNode {
-    vaddr: VirtAddr,
+    pub ref_count: AtomicUsize,
+    pub guard: usize,
+    pub guard_size: u8,
+    pub bits: u8,
+    pub _padding: [u8; 46],
+    pub slots: [Slot; CNODE_SLOTS],
 }
 
 impl CNode {
-    pub fn init(vaddr: VirtAddr) {
-        // 初始化 Header
-        let header_ptr = vaddr.as_mut::<CNodeHeader>();
+    pub const fn new(bits: u8) -> Self {
+        Self {
+            ref_count: AtomicUsize::new(1),
+            guard: 0,
+            guard_size: 0,
+            _padding: [0; 46],
+            slots: [const { Slot { cap: Capability::empty(), cdt: CDTNode::new() } }; CNODE_SLOTS],
+            bits: bits,
+        }
+    }
+
+    /// 查找 Capability
+    pub fn lookup(&self, cptr: CapPtr) -> Option<Capability> {
+        let slot_ptr = self.lookup_slot_ptr(cptr)?;
         unsafe {
-            (*header_ptr).ref_count = AtomicUsize::new(1);
-            // 初始化所有 Slot 为 Empty
-            let slots_ptr =
-                (vaddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot;
-            for i in 0..(1 << CNODE_BITS) {
-                core::ptr::write(
-                    slots_ptr.add(i),
-                    Slot { cap: Capability::empty(), cdt: CDTNode::new() },
-                );
-            }
-        }
-    }
-
-    pub const fn new() -> Self {
-        CNode { vaddr: VirtAddr::null() }
-    }
-
-    pub fn from_addr(vaddr: VirtAddr) -> Self {
-        Self { vaddr }
-    }
-
-    pub fn size(&self) -> usize {
-        1 << CNODE_BITS
-    }
-
-    fn get_header(&self) -> *mut CNodeHeader {
-        self.vaddr.as_mut::<CNodeHeader>()
-    }
-
-    fn get_slots_ptr(&self) -> *mut Slot {
-        // Slots 紧跟在 Header 之后
-        unsafe {
-            (self.vaddr.as_mut_ptr::<u8>()).add(core::mem::size_of::<CNodeHeader>()) as *mut Slot
-        }
-    }
-
-    pub fn get_slot_addr(&self, slot: usize) -> VirtAddr {
-        if slot >= self.size() {
-            return VirtAddr::null();
-        }
-        unsafe { VirtAddr::from(self.get_slots_ptr().add(slot) as usize) }
-    }
-
-    pub fn lookup_cap(&self, slot: usize) -> Option<Capability> {
-        if slot >= self.size() {
-            return None;
-        }
-        let ptr = self.get_slots_ptr();
-        let cap = unsafe { (*ptr.add(slot)).cap.clone() };
-        if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
-    }
-
-    pub fn insert(&mut self, slot: usize, cap: &Capability) -> bool {
-        if slot >= self.size() {
-            return false;
-        }
-        let ptr = self.get_slots_ptr();
-        unsafe {
-            // 注意：这里会触发旧 Cap 的 Drop
-            (*ptr.add(slot)).cap = cap.clone();
-        }
-        true
-    }
-
-    /// 插入能力并建立 CDT 关系
-    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: VirtAddr) -> bool {
-        if slot >= self.size() {
-            return false;
-        }
-        let slot_ptr = unsafe { self.get_slots_ptr().add(slot) };
-        let slot_addr = VirtAddr::from(slot_ptr as usize);
-
-        unsafe {
-            // 1. 插入能力
-            (*slot_ptr).cap = cap.clone();
-            // 2. 建立 CDT 关系
-            let mut cdt = CDTNode::new();
-            cdt.parent = parent_addr;
-
-            if parent_addr != VirtAddr::null() {
-                let parent_slot = &mut *(parent_addr.as_mut::<Slot>());
-                let old_first_child = parent_slot.cdt.first_child;
-
-                cdt.next_sibling = old_first_child;
-                if old_first_child != VirtAddr::null() {
-                    let next_sib_slot = &mut *(old_first_child.as_mut::<Slot>());
-                    next_sib_slot.cdt.prev_sibling = slot_addr;
-                }
-                parent_slot.cdt.first_child = slot_addr;
-            }
-            (*slot_ptr).cdt = cdt;
-        }
-        true
-    }
-
-    pub fn remove(&mut self, slot: usize) -> Option<Capability> {
-        if slot >= self.size() {
-            return None;
-        }
-        let ptr = self.get_slots_ptr();
-        unsafe {
-            let slot_ref = &mut *ptr.add(slot);
-            let cap = core::ptr::read(&slot_ref.cap);
-            core::ptr::write(&mut slot_ref.cap, Capability::empty());
-
-            // 注意：remove 不会自动处理 CDT 关系，通常用于 Move
-            // 如果是彻底删除，应该使用 delete_recursive
+            let cap = (*slot_ptr).cap.clone();
             if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
         }
     }
 
+    /// 内部查找逻辑：返回找到的 Slot 指针
+    pub fn lookup_slot_ptr(&self, cptr: CapPtr) -> Option<*mut Slot> {
+        if cptr.is_null() {
+            return None;
+        }
+        let bits = self.bits;
+
+        // 1. Guard 检查
+        if self.guard_size > 0 {
+            if bits < self.guard_size {
+                return None;
+            }
+            let guard_mask =
+                if self.guard_size == 64 { !0 } else { (1usize << self.guard_size) - 1 };
+            // 根据当前节点的 bits 定位 guard 在 cptr 中的位置
+            let cptr_guard = (cptr.0 >> (bits - self.guard_size)) & guard_mask;
+            if cptr_guard != self.guard {
+                return None;
+            }
+        }
+
+        let rem_bits = bits - self.guard_size;
+
+        // 2. 本级索引
+        if rem_bits == 0 {
+            return None;
+        }
+
+        let radix_bits = CNODE_BITS;
+        let index = if rem_bits > radix_bits {
+            (cptr.bits() >> (rem_bits - radix_bits)) & ((1 << radix_bits) - 1)
+        } else {
+            cptr.bits() & ((1 << rem_bits) - 1)
+        };
+
+        if index >= CNODE_SLOTS {
+            return None;
+        }
+
+        // 获取 Slot 指针
+        let slot_ptr = unsafe { self.slots.as_ptr().add(index) as *mut Slot };
+        let slot = unsafe { &*slot_ptr };
+
+        // 3. 递归查下一层
+        if rem_bits > radix_bits {
+            if slot.cap.cap_type() == CapType::CNode {
+                let next_cnode_addr = slot.cap.obj_ptr();
+                if next_cnode_addr == VirtAddr::null() {
+                    return None;
+                }
+                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                // 递归调用
+                return next_cnode.lookup_slot_ptr(cptr);
+            } else {
+                return Some(slot_ptr);
+            }
+        } else {
+            return Some(slot_ptr);
+        }
+    }
+
+    pub fn insert(&mut self, slot: usize, cap: &Capability) -> bool {
+        if slot >= CNODE_SLOTS {
+            return false;
+        }
+        self.slots[slot].cap = cap.clone();
+        true
+    }
+
+    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: VirtAddr) -> bool {
+        if slot >= CNODE_SLOTS {
+            return false;
+        }
+
+        let slot_ref = &mut self.slots[slot];
+        let slot_ptr = slot_ref as *mut Slot;
+        let slot_addr = VirtAddr::from(slot_ptr as usize);
+
+        // 1. 插入能力
+        slot_ref.cap = cap.clone();
+
+        // 2. 建立 CDT 关系
+        let mut cdt = CDTNode::new();
+        cdt.parent = parent_addr;
+        if parent_addr != VirtAddr::null() {
+            let parent_slot = parent_addr.as_mut::<Slot>();
+            let old_first_child = parent_slot.cdt.first_child;
+
+            cdt.next_sibling = old_first_child;
+            if old_first_child != VirtAddr::null() {
+                let next_sib_slot = old_first_child.as_mut::<Slot>();
+                next_sib_slot.cdt.prev_sibling = slot_addr;
+            }
+            parent_slot.cdt.first_child = slot_addr;
+        }
+        slot_ref.cdt = cdt;
+        true
+    }
+
+    pub fn remove(&mut self, slot: usize) -> Option<Capability> {
+        if slot >= CNODE_SLOTS {
+            return None;
+        }
+        let cap = self.slots[slot].cap.clone();
+        self.slots[slot].cap = Capability::empty();
+        if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
+    }
+
     pub fn revoke(&mut self, slot: usize) {
-        if slot >= self.size() {
+        if slot >= CNODE_SLOTS {
             return;
         }
         let slot_addr = self.get_slot_addr(slot);
@@ -177,7 +216,7 @@ impl CNode {
     }
 
     pub fn delete(&mut self, slot: usize) {
-        if slot >= self.size() {
+        if slot >= CNODE_SLOTS {
             return;
         }
         let slot_addr = self.get_slot_addr(slot);
@@ -185,15 +224,35 @@ impl CNode {
     }
 
     pub fn debug_print(&self) {
-        printk!("CNode at vaddr {}:\n", self.vaddr);
-        let slots_ptr = self.get_slots_ptr();
-        for i in 0..self.size() {
-            let slot = unsafe { &*slots_ptr.add(i) };
-            if slot.cap.is_null() {
+        self.debug_print_recursive(0);
+    }
+
+    fn debug_print_recursive(&self, depth: usize) {
+        if depth > 8 {
+            panic!("CNode debug_print_recursive: too deep recursion");
+        }
+
+        for i in 1..CNODE_SLOTS {
+            let slot = &self.slots[i];
+            if slot.cap.cap_type() == CapType::Empty {
                 continue;
             }
-            printk!("  Slot {}: {}\n", i, slot.cap);
+            for _ in 0..depth {
+                printk!("  ");
+            }
+            printk!("[0x{:02x}] {}\n", i, slot.cap);
+
+            if slot.cap.cap_type() == CapType::CNode {
+                let child_ptr = slot.cap.obj_ptr();
+                if child_ptr != VirtAddr::null() {
+                    child_ptr.as_ref::<CNode>().debug_print_recursive(depth + 1);
+                }
+            }
         }
+    }
+
+    pub fn get_slot_addr(&self, index: usize) -> VirtAddr {
+        VirtAddr::from(&self.slots[index] as *const Slot as usize)
     }
 }
 

@@ -82,12 +82,10 @@ pub unsafe extern "C" fn kernel_vector() {
 pub unsafe extern "C" fn user_vector() {
     naked_asm!(
         // ------------------sd 过程 (begin)-----------------------
-        // sscratch寄存器存放了p->trapframe
+        // 交换 a0 和 sscratch。
+        // 现在 a0 = TrapFrame (用户态虚拟地址), sscratch = 用户 a0 数据
         "csrrw a0, sscratch, a0",
-        // 把 TrapFrame 中由内核预先写入的指针给 a3
-        // See: trap_user_handler
-        "ld a3, 280(a0)",
-        // 保存通用寄存器到trapframe
+        // 保存通用寄存器 (除 a0 外)
         "sd ra, 40(a0)",
         "sd sp, 48(a0)",
         "sd gp, 56(a0)",
@@ -117,25 +115,24 @@ pub unsafe extern "C" fn user_vector() {
         "sd t3, 256(a0)",
         "sd t4, 264(a0)",
         "sd t5, 272(a0)",
-        "sd t6, 280(a0)",
-        // 保存 a0 到 p->trapframe
+        "sd t6, 280(a0)", // 正常保存 t6，不再从此处读取指针
+        // 保存 a0 (用户数据)
         "csrr t0, sscratch",
-        "sd t0, 112(a0)",
+        "sd t0, 112(a0)", // 把原来的 a0 存入 TF
         //------------------sd 过程 (end)-------------------------
-        /*
-        恢复之前保存的内核执行环境
-        1. 内核栈指针
-        2. hartid信息
-        3. 内核页表
-        之后跳转到 trap_user_handler
-        */
-        "ld sp, 8(a0)",  // sp = tf->kernel_sp
+
+        // 恢复内核上下文
+        "ld sp, 8(a0)",  // sp = tf->kernel_sp (内核栈)
         "ld tp, 32(a0)", // tp = tf->kernel_hartid
-        "ld t0, 16(a0)", // t0 = tf->kernel_trapvector
-        "ld t1, 0(a0)",  // t1 = tf->kernel_satp
+        "ld t0, 16(a0)", // t0 = tf->kernel_trapvector (C函数入口)
+        "ld t1, 0(a0)",  // t1 = tf->kernel_satp (内核页表)
+        // 切换页表到内核空间
         "csrw satp, t1",
         "sfence.vma zero, zero",
-        "mv a0, a3",
+        // 跳转处理函数
+        // 注意：此时 a0 仍持有 TrapFrame 的 *用户态虚拟地址*。
+        // 但由于页表已切换到内核，此地址在内核空间通过 a0 访问是无效的。
+        // Rust 层的 handler 必须忽略此参数，转而从 TCB 获取内核映射的 TF 地址。
         "jr t0",
     );
 }
@@ -145,9 +142,15 @@ pub unsafe extern "C" fn user_vector() {
 #[unsafe(link_section = "trampsec")]
 pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
     naked_asm!(
+        // a0 = TrapFrame Ptr (用户态 VA), a1 = 用户 SATP
+
+        // 1. 切换回用户页表
         "csrw satp, a1",
         "sfence.vma zero, zero",
+        // 2. 将 TrapFrame 指针存入 sscratch，供下次 trap 使用
+        // 此时我们使用用户页表，访问 a0 (TrapFrame VA) 是合法的
         "csrw sscratch, a0",
+        // 3. 恢复寄存器
         "ld ra, 40(a0)",
         "ld sp, 48(a0)",
         "ld gp, 56(a0)",
@@ -177,8 +180,10 @@ pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
         "ld t3, 256(a0)",
         "ld t4, 264(a0)",
         "ld t5, 272(a0)",
-        "ld t6, 280(a0)",
+        "ld t6, 280(a0)", // 恢复正确的 t6 值
+        // 4. 恢复 a0
         "ld a0, 112(a0)",
+        // 5. 返回用户态
         "sret",
     );
 }

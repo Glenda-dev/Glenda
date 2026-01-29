@@ -1,6 +1,6 @@
 use crate::hal;
-use crate::hal::mem::PGSIZE;
 use crate::hal::mem::PageTable;
+use crate::hal::mem::{PGSIZE, USER_VA};
 use crate::mem::pmem;
 use crate::mem::{Perms, VirtAddr};
 use crate::printk;
@@ -188,14 +188,13 @@ impl ProcPayload {
         // Copy data into newly allocated frames
         let flags = Perms::USER | Perms::READ | Perms::EXECUTE | Perms::WRITE | Perms::VALID;
         let num_pages = (self.data.len() + PGSIZE - 1) / PGSIZE;
+        // 1. 分配一个新的物理页
 
         for j in 0..num_pages {
-            // 1. 分配一个新的物理页
-            let frame_cap =
-                pmem::alloc_frame_cap(1).expect("Failed to alloc frame for flat mapping");
-
+            let frame_pa = pmem::alloc_page().expect("Failed to allocate page for flat binary");
+            let frame_va = frame_pa.to_va();
             // 2. 获取该物理页在内核中的虚拟地址（用于写入数据）
-            let dst_va = frame_cap.obj_ptr();
+            let dst_va = frame_va + j * PGSIZE;
             let dst_slice =
                 unsafe { core::slice::from_raw_parts_mut(dst_va.as_mut_ptr::<u8>(), PGSIZE) };
 
@@ -209,11 +208,8 @@ impl ProcPayload {
             dst_slice[0..src_slice.len()].copy_from_slice(src_slice);
 
             // 5. 映射到用户空间 (0x10000 + offset)
-            let user_va = VirtAddr::from(0x10000 + j * PGSIZE);
-            vspace.map_with_alloc(user_va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
-
-            // 6. 忘记 Capability，防止 Drop 时释放物理页（因为已经移交给页表管理了）
-            core::mem::forget(frame_cap);
+            let user_va = VirtAddr::from(USER_VA + start);
+            vspace.map_with_alloc(user_va, frame_pa, PGSIZE, flags);
         }
     }
 }

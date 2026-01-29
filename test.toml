@@ -1,11 +1,15 @@
+[system]
+arch = "riscv64"
+profile = "relwithdebuginfo"
 [[services]]
 name = "hello"
 path = "examples/hello"
 build = "cargo"
 output = "build/hello.elf"
 kind = "root_task"
-
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
+[features]
+kernel = []

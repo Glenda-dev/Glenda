@@ -1,7 +1,8 @@
 use super::asid;
-use crate::cap::{Badge, CNode, CapType, Capability};
+use crate::cap::{Badge, CNode, CapPtr, CapType, Capability};
 use crate::hal;
-use crate::hal::mem::{PGSIZE, PageTable};
+use crate::hal::mem::PageTable;
+use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::hal::proc::ProcContext;
 use crate::hal::trap::TrapFrame;
 use crate::hal::trap::{trap_user_handler, trap_user_return};
@@ -9,8 +10,6 @@ use crate::ipc::UTCB;
 use crate::mem::VirtAddr;
 use crate::mem::pmem;
 use core::sync::atomic::AtomicUsize;
-
-pub const KSTACK_PAGES: usize = 1; // 16KB
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -121,6 +120,11 @@ impl TCB {
         vspace_cap.obj_ptr().as_ref::<PageTable>()
     }
 
+    pub fn get_cspace(&self) -> &CNode {
+        let cspace_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        cspace_cap.obj_ptr().as_ref::<CNode>()
+    }
+
     pub fn mmu_register(&self) -> usize {
         let (paddr, mut id) =
             self.vspace_root.as_ref().expect("VSpace root not configured").vspace_info();
@@ -221,21 +225,30 @@ impl TCB {
         }
     }
 
-    pub fn cap_lookup(&self, cptr: usize) -> Option<Capability> {
-        self.cap_lookup_slot(cptr).map(|(cap, _)| cap)
-    }
-
-    pub fn cap_lookup_slot(&self, cptr: usize) -> Option<(Capability, VirtAddr)> {
-        if cptr == 0 {
-            return None;
-        }
+    pub fn cap_lookup(&self, cptr: CapPtr) -> Option<Capability> {
         // 1. 获取 Root CNode
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         if root_cap.cap_type() == CapType::CNode {
-            let vaddr = VirtAddr::from(root_cap.words[0]);
-            let cnode = CNode::from_addr(vaddr);
+            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
             // 2. 在 CNode 中查找
-            cnode.lookup_cap(cptr).map(|cap| (cap, cnode.get_slot_addr(cptr)))
+            cnode.lookup(cptr)
+        } else {
+            None
+        }
+    }
+
+    pub fn cap_lookup_slot(&self, cptr: CapPtr) -> Option<(Capability, VirtAddr)> {
+        // 1. 获取 Root CNode
+        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        if root_cap.cap_type() == CapType::CNode {
+            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
+            // 2. 在 CNode 中查找
+            // 使用 lookup_slot_ptr 直接获取目标 Slot 指针，避免 get_slot_addr 参数错误导致的 Panic
+            let slot_ptr = cnode.lookup_slot_ptr(cptr)?;
+            unsafe {
+                let slot = &*slot_ptr;
+                Some((slot.cap.clone(), VirtAddr::from(slot_ptr as usize)))
+            }
         } else {
             None
         }

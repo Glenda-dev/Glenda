@@ -1,26 +1,6 @@
 use crate::mem::VirtAddr;
 use crate::trap::TrapCause;
 use core::arch::naked_asm;
-
-/// 上下文结构体
-/// 保存寄存器等上下文信息
-pub struct TrapContext;
-
-impl TrapContext {
-    /// 设置系统调用的返回值
-    pub fn set_return_value(&mut self, value: usize) {
-        unimplemented!()
-    }
-    /// 获取系统调用的参数
-    pub fn get_syscall_args(&self) -> (usize, usize) {
-        unimplemented!()
-    }
-    /// 从 TrapFrame 创建 TrapContext
-    pub fn from_trapframe(tf: &TrapFrame) -> Self {
-        unimplemented!()
-    }
-}
-
 /// 陷阱帧结构体
 /// 保存陷阱发生时的寄存器状态
 pub struct TrapFrame;
@@ -31,7 +11,7 @@ impl TrapFrame {
         unimplemented!()
     }
     /// 获取程序计数器 (PC/EPC)
-    pub fn get_epc(&self) -> usize {
+    pub const fn get_epc(&self) -> usize {
         unimplemented!()
     }
     /// 设置程序计数器 (PC/EPC)
@@ -40,10 +20,6 @@ impl TrapFrame {
     }
     /// 设置 TrapFrame 到寄存器
     pub fn set_tf(&mut self, tf_addr: usize) {
-        unimplemented!()
-    }
-    /// 更新 TrapFrame 的上下文
-    pub fn update_context(&mut self, ctx: &TrapContext) {
         unimplemented!()
     }
     /// 配置用户态返回信息
@@ -58,6 +34,26 @@ impl TrapFrame {
         kstack_top: usize,
         kernel_vec: usize,
     ) {
+        unimplemented!()
+    }
+    /// 设置系统调用的返回值
+    pub fn set_return_value(&mut self, value: usize) {
+        unimplemented!()
+    }
+    /// 获取系统调用的参数
+    pub const fn get_syscall_args(&self) -> (usize, usize) {
+        unimplemented!()
+    }
+    /// 推进程序计数器，跳过当前指令
+    pub fn advance_pc(&mut self) {
+        unimplemented!()
+    }
+    /// 获取返回地址寄存器的值
+    pub const fn get_ra(&self) -> usize {
+        unimplemented!()
+    }
+    /// 获取栈指针寄存器的值
+    pub const fn get_sp(&self) -> usize {
         unimplemented!()
     }
 }
@@ -76,11 +72,6 @@ pub fn get_cause() -> TrapCause {
 }
 /// 获取 Trap 发生时的程序计数器 (PC/EPC)
 pub fn get_pc() -> usize {
-    unimplemented!()
-}
-
-/// 修改上下文中的 PC (通常用于 syscall 返回后跳过 ecall 指令)
-pub unsafe fn advance_pc(pc: usize, offset: usize) {
     unimplemented!()
 }
 
@@ -112,7 +103,7 @@ pub unsafe extern "C" fn user_vector() {
 /// U-mode 陷阱处理函数
 /// 在 kernel_vector 汇编代码中被调用
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
+pub extern "C" fn trap_user_handler() {
     unimplemented!()
 }
 

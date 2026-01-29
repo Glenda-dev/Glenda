@@ -2,41 +2,11 @@
 arch = "riscv64"
 profile = "relwithdebuginfo"
 [[services]]
-name = "nineball"
-path = "service/nineball"
-build = "cargo"
-output = "build/nineball.elf"
-kind = "root_task"
-[[services]]
 name = "factotum"
 path = "service/factotum"
 build = "cargo"
 output = "build/factotum.elf"
-kind = "server"
-[[services]]
-name = "unicorn"
-path = "service/unicorn"
-build = "cargo"
-output = "build/unicorn.elf"
-kind = "server"
-[[services]]
-name = "ns16550a"
-path = "drivers/ns16550a"
-build = "cargo"
-output = "build/ns16550a.elf"
-kind = "driver"
-[[services]]
-name = "virtio-blk"
-path = "drivers/virtio/block"
-build = "cargo"
-output = "build/virtio-blk.elf"
-kind = "driver"
-[[services]]
-name = "manifest"
-path = "config"
-build = "manifest"
-output = "manifest.json"
-kind = "file"
+kind = "root_task"
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"

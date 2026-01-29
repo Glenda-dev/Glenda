@@ -1,9 +1,9 @@
 use super::super::mem::PGSIZE;
 use super::super::{asm, cpu};
+use super::TrapFrame;
 use super::kernel_vector;
 use super::vector::user_return;
 use super::vector::user_vector;
-use super::{TrapContext, TrapFrame};
 use crate::mem::{TRAMPOLINE_VA, TRAPFRAME_VA};
 use crate::proc::scheduler;
 use crate::trap::handler::trap_kernel_handler;
@@ -12,16 +12,15 @@ use core::mem::transmute;
 /// U-mode 陷阱处理函数
 /// 在 kernel_vector 汇编代码中被调用
 #[unsafe(no_mangle)]
-pub extern "C" fn trap_user_handler(ctx: &mut TrapFrame) {
+pub extern "C" fn trap_user_handler() {
     let kernel_vec_addr = kernel_vector as usize;
     unsafe {
         asm::write_stvec(kernel_vec_addr);
     }
+    let tcb = unsafe { &mut *scheduler::current().expect("No current process in scheduler") };
+    let ctx = tcb.get_tf();
     ctx.set_epc(asm::read_sepc());
-    let mut kctx = TrapContext::from_trapframe(ctx);
-    trap_kernel_handler(&mut kctx);
-    ctx.update_context(&kctx);
-    ctx.set_epc(asm::read_sepc());
+    trap_kernel_handler(ctx);
     trap_user_return();
 }
 
@@ -50,8 +49,6 @@ pub fn trap_user_return() {
         asm::sstatus_set(5);
     }
 
-    let addr = ctx as *mut TrapFrame as usize;
-    ctx.set_tf(addr);
     // 跳回 S 态的处理入口：trap_user_handler
     // S 态页表
     // S 态 hartid

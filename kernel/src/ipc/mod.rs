@@ -5,7 +5,7 @@ pub mod utcb;
 pub use message::{MsgTag, label};
 pub use utcb::UTCB;
 
-use crate::cap::{Badge, CapType, Capability, Slot, rights};
+use crate::cap::{Badge, CapType, Capability, Rights};
 use crate::mem::VirtAddr;
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
@@ -47,11 +47,9 @@ unsafe fn copy_msg(
 
     if let Some(c) = final_cap {
         let recv_window = dst.recv_window;
-        if recv_window != 0 {
-            if let Some((_, slot_addr)) = receiver.cap_lookup_slot(recv_window) {
-                let slot = slot_addr.as_mut::<Slot>();
-                slot.cap = c;
-            }
+        if let Some(slot_ptr) = receiver.get_cspace().lookup_slot_ptr(recv_window) {
+            let slot = unsafe { &mut *slot_ptr };
+            slot.cap = c;
         }
     }
 }
@@ -100,7 +98,7 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
 
         // 生成 Reply Capability 指向当前线程
         let reply_cap =
-            Capability::create_reply(VirtAddr::from(current as *const TCB as usize), rights::ALL);
+            Capability::create_reply(VirtAddr::from(current as *const TCB as usize), Rights::ALL);
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap)) };
@@ -179,7 +177,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         let reply_cap = if sender.state == ThreadState::BlockedCall {
             Some(Capability::create_reply(
                 VirtAddr::from(sender as *const TCB as usize),
-                rights::ALL,
+                Rights::ALL,
             ))
         } else {
             None

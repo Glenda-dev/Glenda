@@ -112,16 +112,13 @@ impl<'a> ElfFile<'a> {
                 let num_pages = (total_memsz + PGSIZE - 1) / PGSIZE;
 
                 for j in 0..num_pages {
-                    let frame_cap =
-                        pmem::alloc_frame_cap(1).ok_or("Failed to alloc frame for segment")?;
+                    let frame_pa =
+                        pmem::alloc_page().ok_or("Failed to allocate page for ELF segment")?;
                     let va = VirtAddr::from(aligned_va) + j * PGSIZE;
 
                     // Calculate how much to copy from data
                     let dst_slice = unsafe {
-                        core::slice::from_raw_parts_mut(
-                            frame_cap.obj_ptr().as_mut_ptr::<u8>(),
-                            PGSIZE,
-                        )
+                        core::slice::from_raw_parts_mut(frame_pa.to_va().as_mut_ptr::<u8>(), PGSIZE)
                     };
                     dst_slice.fill(0);
 
@@ -141,8 +138,7 @@ impl<'a> ElfFile<'a> {
                             .copy_from_slice(&self.data[src_off..src_off + len]);
                     }
 
-                    vspace.map_with_alloc(va, frame_cap.obj_ptr().to_pa(), PGSIZE, flags);
-                    core::mem::forget(frame_cap);
+                    vspace.map_with_alloc(va, frame_pa, PGSIZE, flags);
                 }
             }
         }
