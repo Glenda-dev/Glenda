@@ -69,6 +69,9 @@ pub struct TCB {
 
     // Priveleged Thread Indicator
     pub privileged: bool, // 是否为内核线程
+
+    // 是否为原生线程
+    pub native: bool,
 }
 
 impl TCB {
@@ -94,6 +97,7 @@ impl TCB {
             ipc_cap: None,
             utcb_frame: None,
             privileged: false,
+            native: true,
         }
     }
 
@@ -137,7 +141,8 @@ impl TCB {
         tcb.context.configure(entry, sp);
         // s0 (fp) 设为 0，方便调试回溯终止
         tcb.context.set_fp(0);
-        unimplemented!()
+        tcb.native = true;
+        unimplemented!();
     }
 
     /// 配置线程的核心资源
@@ -188,8 +193,9 @@ impl TCB {
         self.context.configure(ra, kstack_top);
     }
 
-    pub fn set_fault_handler(&mut self, ep: Capability) {
+    pub fn set_fault_handler(&mut self, ep: Capability, native: bool) {
         self.fault_handler = Some(ep);
+        self.native = native;
     }
 
     pub fn set_affinity(&mut self, hart_id: usize) {

@@ -49,18 +49,13 @@ fn exception_handler(
     status: usize,
     ctx: &mut TrapContext,
 ) {
-    // 0. Environment call from U-mode (syscall)
-    if e == TrapException::Syscall {
-        syscall_handler(ctx);
-        // advance sepc to next instruction
-        unsafe {
-            hal::trap::advance_pc(pc, 4);
-        }
-        return;
-    }
-
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
+        if tcb.native && e == TrapException::Syscall {
+            // 处理系统调用
+            syscall_handler(ctx);
+            return;
+        }
         fault_handler(tcb, e, pc, addr, status);
     } else {
         unhandled_exception(e, pc, addr, status);

@@ -175,10 +175,11 @@ fn invoke_tcb(cap: &Capability, _cptr: usize, method: usize) -> usize {
         tcbmethod::SET_FAULT_HANDLER => {
             // SetFaultHandler: (ep_cptr)
             let ep_cptr = utcb.mrs_regs[0];
+            let native = utcb.mrs_regs[1] != 0;
             if let Some(ep_cap) = current_tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
-                    tcb.set_fault_handler(ep_cap);
+                    tcb.set_fault_handler(ep_cap, native);
                     errcode::SUCCESS
                 } else {
                     errcode::INVALID_OBJ_TYPE

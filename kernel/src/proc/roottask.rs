@@ -10,8 +10,8 @@ use crate::hal;
 use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
 use crate::initrd;
 use crate::mem::pmem;
-use crate::mem::{HEAP_SIZE, HEAP_VA, RES_VA_BASE, STACK_SIZE, STACK_VA, TRAPFRAME_VA, UTCB_VA};
 use crate::mem::{PhysAddr, VirtAddr};
+use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::printk;
 
 pub const NULL_SLOT: usize = 0;
@@ -21,6 +21,14 @@ pub const TCB_SLOT: usize = 3;
 pub const CONSOLE_SLOT: usize = 6;
 pub const UTCB_SLOT: usize = 7;
 pub const PLATFORM_SLOT: usize = 8;
+
+pub const STACK_VA: usize = UTCB_VA - PGSIZE; // 用户栈映射地址
+pub const STACK_PAGES: usize = 16; // 用户栈页面数 16 * 4KB = 64KB
+pub const STACK_SIZE: usize = STACK_PAGES * PGSIZE; // 64KB
+pub const HEAP_PAGES: usize = 64; // 用户堆页面数 64 * 4KB = 256KB
+pub const HEAP_SIZE: usize = HEAP_PAGES * PGSIZE; // 256KB
+pub const HEAP_VA: usize = 0x2000_0000; // 用户堆地址
+pub const RES_VA_BASE: usize = 0x4000_0000; // 启动时提供的资源
 
 pub const BOOTINFO_SLOT_START: usize = 32;
 pub const SCRATCH_VA: usize = RES_VA_BASE; // Scratch 映射地址

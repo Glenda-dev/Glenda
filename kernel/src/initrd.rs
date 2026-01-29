@@ -1,10 +1,11 @@
 use crate::hal;
 use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
+use crate::mem::VirtAddr;
 use crate::mem::pmem;
-use crate::mem::{STACK_VA, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use crate::proc::ElfFile;
+use crate::proc::roottask::STACK_VA;
 use spin::Once;
 
 /*
