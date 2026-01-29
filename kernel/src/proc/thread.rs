@@ -1,3 +1,4 @@
+use super::asid;
 use crate::cap::{Badge, CNode, CapType, Capability};
 use crate::hal;
 use crate::hal::mem::{PGSIZE, PageTable};
@@ -9,7 +10,7 @@ use crate::mem::VirtAddr;
 use crate::mem::pmem;
 use core::sync::atomic::AtomicUsize;
 
-pub const KSTACK_PAGES: usize = 4; // 16KB
+pub const KSTACK_PAGES: usize = 1; // 16KB
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -116,16 +117,13 @@ impl TCB {
         vspace_cap.obj_ptr().as_ref::<PageTable>()
     }
 
-    pub fn get_satp(&self) -> usize {
-        let pt_addr = self
-            .vspace_root
-            .as_ref()
-            .expect("VSpace root not configured")
-            .obj_ptr()
-            .to_pa()
-            .as_usize();
-        let ppn = pt_addr >> 12;
-        (8 << 60) | ppn // Sv39 mode
+    pub fn mmu_register(&self) -> usize {
+        let (paddr, mut id) =
+            self.vspace_root.as_ref().expect("VSpace root not configured").vspace_info();
+        if asid::check(id) {
+            id = asid::alloc();
+        }
+        hal::mem::get_mmu_register(paddr, id.id as usize)
     }
 
     /// 创建一个内核线程
@@ -174,16 +172,16 @@ impl TCB {
     }
 
     pub fn set_registers(&mut self, entry_point: usize, stack_top: usize) {
-        // 1. 获取内核栈顶和 SATP
+        // 1. 获取内核栈顶和 mmu
         let kstack_top = self.get_kstack_top().as_usize();
-        let satp = self.get_satp();
+        let mmu = self.mmu_register();
 
         // 2. 获取 TrapFrame
         let tf = self.get_tf();
 
         // 3. 设置用户态初始状态
         tf.configure(entry_point, stack_top);
-        tf.configure_kernel(satp, hal::cpu::cpu_id(), kstack_top, trap_user_handler as usize);
+        tf.configure_kernel(mmu, hal::cpu::cpu_id(), kstack_top, trap_user_handler as usize);
 
         // 4. 设置内核上下文，使其在被调度时跳转到 trap_user_return
         let ra = trap_user_return as usize;

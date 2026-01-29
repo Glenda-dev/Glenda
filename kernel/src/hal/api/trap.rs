@@ -53,7 +53,7 @@ impl TrapFrame {
     /// 配置内核态返回信息
     pub fn configure_kernel(
         &mut self,
-        satp: usize,
+        mmu: usize,
         hartid: usize,
         kstack_top: usize,
         kernel_vec: usize,

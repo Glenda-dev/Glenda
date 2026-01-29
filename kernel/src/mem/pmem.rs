@@ -5,6 +5,7 @@ use crate::hal;
 use crate::hal::mem::PageTable;
 use crate::printk;
 use crate::proc::TCB;
+use crate::proc::asid;
 use core::ptr::addr_of_mut;
 use spin::Mutex;
 
@@ -75,10 +76,10 @@ pub fn initialize_regions(_hartid: usize) {
 }
 
 /// 分配一个物理页 Capability
-pub fn alloc_frame_cap(count: usize) -> Option<Capability> {
+pub fn alloc_frame_cap(pages: usize) -> Option<Capability> {
     PMEM.lock()
-        .alloc_addr(PGSIZE * count, PGSIZE)
-        .map(|paddr| Capability::create_frame(paddr, count, rights::ALL))
+        .alloc_addr(pages * PGSIZE, PGSIZE)
+        .map(|paddr| Capability::create_frame(paddr, pages, rights::ALL))
 }
 
 /// 分配一个 Untyped Capability
@@ -102,6 +103,15 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
         let pt = paddr.to_va().as_mut::<PageTable>();
         *pt = PageTable::new();
         Capability::create_pagetable(paddr, level, rights::ALL)
+    })
+}
+
+pub fn alloc_vspace_cap() -> Option<Capability> {
+    PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
+        let pt = paddr.to_va().as_mut::<PageTable>();
+        *pt = PageTable::new();
+        let asid = asid::alloc();
+        Capability::create_vspace(paddr, asid, rights::ALL)
     })
 }
 

@@ -16,4 +16,3 @@ pub use addr::{PPN, PhysAddr, VPN, VirtAddr};
 pub mod addr;
 pub mod pmem;
 pub mod vm;
-pub mod vspace;

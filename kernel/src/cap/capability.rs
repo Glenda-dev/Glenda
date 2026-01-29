@@ -2,10 +2,11 @@ use super::CapType;
 use super::rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNodeHeader;
-use crate::hal::mem::PGSIZE;
+use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::TCB;
+use crate::proc::asid::Asid;
 use core::fmt::Display;
 use core::mem::transmute;
 use core::sync::atomic::Ordering;
@@ -45,7 +46,6 @@ impl Display for Capability {
             }
             CapType::Frame => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
-                s.field("page_count", &self.frame_page_count());
             }
             CapType::PageTable => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
@@ -62,8 +62,12 @@ impl Display for Capability {
                 s.field("size", &(self.words[1] >> DATA_SHIFT));
             }
             CapType::VSpace => {
-                s.field("paddr", &PhysAddr::from(self.words[0]));
-                s.field("asid", &(self.words[1] >> DATA_SHIFT));
+                let (paddr, id) = self.vspace_info();
+                let asid = id.id;
+                let generation = id.generation;
+                s.field("paddr", &paddr);
+                s.field("asid", &asid);
+                s.field("gen", &generation);
             }
             _ => {}
         }
@@ -83,6 +87,7 @@ pub const TYPE_MASK: usize = 0x1F; // 5 bits (32 types)
 pub const RIGHTS_SHIFT: usize = 5;
 pub const RIGHTS_MASK: usize = 0xFF; // 8 bits
 pub const DATA_SHIFT: usize = 13;
+const ASID_BITS: usize = 16;
 
 impl Capability {
     // Helper to extract type
@@ -178,25 +183,13 @@ impl Capability {
         self.has_rights(rights::GRANT)
     }
 
-    /// 获取 Badge 值，若无则返回 0
-    pub fn get_badge(&self) -> Badge {
-        if self.cap_type() == CapType::Endpoint {
-            Badge::from(self.words[1] >> DATA_SHIFT)
-        } else {
-            Badge::null()
-        }
+    pub fn get_data(&self) -> usize {
+        self.words[1] >> DATA_SHIFT
     }
 
-    /// 检查是否已被标记
-    pub fn is_badged(&self) -> bool {
-        !self.get_badge().is_null()
-    }
-
-    pub fn set_badge(&mut self, badge: Badge) {
-        if self.cap_type() == CapType::Endpoint {
-            let mask = !((!0usize) << DATA_SHIFT);
-            self.words[1] = (self.words[1] & mask) | (badge.get() << DATA_SHIFT);
-        }
+    pub fn set_data(&mut self, data: usize) {
+        let mask = !((!0usize) << DATA_SHIFT);
+        self.words[1] = (self.words[1] & mask) | (data << DATA_SHIFT);
     }
 
     pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: u8) -> Self {
@@ -244,17 +237,13 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_frame(paddr: PhysAddr, page_count: usize, rights: u8) -> Self {
+    pub fn create_frame(paddr: PhysAddr, pages: usize, rights: u8) -> Self {
         assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
         let w0 = paddr.as_usize();
         let w1 = (CapType::Frame as usize) & TYPE_MASK
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (page_count << DATA_SHIFT);
+            | (pages << DATA_SHIFT);
         Self { words: [w0, w1] }
-    }
-
-    pub fn frame_page_count(&self) -> usize {
-        self.words[1] >> DATA_SHIFT
     }
 
     pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: u8) -> Self {
@@ -263,10 +252,6 @@ impl Capability {
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (level << DATA_SHIFT);
         Self { words: [w0, w1] }
-    }
-
-    pub fn pt_level(&self) -> usize {
-        self.words[1] >> DATA_SHIFT
     }
 
     pub fn create_cnode(paddr: PhysAddr, rights: u8) -> Self {
@@ -298,22 +283,54 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_vspace(paddr: PhysAddr, asid: usize, rights: u8) -> Self {
+    pub fn create_vspace(paddr: PhysAddr, asid: Asid, rights: u8) -> Self {
+        let asid_val = asid.id as usize & ASID_MASK;
+
+        // 获取 Generation (保留低 35 位: 64 - 13 - 16 = 35)
+        // Bit 29 到 63
+        let gen_val = asid.generation as usize; // 高位会被移位自动处理，或者可以按需在这里mask
         let w0 = paddr.as_usize();
         let w1 = (CapType::VSpace as usize) & TYPE_MASK
             | ((rights as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (asid << DATA_SHIFT);
+            | (asid_val << DATA_SHIFT)
+            | (gen_val << (DATA_SHIFT + ASID_BITS));
         Self { words: [w0, w1] }
     }
 
-    pub fn vspace_info(&self) -> (PhysAddr, usize) {
+    pub fn get_badge(&self) -> Badge {
+        if self.cap_type() == CapType::Endpoint {
+            Badge::from(self.words[1] >> DATA_SHIFT)
+        } else {
+            Badge::null()
+        }
+    }
+
+    /// 检查是否已被标记
+    pub fn is_badged(&self) -> bool {
+        !self.get_badge().is_null()
+    }
+
+    pub fn set_badge(&mut self, badge: Badge) {
+        if self.cap_type() == CapType::Endpoint {
+            let mask = !((!0usize) << DATA_SHIFT);
+            self.words[1] = (self.words[1] & mask) | (badge.get() << DATA_SHIFT);
+        }
+    }
+
+    pub fn vspace_info(&self) -> (PhysAddr, Asid) {
         let paddr = PhysAddr::from(self.words[0]);
-        let asid = self.words[1] >> DATA_SHIFT;
-        (paddr, asid)
+
+        let asid = (self.words[1] >> DATA_SHIFT) & ASID_MASK;
+        let generation = self.words[1] >> (DATA_SHIFT + ASID_BITS);
+        (paddr, Asid::from(asid as u16, generation as u64))
     }
 
     pub fn is_null(&self) -> bool {
         self.cap_type() == CapType::Empty
+    }
+
+    pub fn pt_level(&self) -> usize {
+        if self.cap_type() == CapType::PageTable { self.words[1] >> DATA_SHIFT } else { 0 }
     }
 }
 

@@ -134,12 +134,12 @@ impl TrapFrame {
     }
     pub fn configure_kernel(
         &mut self,
-        satp: usize,
+        mmu: usize,
         cpuid: usize,
         kstack_top: usize,
         trap_vector: usize,
     ) {
-        self.kernel_satp = satp;
+        self.kernel_satp = mmu;
         self.kernel_hartid = cpuid;
         self.kernel_sp = kstack_top;
         self.kernel_trapvector = trap_vector;

@@ -30,7 +30,7 @@ pub fn trap_user_return() {
     let tcb = unsafe { &mut *scheduler::current().expect("No current process in scheduler") };
 
     let kstack_top = tcb.get_kstack_top().as_usize();
-    let user_satp = tcb.get_satp() as u64;
+    let user_satp = tcb.mmu_register() as u64;
 
     // 从 TCB 获取正确的 TrapFrame
     let ctx = tcb.get_tf();

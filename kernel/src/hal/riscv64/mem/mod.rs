@@ -13,24 +13,31 @@ pub const KERNEL_BASE: usize = 0;
 pub const PT_LEVELS: usize = 3;
 pub const PGNUM: usize = 512;
 pub const PTEFLAGS_MASK: usize = 0x3FF;
+pub const MAX_ASID: usize = 1 << 16;
+pub const ASID_MASK: usize = 0xFFFF;
 
 use super::asm;
 use crate::mem::{PhysAddr, VPN, VirtAddr};
 
 const SATP_MODE: usize = 8;
 
-pub unsafe fn activate_pagetable(root_paddr: PhysAddr) {
+pub unsafe fn activate_vspace(val: usize) {
     unsafe {
-        asm::write_satp((SATP_MODE << 60) | (root_paddr.as_usize() >> 12));
+        asm::write_satp(val);
         asm::sfence_vma_all();
     }
 }
-pub unsafe fn deactivate_pagetable() {
+pub unsafe fn deactivate_vspace() {
     unsafe {
         asm::write_satp(0);
         asm::sfence_vma_all();
     }
 }
+
+pub fn get_mmu_register(root_paddr: PhysAddr, asid: usize) -> usize {
+    (SATP_MODE << 60) | (root_paddr.as_usize() >> 12) | (asid & ASID_MASK) << 44
+}
+
 pub fn flush_tlb(vaddr: Option<VirtAddr>) {
     unsafe {
         match vaddr {

@@ -20,11 +20,7 @@ pub mod tcbmethod {
 }
 
 pub mod pagetablemethod {
-    pub const MAP: usize = 1;
-    pub const UNMAP: usize = 2;
-    pub const MAP_TABLE: usize = 3;
-    pub const SETUP: usize = 4;
-    pub const DEBUG_PRINT: usize = 5;
+    pub const MAP_TABLE: usize = 1;
 }
 
 pub mod cnodemethod {
@@ -49,4 +45,12 @@ pub mod irqmethod {
 pub mod consolemethod {
     pub const PUT_CHAR: usize = 1;
     pub const PUT_STR: usize = 2;
+}
+
+pub mod vspacemethod {
+    pub const MAP: usize = 1;
+    pub const UNMAP: usize = 2;
+    pub const MAP_TABLE: usize = 3;
+    pub const SETUP: usize = 4;
+    pub const DEBUG_PRINT: usize = 5;
 }

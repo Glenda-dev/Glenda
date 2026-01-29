@@ -124,15 +124,16 @@ pub fn switch_to_kernel(hartid: usize) {
     let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
     let kpt_va = VirtAddr::from(kpt as *const _ as usize);
     let kpt_pa = kpt_va.to_pa();
+    let reg = hal::mem::get_mmu_register(kpt_pa, 0);
     unsafe {
-        hal::mem::activate_pagetable(kpt_pa);
+        hal::mem::activate_vspace(reg);
     }
     printk!("vm: Hart {} switched to kernel page table\n", hartid);
 }
 
 pub fn switch_off(hartid: usize) {
     unsafe {
-        hal::mem::deactivate_pagetable();
+        hal::mem::deactivate_vspace();
     }
     printk!("vm: Hart {} switching off vm\n", hartid);
 }

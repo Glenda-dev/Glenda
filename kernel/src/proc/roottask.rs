@@ -10,9 +10,7 @@ use crate::hal;
 use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
 use crate::initrd;
 use crate::mem::pmem;
-use crate::mem::{
-    HEAP_SIZE, HEAP_VA, RES_VA_BASE, STACK_SIZE, STACK_VA, TRAMPOLINE_VA, TRAPFRAME_VA, UTCB_VA,
-};
+use crate::mem::{HEAP_SIZE, HEAP_VA, RES_VA_BASE, STACK_SIZE, STACK_VA, TRAPFRAME_VA, UTCB_VA};
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::printk;
 
@@ -22,17 +20,14 @@ pub const VSPACE_SLOT: usize = 2;
 pub const TCB_SLOT: usize = 3;
 pub const CONSOLE_SLOT: usize = 6;
 pub const UTCB_SLOT: usize = 7;
-pub const INITRD_SLOT: usize = 8;
-pub const PLATFORM_SLOT: usize = 9;
+pub const PLATFORM_SLOT: usize = 8;
 
 pub const BOOTINFO_SLOT_START: usize = 32;
-
-pub const BOOTINFO_VA: usize = RES_VA_BASE; // Bootinfo映射地址
+pub const SCRATCH_VA: usize = RES_VA_BASE; // Scratch 映射地址
+pub const BOOTINFO_VA: usize = RES_VA_BASE + PGSIZE; // Bootinfo映射地址
 pub const INITRD_VA: usize = BOOTINFO_VA + PGSIZE; // Initrd 映射地址 (Root Task)
+pub const ROOT_TASK_PRIORITY: u8 = 253; // Root Task 优先级
 
-unsafe extern "C" {
-    static __trampoline: u8;
-}
 struct RootCaps {
     vspace: Capability,
     cspace: Capability,
@@ -46,7 +41,7 @@ struct RootCaps {
 
 fn alloc_root_caps() -> RootCaps {
     RootCaps {
-        vspace: pmem::alloc_pagetable_cap(2).expect("Failed to alloc root VSpace"),
+        vspace: pmem::alloc_vspace_cap().expect("Failed to alloc root VSpace"),
         cspace: pmem::alloc_cnode_cap().expect("Failed to alloc root CSpace"),
         tcb: pmem::alloc_tcb_cap().expect("Failed to alloc root TCB"),
         utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
@@ -74,16 +69,6 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
     cspace.insert(UTCB_SLOT, &caps.utcb);
     cspace.insert(CONSOLE_SLOT, &caps.console);
 
-    let initrd_range = hal::platform::initrd().expect("Initrd range not found");
-    let initrd_start = initrd_range.start.align_down(PGSIZE);
-    let initrd_page_count = (initrd_range.size + PGSIZE - 1) / PGSIZE;
-    let initrd_cap = Capability::create_frame(
-        initrd_start,
-        initrd_page_count,
-        rights::READ | rights::WRITE | rights::GRANT,
-    );
-    cspace.insert(INITRD_SLOT, &initrd_cap);
-
     match hal::platform::range() {
         Some(range) => {
             let platform_start = range.start.align_down(PGSIZE);
@@ -100,7 +85,7 @@ fn fill_root_cspace(cspace: &mut CNode, caps: &RootCaps) {
 }
 
 fn start_root_task(tcb: &mut TCB, entry_point: usize, stack_top: usize) {
-    tcb.set_priority(253);
+    tcb.set_priority(ROOT_TASK_PRIORITY);
     tcb.set_registers(entry_point, stack_top);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
@@ -169,17 +154,6 @@ fn init_vspace(
     bootinfo_paddr: PhysAddr,
 ) {
     printk!("proc: Setting up Root Task VSpace at {:#x}\n", vspace as *const _ as usize);
-    // 1. 映射 Trampoline (最高地址)
-    // 物理地址是 vector::user_vector 的地址 (需对齐)
-    // 注意：Trampoline 代码运行在 S 态 (user_return/user_vector)，
-    // 因此不能设置 USER 权限 (S 态无法执行 U 页面代码)
-    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
-    vspace.map_with_alloc(
-        VirtAddr::from(TRAMPOLINE_VA),
-        tramp_pa,
-        PGSIZE,
-        PteFlags::from(PtePerms::READ | PtePerms::EXECUTE),
-    );
     // 2. 映射 TrapFrame (Trampoline 下方)
     // TrapFrame 仅由 S 态的 user_vector/user_return 访问
     vspace.map_with_alloc(
@@ -229,10 +203,10 @@ fn init_vspace(
         core::mem::forget(frame);
     }
 
-    // 映射用户堆 (1MB)
+    // 映射用户堆 (256KB)
     // HEAP_VA = 0x2000_0000 (Defined in libglenda-rs/src/crt0.rs)
     let heap_va_start = HEAP_VA;
-    let heap_size = HEAP_SIZE; // 1MB
+    let heap_size = HEAP_SIZE; // 256KB
     let heap_pages = heap_size / PGSIZE;
 
     for i in 0..heap_pages {
@@ -246,6 +220,9 @@ fn init_vspace(
         );
         core::mem::forget(frame);
     }
+
+    // 设置 Trampoline 映射
+    vspace.setup().expect("Failed to setup VSpace for root task");
 }
 
 /// 填充 Root CNode

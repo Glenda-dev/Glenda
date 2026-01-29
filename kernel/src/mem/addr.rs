@@ -97,7 +97,6 @@ impl Debug for PhysAddr {
 pub struct VirtAddr(usize);
 impl VirtAddr {
     pub const fn from(addr: usize) -> Self {
-        assert!(addr < VA_MAX, "VirtAddr out of range");
         Self(addr as usize)
     }
     pub const fn as_usize(&self) -> usize {
@@ -122,7 +121,7 @@ impl VirtAddr {
         Self(0)
     }
     pub fn align_down(&self, align: usize) -> Self {
-        VirtAddr((self.0 + align - 1) & !(align - 1))
+        VirtAddr(self.0 & !(align - 1))
     }
     pub fn align_up(&self, align: usize) -> Self {
         VirtAddr((self.0 + align - 1) & !(align - 1))

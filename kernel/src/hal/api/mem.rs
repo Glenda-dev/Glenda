@@ -1,9 +1,10 @@
 use crate::mem::{PPN, PhysAddr, VPN, VirtAddr};
+use crate::proc::Asid;
 use core::fmt::Display;
 use core::ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub};
 
 /// 页大小
-pub const PGSIZE: usize = 0;
+pub const PGSIZE: usize = 4096;
 /// 最大虚拟地址
 pub const VA_MAX: usize = 0xFFFFFFFFFFFFFFFF;
 /// HHDM: 物理内存线性映射的虚拟基地址 (例如 0xFFFF_8000_0000_0000)
@@ -11,9 +12,13 @@ pub const PHYS_MAP_BASE: usize = 0;
 /// 内核代码段加载的虚拟基地址 (例如 0xFFFF_FFFF_8020_0000)
 pub const KERNEL_BASE: usize = 0;
 /// 页表层级数
-pub const PT_LEVELS: usize = 0;
+pub const PT_LEVELS: usize = 1;
 /// 每级页表的页表项数量
-pub const PGNUM: usize = 0;
+pub const PGNUM: usize = 1;
+/// 地址空间标识符的最大值
+pub const MAX_ASID: usize = 1 << 16;
+/// 地址空间标识符掩码
+pub const ASID_MASK: usize = MAX_ASID - 1;
 
 /// 页表项类型
 #[derive(Clone, Copy, Debug)]
@@ -39,14 +44,22 @@ pub fn flush_tlb(vaddr: Option<VirtAddr>) {
 /// 激活页表
 ///
 /// 将根页表物理地址写入控制寄存器 (如 satp, ttbr0, pgd)
-pub unsafe fn activate_pagetable(root_paddr: PhysAddr) {
+pub unsafe fn activate_vspace(register: usize) {
     unimplemented!()
 }
 
 /// 取消激活页表
 ///
 /// 将控制寄存器 (如 satp, ttbr0, pgd) 置零
-pub unsafe fn deactivate_pagetable() {
+pub unsafe fn deactivate_vspace() {
+    unimplemented!()
+}
+
+/// 获取 MMU 寄存器值
+///
+/// `addr`: 根页表物理地址
+/// `asid`: 地址空间标识符
+pub fn get_mmu_register(addr: PhysAddr, asid: usize) -> usize {
     unimplemented!()
 }
 

@@ -1,9 +1,10 @@
 use crate::cpu;
 use crate::hal::console;
+use core::fmt::Arguments;
 use spin::Mutex;
 
 static PRINTK_LOCK: Mutex<()> = Mutex::new(());
-pub fn _printk(args: core::fmt::Arguments) {
+pub fn _printk(args: Arguments) {
     if cpu::get().nest_count > 0 {
         console::print(args);
         return;
@@ -11,10 +12,18 @@ pub fn _printk(args: core::fmt::Arguments) {
     let _guard = PRINTK_LOCK.lock();
     console::print(args);
 }
+pub fn _printk_unsynced(args: Arguments) {
+    console::print(args);
+}
 #[macro_export]
 macro_rules! printk {
     ($fmt:expr) => { crate::printk::_printk(format_args!($fmt)) };
     ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk(format_args!($fmt, $($arg)*)) };
+}
+#[macro_export]
+macro_rules! printk_unsynced {
+    ($fmt:expr) => { crate::printk::_printk_unsynced(format_args!($fmt)) };
+    ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk_unsynced(format_args!($fmt, $($arg)*)) };
 }
 
 pub const ANSI_RESET: &str = "\x1b[0m";

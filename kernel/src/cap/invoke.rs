@@ -6,7 +6,7 @@ use crate::hal::mem::{PGSIZE, PageTable, PteFlags};
 use crate::ipc;
 use crate::irq;
 use crate::mem::{PhysAddr, VirtAddr};
-use crate::proc::{TCB, scheduler};
+use crate::proc::{TCB, asid, scheduler};
 use crate::trap::syscall::errcode;
 
 pub fn dispatch(cap: &Capability, cptr: usize, method: usize) -> usize {
@@ -249,29 +249,6 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
     };
 
     match method {
-        pagetablemethod::MAP => {
-            // Map: (frame_cap, vaddr, flags)
-            let frame_cptr = utcb.mrs_regs[0];
-            let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
-            let flags = PteFlags::from(utcb.mrs_regs[2]);
-
-            let frame_cap = match tcb.cap_lookup(frame_cptr) {
-                Some(c) => c,
-                None => return errcode::INVALID_CAP,
-            };
-
-            let (frame_paddr, frame_size) = if frame_cap.cap_type() == CapType::Frame {
-                (PhysAddr::from(frame_cap.words[0]), frame_cap.frame_page_count() * PGSIZE)
-            } else {
-                return errcode::INVALID_OBJ_TYPE;
-            };
-
-            // 执行映射
-            match pt.map(vaddr, frame_paddr, frame_size, flags) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => errcode::MAPPING_FAILED,
-            }
-        }
         pagetablemethod::MAP_TABLE => {
             // MapTable: (table_cap, vaddr, level)
             let table_cptr = utcb.mrs_regs[0];
@@ -294,24 +271,6 @@ fn invoke_pagetable(cap: &Capability, _cptr: usize, method: usize) -> usize {
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
-        pagetablemethod::UNMAP => {
-            // Unmap: (vaddr, size)
-            let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
-            let size = utcb.mrs_regs[1];
-            match pt.unmap(vaddr, size) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => errcode::MAPPING_FAILED,
-            }
-        }
-        pagetablemethod::SETUP => match pt.setup() {
-            Ok(()) => errcode::SUCCESS,
-            Err(_) => errcode::MAPPING_FAILED,
-        },
-        pagetablemethod::DEBUG_PRINT => {
-            pt.debug_print();
-            errcode::SUCCESS
-        }
-
         _ => errcode::INVALID_METHOD,
     }
 }
@@ -505,7 +464,10 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                             Capability::create_endpoint(obj_vaddr, rights::ALL)
                         }
                         // Frame
-                        types::FRAME => Capability::create_frame(obj_paddr, obj_pages, rights::ALL),
+                        types::FRAME => {
+                            // 初始化 Frame (清零已在上面完成)
+                            Capability::create_frame(obj_paddr, obj_pages, rights::ALL)
+                        }
                         // PageTable
                         types::PAGETABLE => {
                             if obj_pages != sizes::PAGETABLE {
@@ -519,7 +481,7 @@ fn invoke_untyped(cap: &Capability, cptr: usize, method: usize) -> usize {
                                 return errcode::INVALID_OBJ_TYPE;
                             }
                             // 初始化虚拟地址空间 (清零已在上面完成)
-                            Capability::create_vspace(obj_paddr, 0, rights::ALL)
+                            Capability::create_vspace(obj_paddr, asid::alloc(), rights::ALL)
                         }
                         _ => return errcode::INVALID_OBJ_TYPE,
                     };
@@ -624,6 +586,89 @@ fn invoke_console(_cap: &Capability, _cptr: usize, method: usize) -> usize {
             } else {
                 errcode::INVALID_SLOT
             }
+        }
+        _ => errcode::INVALID_METHOD,
+    }
+}
+
+fn invoke_vspace(cap: &Capability, _cptr: usize, method: usize) -> usize {
+    let paddr = if cap.cap_type() == CapType::VSpace {
+        PhysAddr::from(cap.words[0])
+    } else {
+        return errcode::INVALID_OBJ_TYPE;
+    };
+
+    // PageTable 需要物理地址转虚拟地址才能操作
+    let pt_ptr = paddr.to_va();
+    let pt = pt_ptr.as_mut::<PageTable>();
+    let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
+    let utcb = match tcb.get_utcb() {
+        Some(u) => u,
+        None => return errcode::MAPPING_FAILED,
+    };
+
+    match method {
+        vspacemethod::MAP => {
+            // Map: (frame_cap, vaddr, flags)
+            let frame_cptr = utcb.mrs_regs[0];
+            let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
+            let flags = PteFlags::from(utcb.mrs_regs[2]);
+
+            let frame_cap = match tcb.cap_lookup(frame_cptr) {
+                Some(c) => c,
+                None => return errcode::INVALID_CAP,
+            };
+
+            let frame_paddr = if frame_cap.cap_type() == CapType::Frame {
+                PhysAddr::from(frame_cap.words[0])
+            } else {
+                return errcode::INVALID_OBJ_TYPE;
+            };
+
+            // 执行映射
+            match pt.map(vaddr, frame_paddr, PGSIZE, flags) {
+                Ok(()) => errcode::SUCCESS,
+                Err(_) => errcode::MAPPING_FAILED,
+            }
+        }
+        vspacemethod::MAP_TABLE => {
+            // MapTable: (table_cap, vaddr, level)
+            let table_cptr = utcb.mrs_regs[0];
+            let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
+            let level = utcb.mrs_regs[2];
+
+            let table_cap = match tcb.cap_lookup(table_cptr) {
+                Some(c) => c,
+                None => return errcode::INVALID_CAP,
+            };
+
+            let table_paddr = if table_cap.cap_type() == CapType::VSpace {
+                PhysAddr::from(table_cap.words[0])
+            } else {
+                return errcode::INVALID_OBJ_TYPE;
+            };
+
+            match pt.map_table(vaddr, table_paddr, level) {
+                Ok(()) => errcode::SUCCESS,
+                Err(_) => errcode::MAPPING_FAILED,
+            }
+        }
+        vspacemethod::UNMAP => {
+            // Unmap: (vaddr, size)
+            let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
+            let size = utcb.mrs_regs[1];
+            match pt.unmap(vaddr, size) {
+                Ok(()) => errcode::SUCCESS,
+                Err(_) => errcode::MAPPING_FAILED,
+            }
+        }
+        vspacemethod::SETUP => match pt.setup() {
+            Ok(()) => errcode::SUCCESS,
+            Err(_) => errcode::MAPPING_FAILED,
+        },
+        vspacemethod::DEBUG_PRINT => {
+            pt.debug_print();
+            errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,
     }

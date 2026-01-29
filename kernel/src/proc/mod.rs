@@ -1,3 +1,4 @@
+pub mod asid;
 pub mod elf;
 pub mod roottask;
 pub mod scheduler;

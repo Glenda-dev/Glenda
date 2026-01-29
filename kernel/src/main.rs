@@ -41,7 +41,7 @@ pub extern "C" fn glenda_main() -> ! {
 
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
-    printk!("{}PANIC{}: {}", ANSI_RED, ANSI_RESET, info);
+    printk_unsynced!("{}PANIC{}: {}\n", ANSI_RED, ANSI_RESET, info);
     hal::runtime::backtrace();
     loop {
         hal::irq::wfi();
