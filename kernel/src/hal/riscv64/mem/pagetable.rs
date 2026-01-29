@@ -1,8 +1,7 @@
 use super::Pte;
-use super::PteFlags;
 use super::get_vpn_index;
-use super::pte::perms;
 use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
+use crate::mem::Perms;
 use crate::mem::TRAMPOLINE_VA;
 use crate::mem::pmem;
 unsafe extern "C" {
@@ -74,13 +73,7 @@ impl PageTable {
     ///
     /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
     /// 用户必须先调用 map_table 来建立中间层级。
-    pub fn map(
-        &mut self,
-        va: VirtAddr,
-        pa: PhysAddr,
-        size: usize,
-        flags: PteFlags,
-    ) -> Result<(), ()> {
+    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) -> Result<(), ()> {
         assert!(va.is_aligned(PGSIZE));
         assert!(pa.is_aligned(PGSIZE));
 
@@ -98,7 +91,7 @@ impl PageTable {
                 }
 
                 // 写入新的 PTE
-                *pte_ptr = Pte::from(current_pa, flags | perms::VALID);
+                *pte_ptr = Pte::from(current_pa, flags | Perms::VALID);
             }
 
             current_va += PGSIZE;
@@ -163,7 +156,7 @@ impl PageTable {
             return Err(()); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
-        *pte_ptr = Pte::from(table_pa, PteFlags::from(perms::VALID));
+        *pte_ptr = Pte::from(table_pa, Perms::VALID);
 
         Ok(())
     }
@@ -172,7 +165,7 @@ impl PageTable {
     ///
     /// 如果中间页表不存在，则分配新的页表页。
     /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
-    pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: PteFlags) {
+    pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) {
         assert!(va.is_aligned(PGSIZE));
         assert!(pa.is_aligned(PGSIZE));
         let start = va;
@@ -196,7 +189,7 @@ impl PageTable {
                     core::mem::forget(frame_cap);
 
                     // 建立中间层级映射 (V=1, 无 R/W/X)
-                    *entry = Pte::from(frame_pa, PteFlags::from(perms::VALID));
+                    *entry = Pte::from(frame_pa, Perms::VALID);
                 }
 
                 // 进入下一级
@@ -211,7 +204,7 @@ impl PageTable {
 
             let pte_ptr = unsafe { &mut (*table).entries[idx] };
             // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
-            *pte_ptr = Pte::from(pa, flags | perms::VALID);
+            *pte_ptr = Pte::from(pa, flags | Perms::VALID);
             va += PGSIZE;
             pa += PGSIZE;
         }
@@ -287,11 +280,6 @@ impl PageTable {
     }
     pub fn setup(&mut self) -> Result<(), ()> {
         let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
-        self.map(
-            VirtAddr::from(TRAMPOLINE_VA),
-            tramp_pa,
-            PGSIZE,
-            PteFlags::from(perms::READ | perms::EXECUTE),
-        )
+        self.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
     }
 }

@@ -3,8 +3,7 @@ mod pte;
 mod vm;
 
 pub use pagetable::PageTable;
-pub use pte::perms as PtePerms;
-pub use pte::{Pte, PteFlags};
+pub use pte::Pte;
 
 pub const PGSIZE: usize = 4096;
 pub const VA_MAX: usize = 1 << 38;

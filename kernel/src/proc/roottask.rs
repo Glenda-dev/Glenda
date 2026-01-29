@@ -7,10 +7,11 @@ use crate::cap::CNode;
 use crate::cap::Capability;
 use crate::cap::rights;
 use crate::hal;
-use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
+use crate::hal::mem::PGSIZE;
+use crate::hal::mem::PageTable;
 use crate::initrd;
 use crate::mem::pmem;
-use crate::mem::{PhysAddr, VirtAddr};
+use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::printk;
 
@@ -168,7 +169,7 @@ fn init_vspace(
         VirtAddr::from(TRAPFRAME_VA),
         tf_paddr,
         PGSIZE,
-        PteFlags::from(PtePerms::READ | PtePerms::WRITE),
+        Perms::READ | Perms::WRITE,
     );
 
     // 映射 UTCB 到固定位置
@@ -176,7 +177,7 @@ fn init_vspace(
         VirtAddr::from(UTCB_VA),
         utcb_paddr,
         PGSIZE,
-        PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
+        Perms::USER | Perms::READ | Perms::WRITE,
     );
 
     // 映射 BootInfo 到固定位置
@@ -184,7 +185,7 @@ fn init_vspace(
         VirtAddr::from(BOOTINFO_VA),
         bootinfo_paddr,
         PGSIZE,
-        PteFlags::from(PtePerms::USER | PtePerms::READ), // 只读
+        Perms::USER | Perms::READ, // 只读
     );
 
     // 映射 Initrd 到固定位置
@@ -193,7 +194,7 @@ fn init_vspace(
         VirtAddr::from(INITRD_VA),
         range.start.align_down(PGSIZE),
         range.size,
-        PteFlags::from(PtePerms::USER | PtePerms::READ),
+        Perms::USER | Perms::READ,
     );
 
     let stack_va_start = STACK_VA;
@@ -206,7 +207,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
+            Perms::USER | Perms::READ | Perms::WRITE,
         );
         core::mem::forget(frame);
     }
@@ -224,7 +225,7 @@ fn init_vspace(
             va,
             frame.obj_ptr().to_pa(),
             PGSIZE,
-            PteFlags::from(PtePerms::USER | PtePerms::READ | PtePerms::WRITE),
+            Perms::USER | Perms::READ | Perms::WRITE,
         );
         core::mem::forget(frame);
     }

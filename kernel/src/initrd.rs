@@ -1,7 +1,8 @@
 use crate::hal;
-use crate::hal::mem::{PGSIZE, PageTable, PteFlags, PtePerms};
-use crate::mem::VirtAddr;
+use crate::hal::mem::PGSIZE;
+use crate::hal::mem::PageTable;
 use crate::mem::pmem;
+use crate::mem::{Perms, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use crate::proc::ElfFile;
@@ -185,9 +186,7 @@ impl ProcPayload {
     // Map Flat Entire Binary
     pub fn map_flat(&self, vspace: &mut PageTable) {
         // Copy data into newly allocated frames
-        let flags = PteFlags::from(
-            PtePerms::USER | PtePerms::READ | PtePerms::EXECUTE | PtePerms::WRITE | PtePerms::VALID,
-        );
+        let flags = Perms::USER | Perms::READ | Perms::EXECUTE | Perms::WRITE | Perms::VALID;
         let num_pages = (self.data.len() + PGSIZE - 1) / PGSIZE;
 
         for j in 0..num_pages {

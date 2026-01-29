@@ -66,9 +66,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "bitflags"
-version = "2.9.4"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
+checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "buddy_system_allocator"
@@ -259,6 +259,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "fdt",
  "spin 0.10.0",
 ]
@@ -273,6 +274,7 @@ checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
 name = "libglenda-rs"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "buddy_system_allocator",
  "serde",
  "serde_json",

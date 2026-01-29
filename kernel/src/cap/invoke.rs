@@ -2,9 +2,10 @@ use super::method::*;
 use crate::cap::captype::{sizes, types};
 use crate::cap::{Badge, CNode, CapType, Capability, Slot, rights};
 use crate::hal;
-use crate::hal::mem::{PGSIZE, PageTable, PteFlags};
+use crate::hal::mem::{PGSIZE, PageTable};
 use crate::ipc;
 use crate::irq;
+use crate::mem::Perms;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::proc::{TCB, asid, scheduler};
 use crate::trap::syscall::errcode;
@@ -613,7 +614,7 @@ fn invoke_vspace(cap: &Capability, _cptr: usize, method: usize) -> usize {
             // Map: (frame_cap, vaddr, flags)
             let frame_cptr = utcb.mrs_regs[0];
             let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
-            let flags = PteFlags::from(utcb.mrs_regs[2]);
+            let flags = Perms::from_bits_truncate(utcb.mrs_regs[2]) | Perms::USER;
 
             let frame_cap = match tcb.cap_lookup(frame_cptr) {
                 Some(c) => c,
