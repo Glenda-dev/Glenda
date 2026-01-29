@@ -38,12 +38,9 @@ pub mod sizes {
     pub const TCB: usize = 1; // 4 KiB, 1 page
     pub const ENDPOINT: usize = 1; // 256 B, 1 page
     pub const REPLY: usize = 1; // 256 B, 1 page
-    pub const FRAME: usize = 1; // 4 KiB, 1 page
     pub const PAGETABLE: usize = 1; // 4 KiB, 1 page
     pub const CNODE: usize = 4; // 16 KiB, 4 pages
     pub const IRQ_HANDLER: usize = 1; // 256 B, 1 page
-    pub const CONSOLE: usize = 1; // 256 B, 1 page
-    pub const MMIO: usize = 1; // 4 KiB, 1 page
     pub const VSPACE: usize = 1; // 4 KiB, 1 page
 }
 
