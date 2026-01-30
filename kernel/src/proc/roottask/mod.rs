@@ -3,6 +3,7 @@ mod init;
 mod initrd;
 mod layout;
 
+pub use initrd::print_files;
 pub use layout::STACK_VA;
 
 use super::scheduler;
@@ -14,10 +15,14 @@ use bootinfo::BootInfo;
 use init::*;
 use layout::*;
 
-/// 初始化进程子系统并创建 Root Task
+/// 初始化进程子系统
 pub fn init() {
     initrd::init();
-    let root_task = initrd::get_root_task().expect("proc: Root task not found");
+}
+
+/// 创建 Root Task
+pub fn spawn(name: &str) {
+    let root_task = initrd::find(name).expect("proc: Root task not found");
     let (entry_point, stack_top) = root_task.info();
 
     // 1. Allocate Capabilities

@@ -54,7 +54,7 @@ impl PmemManager {
         printk!("  Start: {:#x}\n", self.start.as_usize());
         printk!("  Current: {:#x}\n", self.current.as_usize());
         printk!("  End: {:#x}\n", self.end.as_usize());
-        printk!("  Free: {} bytes\n", self.end.as_usize() - self.current.as_usize());
+        printk!("  Free: {} KB\n", (self.end - self.current).as_usize() / 1024);
     }
 }
 

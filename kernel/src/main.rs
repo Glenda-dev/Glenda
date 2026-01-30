@@ -35,6 +35,9 @@ pub extern "C" fn glenda_main() -> ! {
     let (cpuid, info) = hal::boot::detect();
     init::init(cpuid, info);
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
+    if cpuid == 0 {
+        shell::run();
+    }
     proc::scheduler::scheduler();
 }
 

@@ -88,6 +88,15 @@ fn execute_command(cmd_line: &str) -> bool {
         "info" => print_platform_info(),
         "mem" => mem::pmem::debug_info(),
         "sched" => proc::scheduler::debug_info(),
+        "ls" => proc::roottask::print_files(),
+        "exec" => {
+            if let Some(name) = parts.next() {
+                proc::roottask::spawn(name);
+            } else {
+                printk!("Usage: exec <name>\n");
+            }
+        }
+        "boot" => return true,
         "kpt" => print_kpt(),
         "debug" => {
             if let (Some(addr_str), Some(type_str)) = (parts.next(), parts.next()) {
@@ -130,6 +139,9 @@ fn print_help() {
     printk!("  kpt              - Show kernel pagetable\n");
     printk!("  inspect          - Inspect memory\n");
     printk!("  sched            - Show scheduler status\n");
+    printk!("  ls               - List initrd files\n");
+    printk!("  exec <name>      - Spawn process from initrd\n");
+    printk!("  boot             - Boot system (exit shell)\n");
     printk!("  shutdown         - Shutdown machine\n");
     printk!("  reboot           - Reboot machine\n");
     printk!("  debug <addr> <type> - Debug print struct at address\n");
