@@ -8,8 +8,6 @@ use crate::hal::platform::PlatformInfo;
 pub use elf::ElfFile;
 pub use thread::{TCB, ThreadState};
 
-pub fn init(cpuid: usize, _info: PlatformInfo) {
-    if cpuid == 0 {
-        roottask::init();
-    }
+pub fn init(_cpuid: usize, _info: PlatformInfo) {
+    roottask::init();
 }
