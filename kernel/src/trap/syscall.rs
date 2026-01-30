@@ -23,7 +23,10 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let cspace = tcb.get_cspace();
     match cspace.lookup_slot_ptr(cptr) {
-        None => errcode::INVALID_SLOT,
+        None => {
+            crate::printk!("syscall: Invalid slot at cptr {:#x}\n", cptr.bits());
+            errcode::INVALID_SLOT
+        }
         // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）
         Some(slot_ptr) => {
             // 2. 读取 Capability 副本进行操作

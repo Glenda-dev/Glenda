@@ -19,9 +19,10 @@ pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
         CapType::CNode => invoke_cnode(cap, method),
         CapType::Untyped => invoke_untyped(cap, method),
         CapType::IrqHandler => invoke_irq_handler(cap, method),
+        CapType::VSpace => invoke_vspace(cap, method),
         CapType::Reply => invoke_reply(cap, method),
         CapType::Console => invoke_console(cap, method),
-        _ => errcode::INVALID_OBJ_TYPE, // Error: Invalid Object Type for Invocation
+        _ => errcode::INVALID_OBJ_TYPE,
     }
 }
 

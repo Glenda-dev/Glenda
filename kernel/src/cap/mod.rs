@@ -8,7 +8,7 @@ pub mod method;
 pub use badge::Badge;
 pub use capability::Capability;
 pub use captype::CapType;
-pub use cnode::{CNODE_BITS, CNODE_PAGES, ROOT_BITS};
+pub use cnode::CNODE_PAGES;
 pub use cnode::{CNode, CapPtr, Slot};
 
 use crate::ipc::MAX_MRS;

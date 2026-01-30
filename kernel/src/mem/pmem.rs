@@ -98,13 +98,13 @@ pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
     })
 }
 
-pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
+pub fn alloc_cnode_cap() -> Option<Capability> {
     let size = CNODE_PAGES * PGSIZE;
     let align = PGSIZE;
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
         let vaddr = hal::mem::phys_to_virt(paddr);
         let cnode = vaddr.as_mut::<CNode>();
-        *cnode = CNode::new(bits);
+        *cnode = CNode::new();
         Capability::create_cnode(cnode, Rights::ALL)
     })
 }

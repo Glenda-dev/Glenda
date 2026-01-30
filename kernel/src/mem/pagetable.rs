@@ -4,7 +4,6 @@ use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 
-// align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
 pub struct PageTable {
     pub entries: [Pte; PGNUM],

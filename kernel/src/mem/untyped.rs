@@ -3,8 +3,8 @@ use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, CapType, Capability, Rights, Slot};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
-use crate::mem::PageTable;
 use crate::ipc;
+use crate::mem::PageTable;
 use crate::mem::{PhysFrame, VirtAddr};
 use crate::proc::{TCB, asid};
 use crate::trap::syscall::errcode;
@@ -91,7 +91,7 @@ impl UntypedRegion {
             let new_cap = match obj_type {
                 CapType::CNode => {
                     let cnode_ptr = obj_vaddr.as_mut_ptr::<CNode>();
-                    unsafe { cnode_ptr.write(CNode::new(flags as u8)) };
+                    unsafe { cnode_ptr.write(CNode::new()) };
                     Capability::create_cnode(unsafe { &*cnode_ptr }, Rights::ALL)
                 }
                 CapType::TCB => {

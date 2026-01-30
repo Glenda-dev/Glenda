@@ -1,15 +1,17 @@
 use super::{CapType, Capability};
+use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
 use crate::printk;
 use core::sync::atomic::AtomicUsize;
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
-pub const CNODE_BITS: u8 = 8; // 256 slots per CNode
+pub const CNODE_BITS: usize = 8; // 256 slots per CNode
 pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
-pub const CNODE_PAGES: usize = 4;
-pub const ROOT_BITS: u8 = 64;
+pub const CNODE_MASK: usize = CNODE_SLOTS - 1;
+pub const CNODE_PAGES: usize = (CNODE_SIZE + PGSIZE - 1) / PGSIZE; // CNode 占用的页数
 
+/// 每8位作为一层的索引号
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CapPtr(usize);
@@ -19,16 +21,16 @@ impl CapPtr {
         CapPtr(slot)
     }
     pub fn next(&self) -> Self {
-        CapPtr(self.0 + 1)
-    }
-    pub fn prev(&self) -> Self {
-        CapPtr(self.0 - 1)
+        CapPtr(self.0 >> CNODE_BITS)
     }
     pub const fn bits(&self) -> usize {
         self.0
     }
+    pub const fn index(&self) -> usize {
+        (self.0 & CNODE_MASK) as usize
+    }
     pub const fn is_null(&self) -> bool {
-        self.0 == 0
+        self.0 & CNODE_MASK == 0
     }
 }
 
@@ -59,33 +61,25 @@ impl CDTNode {
 pub struct Slot {
     pub cap: Capability,
     pub cdt: CDTNode,
+    pub _padding: [u8; 16], // 16 (Cap) + 32 (CDT) + 16 = 64 字节
 }
 
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
-///
-/// 实现了稀疏树（Radix Tree）结构的 CSpace。
 /// 每个 CNode 节点大小固定（通常为 1 页），包含固定数量的 Slot。
 /// 查找 Capability 时，根据 CPtr 的位段逐级索引。
 #[repr(C)]
 pub struct CNode {
-    pub ref_count: AtomicUsize,
-    pub guard: usize,
-    pub guard_size: u8,
-    pub bits: u8,
-    pub _padding: [u8; 46],
     pub slots: [Slot; CNODE_SLOTS],
+    pub ref_count: AtomicUsize,
 }
 
 impl CNode {
-    pub const fn new(bits: u8) -> Self {
+    pub fn new() -> Self {
         Self {
+            slots: [const { Slot { cap: Capability::empty(), cdt: CDTNode::new(), _padding: [0; 16] } };
+                CNODE_SLOTS],
             ref_count: AtomicUsize::new(1),
-            guard: 0,
-            guard_size: 0,
-            _padding: [0; 46],
-            slots: [const { Slot { cap: Capability::empty(), cdt: CDTNode::new() } }; CNODE_SLOTS],
-            bits: bits,
         }
     }
 
@@ -103,46 +97,17 @@ impl CNode {
         if cptr.is_null() {
             return None;
         }
-        let bits = self.bits;
 
-        // 1. Guard 检查
-        if self.guard_size > 0 {
-            if bits < self.guard_size {
-                return None;
-            }
-            let guard_mask =
-                if self.guard_size == 64 { !0 } else { (1usize << self.guard_size) - 1 };
-            // 根据当前节点的 bits 定位 guard 在 cptr 中的位置
-            let cptr_guard = (cptr.0 >> (bits - self.guard_size)) & guard_mask;
-            if cptr_guard != self.guard {
-                return None;
-            }
-        }
-
-        let rem_bits = bits - self.guard_size;
-
-        // 2. 本级索引
-        if rem_bits == 0 {
-            return None;
-        }
-
-        let radix_bits = CNODE_BITS;
-        let index = if rem_bits > radix_bits {
-            (cptr.bits() >> (rem_bits - radix_bits)) & ((1 << radix_bits) - 1)
-        } else {
-            cptr.bits() & ((1 << rem_bits) - 1)
-        };
-
-        if index >= CNODE_SLOTS {
-            return None;
-        }
+        let index = cptr.index();
+        let next_cptr = cptr.next();
 
         // 获取 Slot 指针
         let slot_ptr = unsafe { self.slots.as_ptr().add(index) as *mut Slot };
         let slot = unsafe { &*slot_ptr };
 
-        // 3. 递归查下一层
-        if rem_bits > radix_bits {
+        if next_cptr.is_null() {
+            return Some(slot_ptr);
+        } else {
             if slot.cap.cap_type() == CapType::CNode {
                 let next_cnode_addr = slot.cap.obj_ptr();
                 if next_cnode_addr == VirtAddr::null() {
@@ -150,12 +115,10 @@ impl CNode {
                 }
                 let next_cnode = next_cnode_addr.as_ref::<CNode>();
                 // 递归调用
-                return next_cnode.lookup_slot_ptr(cptr);
+                return next_cnode.lookup_slot_ptr(next_cptr);
             } else {
-                return Some(slot_ptr);
+                return None;
             }
-        } else {
-            return Some(slot_ptr);
         }
     }
 
@@ -227,7 +190,7 @@ impl CNode {
     }
 
     fn debug_print_recursive(&self, depth: usize) {
-        if depth > 8 {
+        if depth > 64 / CNODE_BITS {
             panic!("CNode debug_print_recursive: too deep recursion");
         }
 

@@ -1,6 +1,5 @@
 use super::bootinfo::BootInfo;
 use super::layout::*;
-use crate::cap::{CNODE_BITS, ROOT_BITS};
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
@@ -30,19 +29,16 @@ pub struct RootCaps {
 pub fn alloc_root_caps() -> RootCaps {
     RootCaps {
         vspace: pmem::alloc_vspace_cap().expect("Failed to alloc root VSpace"),
-        cspace: pmem::alloc_cnode_cap(ROOT_BITS).expect("Failed to alloc root CSpace"),
+        cspace: pmem::alloc_cnode_cap().expect("Failed to alloc root CSpace"),
         tcb: pmem::alloc_tcb_cap().expect("Failed to alloc root TCB"),
         utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
         tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
         kstack: pmem::alloc_frame_cap(KSTACK_PAGES).expect("Failed to alloc root Kernel Stack"),
         bootinfo: pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo"),
         console: Capability::create_console(Rights::ALL),
-        untyped_cspace: pmem::alloc_cnode_cap(ROOT_BITS - CNODE_BITS)
-            .expect("Failed to alloc Untyped CNode"),
-        mmio_cspace: pmem::alloc_cnode_cap(ROOT_BITS - CNODE_BITS)
-            .expect("Failed to alloc MMIO CNode"),
-        irq_cspace: pmem::alloc_cnode_cap(ROOT_BITS - CNODE_BITS)
-            .expect("Failed to alloc IRQ CNode"),
+        untyped_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc Untyped CNode"),
+        mmio_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc MMIO CNode"),
+        irq_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc IRQ CNode"),
     }
 }
 

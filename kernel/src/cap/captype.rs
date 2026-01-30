@@ -1,3 +1,5 @@
+use core::mem::transmute;
+
 /// 内核对象类型
 /// 仅用于标识 Capability 的类型，不再携带数据
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,20 +22,7 @@ pub enum CapType {
 impl CapType {
     #[inline(always)]
     pub const fn from(value: usize) -> Self {
-        match value {
-            1 => CapType::Untyped,
-            2 => CapType::TCB,
-            3 => CapType::Endpoint,
-            4 => CapType::Reply,
-            5 => CapType::Frame,
-            6 => CapType::PageTable,
-            7 => CapType::CNode,
-            8 => CapType::IrqHandler,
-            9 => CapType::Console,
-            10 => CapType::MMIO,
-            11 => CapType::VSpace,
-            _ => CapType::Empty,
-        }
+        unsafe { transmute(value) }
     }
 }
 
