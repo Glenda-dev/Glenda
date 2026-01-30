@@ -4,7 +4,7 @@ use crate::hal::mem::{PGSIZE, USER_VA};
 use crate::mem::pmem;
 use crate::mem::{Perms, VirtAddr};
 use crate::printk;
-use crate::printk::{ANSI_RED, ANSI_RESET};
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
 use crate::proc::roottask::STACK_VA;
 use spin::Once;
@@ -66,13 +66,18 @@ pub fn init() {
     let count = u32::from_le_bytes([c0, c1, c2, c3]);
 
     if magic != PAYLOAD_MAGIC {
-        printk!("{}[WARN] Invalid payload magic: {:#x}{}\n", ANSI_RED, magic, ANSI_RESET);
+        printk!(
+            "proc: {}Warning{}: Invalid payload magic: {:#x}\n",
+            ANSI_YELLOW,
+            ANSI_RESET,
+            magic
+        );
         return;
     }
     printk!("proc: Initrd found, {} entries, {} KB\n", count, total_size / 1024);
 
     if count == 0 {
-        printk!("{}[WARN] Initrd is empty{}\n", ANSI_RED, ANSI_RESET);
+        printk!("proc: {}Warning{}: Initrd is empty\n", ANSI_YELLOW, ANSI_RESET);
         return;
     }
 
@@ -119,12 +124,12 @@ pub fn init() {
         let end = data_start.checked_add(size as usize).unwrap_or(usize::MAX);
         if end > total_size {
             printk!(
-                "{}[WARN]{} Root Task data out of bounds: {} + {} > {}\n",
-                ANSI_RED,
+                "proc: {}Warning{}: Root Task data out of bounds: {} + {} > {}\n",
+                ANSI_YELLOW,
+                ANSI_RESET,
                 data_start,
                 size,
                 total_size,
-                ANSI_RESET
             );
             &[]
         } else {
