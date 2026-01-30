@@ -1,6 +1,7 @@
 use core::arch::asm;
 
 const SBI_EXT_HSM: usize = 0x48534d;
+const SBI_EXT_SRST: usize = 0x53525354;
 const SBI_EXT_TIME: usize = 0x54494D45;
 const SBI_EXT_IPI: usize = 0x735049;
 const SBI_EXT_0_1_SET_TIMER: usize = 0x0;
@@ -48,7 +49,7 @@ pub fn send_hsm(hartid: usize, command: usize, arg0: usize, opaque: usize) -> Re
 }
 
 pub fn system_reset(reset_type: usize, reset_reason: usize) -> Result<(), isize> {
-    let error = unsafe { sbi_call(SBI_EXT_HSM, 0x00000002, reset_type, reset_reason, 0) };
+    let error = unsafe { sbi_call(SBI_EXT_SRST, 0, reset_type, reset_reason, 0) };
     if error == 0 { Ok(()) } else { Err(error) }
 }
 

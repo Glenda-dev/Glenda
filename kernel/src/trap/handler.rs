@@ -119,7 +119,7 @@ fn fault_handler(tcb: &mut TCB, e: TrapException, pc: usize, addr: VirtAddr, sta
 
 fn unhandled_exception(e: TrapException, pc: usize, addr: VirtAddr, status: usize) {
     printk!(
-        "{}TRAP(Exception){}: {} pc=0x{:x}, addr={}, status=0x{:x}\n",
+        "\n{}TRAP(Exception){}: {} pc=0x{:x}, addr={}, status=0x{:x}\n",
         ANSI_RED,
         ANSI_RESET,
         e,

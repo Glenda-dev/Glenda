@@ -7,6 +7,7 @@ use core::cmp;
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicU8, Ordering};
 use fdt::Fdt;
+use fdt::node::FdtNode;
 
 const MAX_MMIO_REGIONS: usize = 64;
 
@@ -326,4 +327,32 @@ fn parse_mmio(fdt: &Fdt) -> ([MemoryRange; MAX_MMIO_REGIONS], usize) {
         }
     }
     (regions, count)
+}
+
+fn print(fdt: &Fdt) {
+    printk!("dtb: Dump device tree:\n");
+    if let Some(root) = fdt.find_node("/") {
+        print_node(&root, 0);
+    }
+}
+
+fn print_node(node: &FdtNode<'_, '_>, depth: usize) {
+    for _ in 0..depth {
+        printk!("  ");
+    }
+
+    let name = if node.name.is_empty() { "/" } else { node.name };
+    printk!("{}\n", name);
+
+    for child in node.children() {
+        print_node(&child, depth + 1);
+    }
+}
+
+pub fn debug_print() {
+    let (addr, _) = dtb_info().expect("DTB not initialzed");
+    let dtb = addr as *const u8;
+    unsafe {
+        let _ = Fdt::from_ptr(dtb).map(|fdt| print(&fdt));
+    }
 }

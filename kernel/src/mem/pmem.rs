@@ -48,9 +48,21 @@ impl PmemManager {
             None
         }
     }
+
+    fn print_debug(&self) {
+        printk!("PmemManager Status:\n");
+        printk!("  Start: {:#x}\n", self.start.as_usize());
+        printk!("  Current: {:#x}\n", self.current.as_usize());
+        printk!("  End: {:#x}\n", self.end.as_usize());
+        printk!("  Free: {} bytes\n", self.end.as_usize() - self.current.as_usize());
+    }
 }
 
 static PMEM: Mutex<PmemManager> = Mutex::new(PmemManager::new());
+
+pub fn debug_info() {
+    PMEM.lock().print_debug();
+}
 
 pub fn initialize_regions(_hartid: usize) {
     let mem_range = hal::platform::memory_range().expect("Memory range not found in DTB");

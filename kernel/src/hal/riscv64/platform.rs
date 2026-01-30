@@ -76,6 +76,11 @@ pub fn mmio_ranges() -> Option<&'static [MemoryRange]> {
     Some(dtb::mmio_ranges())
 }
 
+/// 获取CPU数
+pub fn cpus() -> usize {
+    dtb::hart_count()
+}
+
 pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) {
     if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return;
@@ -98,4 +103,8 @@ pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) {
             ),
         }
     }
+}
+
+pub fn print() {
+    dtb::debug_print();
 }

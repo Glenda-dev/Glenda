@@ -7,3 +7,8 @@ pub fn init() {
 pub fn print(arg: core::fmt::Arguments) {
     unimplemented!()
 }
+
+/// 从控制台读取字符
+pub fn read() -> u8 {
+    unimplemented!()
+}

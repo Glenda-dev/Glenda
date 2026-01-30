@@ -54,3 +54,11 @@ pub fn mmio_ranges() -> Option<&'static [MemoryRange]> {
 pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) -> ! {
     unimplemented!()
 }
+
+/// 获取CPU数
+pub fn cpus() -> usize {
+    unimplemented!()
+}
+
+/// 输出平台信息
+pub fn print() {}

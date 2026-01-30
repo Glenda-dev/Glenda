@@ -11,3 +11,5 @@ pub mod platform;
 pub mod proc;
 pub mod runtime;
 pub mod trap;
+
+pub const ARCH: &'static str = "none";

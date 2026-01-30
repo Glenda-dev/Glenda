@@ -262,3 +262,42 @@ fn set_current(tcb_ptr: *mut TCB) {
         }
     }
 }
+
+pub fn debug_info() {
+    use crate::printk;
+
+    printk!("Scheduler Status:\n");
+    for i in 0..MAX_CPUS {
+        let cpu = unsafe { &cpu::CPUS[i] };
+        if !cpu.enabled {
+            continue;
+        }
+
+        printk!("  CPU {}:\n", i);
+        let current_ptr = unsafe { CURRENT_TCB[i] };
+        if let Some(ptr) = current_ptr {
+            printk!("    Running: Thread {:#x}\n", ptr as usize);
+        } else {
+            printk!("    Running: Idle\n");
+        }
+
+        let queues = cpu.ready_queues.lock();
+        let mut total_ready = 0;
+        for prio in 0..MAX_PRIORITY {
+            // Count manually
+            let mut count = 0;
+            let mut curr = queues[prio].head;
+            while let Some(ptr) = curr {
+                count += 1;
+                unsafe {
+                    curr = (*ptr).next;
+                }
+            }
+            if count > 0 {
+                printk!("    Priority {}: {} threads\n", prio, count);
+                total_ready += count;
+            }
+        }
+        printk!("    Total Ready: {}\n", total_ready);
+    }
+}

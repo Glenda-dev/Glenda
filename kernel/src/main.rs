@@ -13,6 +13,7 @@ mod logo;
 mod mem;
 mod printk;
 mod proc;
+mod shell;
 mod trap;
 
 use core::panic::PanicInfo;
@@ -41,6 +42,10 @@ pub extern "C" fn glenda_main() -> ! {
 pub fn panic(info: &PanicInfo) -> ! {
     printk_unsynced!("{}PANIC{}: {}\n", ANSI_RED, ANSI_RESET, info);
     hal::runtime::backtrace();
+    unsafe {
+        hal::mem::deactivate_vspace();
+    }
+    shell::run();
     loop {
         hal::irq::wfi();
     }

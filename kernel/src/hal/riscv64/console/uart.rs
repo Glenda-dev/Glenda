@@ -70,6 +70,16 @@ impl Uart {
         }
     }
 
+    pub fn get(&self) -> Option<u8> {
+        unsafe {
+            if (read_volatile(self.lsr) & 1) == 0 {
+                None
+            } else {
+                Some(read_volatile(self.thr as *const u8))
+            }
+        }
+    }
+
     pub fn puts(&self, s: &str) {
         for &b in s.as_bytes() {
             self.putb(b);
