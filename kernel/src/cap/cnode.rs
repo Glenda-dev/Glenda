@@ -1,5 +1,4 @@
 use super::{CapType, Capability};
-use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
 use crate::printk;
 use core::sync::atomic::AtomicUsize;
@@ -8,7 +7,7 @@ pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
 pub const CNODE_BITS: u8 = 8; // 256 slots per CNode
 pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
-pub const CNODE_PAGES: usize = CNODE_SIZE / PGSIZE; // 4 KiB pages
+pub const CNODE_PAGES: usize = 4;
 pub const ROOT_BITS: u8 = 64;
 
 #[repr(C)]
