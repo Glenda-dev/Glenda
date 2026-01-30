@@ -14,6 +14,12 @@ path = "service/factotum"
 build = "cargo"
 output = "build/factotum.elf"
 kind = "root_task"
+[[services]]
+name = "nineball"
+path = "service/nineball"
+build = "cargo"
+output = "build/nineball.elf"
+kind = "root_task"
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
