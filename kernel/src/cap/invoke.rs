@@ -164,9 +164,7 @@ fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             errcode::SUCCESS
         }
         tcbmethod::SET_REGISTERS => {
-            // SetRegisters: (flags, entry, sp)
-            // 简化版：只设置入口点和栈指针
-            let _flags = utcb.mrs_regs[0];
+            // SetRegisters: (entry, sp)
             let entry = utcb.mrs_regs[1];
             let sp = utcb.mrs_regs[2];
             tcb.set_registers(entry, sp);
