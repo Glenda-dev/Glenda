@@ -113,6 +113,13 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) {
     // 初始化 BootInfo
     *bootinfo = BootInfo::new();
 
+    // Init Initrd info
+    if let Some(range) = hal::platform::initrd() {
+        let align_off = range.start.as_usize() % PGSIZE;
+        bootinfo.initrd_start = INITRD_VA + align_off;
+        bootinfo.initrd_size = range.size;
+    }
+
     // 填充 PLATFORM 信息
     if let Some(range) = hal::platform::range() {
         bootinfo.info_desc = range;

@@ -3,8 +3,8 @@ mod init;
 mod initrd;
 mod layout;
 
-pub use initrd::print_files;
 pub use initrd::cat_file;
+pub use initrd::print_files;
 pub use layout::STACK_VA;
 
 use super::scheduler;

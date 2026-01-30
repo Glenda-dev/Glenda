@@ -12,6 +12,10 @@ pub struct BootInfo {
     /// Magic number for verification
     pub magic: u32,
 
+    /// Initrd info
+    pub initrd_start: usize,
+    pub initrd_size: usize,
+
     /// Platform Info Desc
     pub info_desc: MemoryRange,
 
@@ -40,6 +44,8 @@ impl BootInfo {
     pub fn new() -> Self {
         Self {
             magic: BOOTINFO_MAGIC,
+            initrd_start: 0,
+            initrd_size: 0,
             info_desc: MemoryRange::empty(),
             untyped_count: 0,
             untyped_list: [UntypedRegion::empty(); MAX_UNTYPED_REGIONS],
