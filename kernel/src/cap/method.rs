@@ -45,6 +45,7 @@ pub mod irqmethod {
 pub mod consolemethod {
     pub const PUT_CHAR: usize = 1;
     pub const PUT_STR: usize = 2;
+    pub const GET_CHAR: usize = 3;
 }
 
 pub mod vspacemethod {

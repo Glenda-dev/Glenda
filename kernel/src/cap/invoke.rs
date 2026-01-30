@@ -492,6 +492,11 @@ fn invoke_console(_cap: &mut Capability, method: usize) -> usize {
                 errcode::INVALID_SLOT
             }
         }
+        consolemethod::GET_CHAR => {
+            let c = hal::console::read() as usize;
+            utcb.mrs_regs[0] = c;
+            errcode::SUCCESS
+        }
         _ => errcode::INVALID_METHOD,
     }
 }
