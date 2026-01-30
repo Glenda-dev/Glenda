@@ -30,6 +30,20 @@ pub enum PayloadType {
     Server = 2,
     Test = 3,
     File = 4,
+    Unknown = 255,
+}
+
+impl From<u8> for PayloadType {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => PayloadType::RootTask,
+            1 => PayloadType::Driver,
+            2 => PayloadType::Server,
+            3 => PayloadType::Test,
+            4 => PayloadType::File,
+            _ => PayloadType::Unknown,
+        }
+    }
 }
 
 #[repr(C)]
@@ -118,13 +132,35 @@ pub fn print_files() {
         let len = name_buf.iter().position(|&c| c == 0).unwrap_or(32);
         let name = core::str::from_utf8(&name_buf[..len]).unwrap_or("<invalid>");
 
+        let type_byte = unsafe { *ptr.add(off) };
+        let type_name = match PayloadType::from(type_byte) {
+            PayloadType::RootTask => "RootTask",
+            PayloadType::Driver => "Driver",
+            PayloadType::Server => "Server",
+            PayloadType::Test => "Test",
+            PayloadType::File => "File",
+            PayloadType::Unknown => "Unknown",
+        };
+
         let s0 = unsafe { *ptr.add(off + 5) };
         let s1 = unsafe { *ptr.add(off + 6) };
         let s2 = unsafe { *ptr.add(off + 7) };
         let s3 = unsafe { *ptr.add(off + 8) };
         let size = u32::from_le_bytes([s0, s1, s2, s3]);
 
-        printk!("  - {} ({} KB)\n", name, size / 1024);
+        printk!("  - {} ({} KB) [{}]\n", name, size / 1024, type_name);
+    }
+}
+
+pub fn cat_file(name: &str) {
+    if let Some(payload) = find(name) {
+        if let Ok(s) = core::str::from_utf8(payload.data) {
+            printk!("{}\n", s);
+        } else {
+            printk!("(Binary file, {} bytes)\n", payload.data.len());
+        }
+    } else {
+        printk!("cat: {}: No such file\n", name);
     }
 }
 
@@ -191,7 +227,7 @@ pub fn get_by_index(index: u32) -> Option<ProcPayload> {
 
     Some(ProcPayload {
         metadata: Entry {
-            info: PayloadType::RootTask, // We assume all are RootTask type for now or convert from type_byte
+            info: PayloadType::from(_type_byte),
             offset,
             size,
             name: name_buf,

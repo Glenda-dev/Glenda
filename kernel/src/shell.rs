@@ -96,6 +96,13 @@ fn execute_command(cmd_line: &str) -> bool {
                 printk!("Usage: exec <name>\n");
             }
         }
+        "cat" => {
+            if let Some(name) = parts.next() {
+                proc::roottask::cat_file(name);
+            } else {
+                printk!("Usage: cat <name>\n");
+            }
+        }
         "boot" => return true,
         "kpt" => print_kpt(),
         "debug" => {
