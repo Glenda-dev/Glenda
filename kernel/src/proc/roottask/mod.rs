@@ -15,6 +15,8 @@ use bootinfo::BootInfo;
 use init::*;
 use layout::*;
 
+use initrd::ProcPayload;
+
 /// 初始化进程子系统
 pub fn init() {
     initrd::init();
@@ -22,7 +24,25 @@ pub fn init() {
 
 /// 创建 Root Task
 pub fn spawn(name: &str) {
-    let root_task = initrd::find(name).expect("proc: Root task not found");
+    if let Some(task) = initrd::find(name) {
+        spawn_payload(task);
+    } else {
+        panic!("proc: Root task '{}' not found", name);
+    }
+}
+
+pub fn spawn_first() {
+    if let Some(task) = initrd::get_by_index(0) {
+        let len = task.metadata.name.iter().position(|&c| c == 0).unwrap_or(32);
+        let name = core::str::from_utf8(&task.metadata.name[..len]).unwrap_or("unknown");
+        printk!("proc: Spawning default root task '{}'\n", name);
+        spawn_payload(task);
+    } else {
+        panic!("proc: No root task found in initrd");
+    }
+}
+
+fn spawn_payload(root_task: ProcPayload) {
     let (entry_point, stack_top) = root_task.info();
 
     // 1. Allocate Capabilities

@@ -36,7 +36,12 @@ pub extern "C" fn glenda_main() -> ! {
     init::init(cpuid, info);
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     if cpuid == 0 {
-        shell::run();
+        let bootargs = hal::platform::bootargs().unwrap_or("");
+        if bootargs.contains("-s") {
+            shell::run();
+        } else {
+            proc::roottask::spawn_first();
+        }
     }
     proc::scheduler::scheduler();
 }

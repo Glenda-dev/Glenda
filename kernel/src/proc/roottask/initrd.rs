@@ -24,18 +24,22 @@ Each entry:
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PayloadType {
+pub enum PayloadType {
     RootTask = 0,
+    Driver = 1,
+    Server = 2,
+    Test = 3,
+    File = 4,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Entry {
-    info: PayloadType,
-    offset: u32,
-    size: u32,
-    name: [u8; 32],
-    _padding: [u8; 7],
+    pub info: PayloadType,
+    pub offset: u32,
+    pub size: u32,
+    pub name: [u8; 32],
+    pub _padding: [u8; 7],
 }
 
 pub struct ProcPayload {
@@ -130,58 +134,71 @@ pub fn find(name: &str) -> Option<ProcPayload> {
         return None;
     }
 
-    let (base, total_size) = INITRD_REGION.get().unwrap();
+    // Scan by name
+    for i in 0..count {
+        if let Some(payload) = get_by_index(i) {
+            let len = payload.metadata.name.iter().position(|&c| c == 0).unwrap_or(32);
+            let entry_name = core::str::from_utf8(&payload.metadata.name[..len]).unwrap_or("");
+            if entry_name == name {
+                return Some(payload);
+            }
+        }
+    }
+    None
+}
+
+pub fn get_by_index(index: u32) -> Option<ProcPayload> {
+    let count = count_entries();
+    if index >= count {
+        return None;
+    }
+
+    let (base, total_size) = INITRD_REGION.get()?;
     let ptr = base.as_ptr::<u8>();
     let entry_base = 16;
     let entry_size = 48;
 
-    for i in 0..count {
-        let off = entry_base + (i as usize) * entry_size;
+    let off = entry_base + (index as usize) * entry_size;
 
-        // Check Name
-        let mut name_buf = [0u8; 32];
-        for j in 0..32 {
-            name_buf[j] = unsafe { *ptr.add(off + 9 + j) };
-        }
-        let len = name_buf.iter().position(|&c| c == 0).unwrap_or(32);
-        let entry_name = core::str::from_utf8(&name_buf[..len]).unwrap_or("");
-
-        if entry_name == name {
-            let o0 = unsafe { *ptr.add(off + 1) };
-            let o1 = unsafe { *ptr.add(off + 2) };
-            let o2 = unsafe { *ptr.add(off + 3) };
-            let o3 = unsafe { *ptr.add(off + 4) };
-            let offset = u32::from_le_bytes([o0, o1, o2, o3]);
-
-            let s0 = unsafe { *ptr.add(off + 5) };
-            let s1 = unsafe { *ptr.add(off + 6) };
-            let s2 = unsafe { *ptr.add(off + 7) };
-            let s3 = unsafe { *ptr.add(off + 8) };
-            let size = u32::from_le_bytes([s0, s1, s2, s3]);
-
-            let data = if size > 0 {
-                if (offset as usize) + (size as usize) > *total_size {
-                    &[]
-                } else {
-                    unsafe { core::slice::from_raw_parts(ptr.add(offset as usize), size as usize) }
-                }
-            } else {
-                &[]
-            };
-
-            return Some(ProcPayload {
-                metadata: Entry {
-                    info: PayloadType::RootTask,
-                    offset,
-                    size,
-                    name: name_buf,
-                    _padding: [0; 7],
-                },
-                data,
-            });
-        }
+    let mut name_buf = [0u8; 32];
+    for j in 0..32 {
+        name_buf[j] = unsafe { *ptr.add(off + 9 + j) };
     }
-    None
+
+    let o0 = unsafe { *ptr.add(off + 1) };
+    let o1 = unsafe { *ptr.add(off + 2) };
+    let o2 = unsafe { *ptr.add(off + 3) };
+    let o3 = unsafe { *ptr.add(off + 4) };
+    let offset = u32::from_le_bytes([o0, o1, o2, o3]);
+
+    let s0 = unsafe { *ptr.add(off + 5) };
+    let s1 = unsafe { *ptr.add(off + 6) };
+    let s2 = unsafe { *ptr.add(off + 7) };
+    let s3 = unsafe { *ptr.add(off + 8) };
+    let size = u32::from_le_bytes([s0, s1, s2, s3]);
+
+    let _type_byte = unsafe { *ptr.add(off) };
+
+    let data = if size > 0 {
+        if (offset as usize) + (size as usize) > *total_size {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(ptr.add(offset as usize), size as usize) }
+        }
+    } else {
+        &[]
+    };
+
+    Some(ProcPayload {
+        metadata: Entry {
+            info: PayloadType::RootTask, // We assume all are RootTask type for now or convert from type_byte
+            offset,
+            size,
+            name: name_buf,
+            _padding: [0; 7],
+        },
+        data,
+    })
 }
 
 impl ProcPayload {
