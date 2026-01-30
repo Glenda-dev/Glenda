@@ -138,12 +138,15 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
         Ok((c.name.clone(), data))
     };
 
-    // 1. Find and process Root Task first
-    if let Some(root_task_cfg) = cfg.services.iter().find(|c| c.kind == "root_task") {
+    // 1. Find and process Root Task(s) first
+    let root_tasks: Vec<_> = cfg.services.iter().filter(|c| c.kind == "root_task").collect();
+    if root_tasks.is_empty() {
+        eprintln!("[ WARN ] No root_task defined in config.toml");
+    }
+
+    for root_task_cfg in root_tasks {
         let (name, data) = process_service(root_task_cfg)?;
         entries.push((0, name, data));
-    } else {
-        eprintln!("[ WARN ] No root_task defined in config.toml");
     }
 
     // 2. Process other services
