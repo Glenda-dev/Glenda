@@ -7,7 +7,6 @@ mod cap;
 mod cpu;
 mod hal;
 mod init;
-mod initrd;
 mod ipc;
 mod irq;
 mod logo;

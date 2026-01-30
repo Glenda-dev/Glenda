@@ -1,6 +1,5 @@
 mod console;
 mod hart;
-mod initrd;
 mod irq;
 mod platform;
 mod pmem;
@@ -24,7 +23,6 @@ pub fn init(cpuid: usize, info: PlatformInfo) {
     vm::init(cpuid, info);
     trap::init(cpuid, info);
     irq::init(cpuid, info);
-    initrd::init(cpuid, info);
     proc::init(cpuid, info);
     hart::init(cpuid, info);
     init_guard(cpuid);

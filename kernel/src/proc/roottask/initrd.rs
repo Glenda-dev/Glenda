@@ -69,7 +69,7 @@ pub fn init() {
         printk!("{}[WARN] Invalid payload magic: {:#x}{}\n", ANSI_RED, magic, ANSI_RESET);
         return;
     }
-    printk!("initrd: Initrd found, {} entries, {} KB\n", count, total_size / 1024);
+    printk!("proc: Initrd found, {} entries, {} KB\n", count, total_size / 1024);
 
     if count == 0 {
         printk!("{}[WARN] Initrd is empty{}\n", ANSI_RED, ANSI_RESET);
@@ -106,17 +106,12 @@ pub fn init() {
     let name = core::str::from_utf8(&name_buf[..name_end]).unwrap_or("<invalid utf8>");
 
     printk!(
-        "initrd: Found Root Task: type={} offset={} size={}KB name={}\n",
+        "proc: Found Root Task: type={} offset={} size={}KB name={}\n",
         t,
         offset,
         size / 1024,
         name
     );
-
-    if t != 0 {
-        // 0 is RootTask
-        printk!("{}[WARN] First entry is not Root Task (type={}){}\n", ANSI_RED, t, ANSI_RESET);
-    }
 
     // create slice
     let data = if size > 0 {
@@ -124,7 +119,7 @@ pub fn init() {
         let end = data_start.checked_add(size as usize).unwrap_or(usize::MAX);
         if end > total_size {
             printk!(
-                "{}[WARN] Root Task data out of bounds: {} + {} > {}{}\n",
+                "{}[WARN]{} Root Task data out of bounds: {} + {} > {}\n",
                 ANSI_RED,
                 data_start,
                 size,
