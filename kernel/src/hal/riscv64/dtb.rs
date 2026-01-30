@@ -1,6 +1,6 @@
 use super::console::Config as UartConfig;
+use crate::mem::MemoryRange;
 use crate::mem::PhysAddr;
-use crate::platform::MemoryRange;
 use crate::printk;
 use core::cell::UnsafeCell;
 use core::cmp;

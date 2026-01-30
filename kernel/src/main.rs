@@ -12,7 +12,6 @@ mod ipc;
 mod irq;
 mod logo;
 mod mem;
-mod platform;
 mod printk;
 mod proc;
 mod trap;

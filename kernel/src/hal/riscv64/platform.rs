@@ -1,6 +1,6 @@
 use super::dtb;
 use super::sbi;
-use crate::platform::MemoryRange;
+use crate::mem::MemoryRange;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -72,8 +72,8 @@ pub fn range() -> Option<MemoryRange> {
 }
 
 /// 获取设备内存
-pub fn mmio_ranges() -> &'static [MemoryRange] {
-    dtb::mmio_ranges()
+pub fn mmio_ranges() -> Option<&'static [MemoryRange]> {
+    Some(dtb::mmio_ranges())
 }
 
 pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) {

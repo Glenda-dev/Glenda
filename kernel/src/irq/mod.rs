@@ -32,6 +32,18 @@ impl IrqSlot {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct IRQ(usize);
+
+impl IRQ {
+    pub const fn new(id: usize) -> Self {
+        Self(id)
+    }
+    pub const fn id(&self) -> usize {
+        self.0
+    }
+}
+
 static IRQ_TABLE: Mutex<[IrqSlot; MAX_IRQS]> = Mutex::new([const { IrqSlot::new() }; MAX_IRQS]);
 
 /// 绑定通知对象到 IRQ（通常是 Endpoint Cap）

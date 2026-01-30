@@ -1,23 +1,15 @@
 use super::PhysAddr;
-use crate::boot::UntypedDesc;
 use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::hal::mem::PageTable;
+use crate::mem::UntypedRegion;
 use crate::printk;
 use crate::proc::TCB;
 use crate::proc::asid;
 use core::ptr::addr_of_mut;
 use spin::Mutex;
-
-/// Untyped 内存区域描述符
-/// 这部分内存不被内核分配器管理，而是直接暴露给 Root Task
-#[derive(Clone, Copy, Debug)]
-pub struct UntypedRegion {
-    pub start: PhysAddr,
-    pub end: PhysAddr,
-}
 
 struct PmemManager {
     start: PhysAddr,
@@ -81,14 +73,17 @@ pub fn initialize_regions(_hartid: usize) {
 pub fn alloc_frame_cap(pages: usize) -> Option<Capability> {
     PMEM.lock()
         .alloc_addr(pages * PGSIZE, PGSIZE)
-        .map(|paddr| Capability::create_frame(paddr, pages, Rights::ALL))
+        .map(|paddr| Capability::create_frame(&PhysFrame { paddr, pages }, Rights::ALL))
 }
 
 /// 分配一个 Untyped Capability
 pub fn alloc_untyped_cap(size: usize) -> Option<Capability> {
-    PMEM.lock()
-        .alloc_addr(size, PGSIZE)
-        .map(|paddr| Capability::create_untyped(paddr, size / PGSIZE, Rights::ALL))
+    PMEM.lock().alloc_addr(size, PGSIZE).map(|paddr| {
+        Capability::create_untyped(
+            &UntypedRegion { start: paddr, pages: size / PGSIZE, watermark: 0 },
+            Rights::ALL,
+        )
+    })
 }
 
 pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
@@ -98,7 +93,7 @@ pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
         let vaddr = hal::mem::phys_to_virt(paddr);
         let cnode = vaddr.as_mut::<CNode>();
         *cnode = CNode::new(bits);
-        Capability::create_cnode(vaddr, Rights::ALL)
+        Capability::create_cnode(cnode, Rights::ALL)
     })
 }
 
@@ -106,7 +101,7 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
         let pt = hal::mem::phys_to_virt(paddr).as_mut::<PageTable>();
         *pt = PageTable::new();
-        Capability::create_pagetable(paddr, level, Rights::ALL)
+        Capability::create_pagetable(pt, level, Rights::ALL)
     })
 }
 
@@ -115,7 +110,7 @@ pub fn alloc_vspace_cap() -> Option<Capability> {
         let pt = hal::mem::phys_to_virt(paddr).as_mut::<PageTable>();
         *pt = PageTable::new();
         let asid = asid::alloc();
-        Capability::create_vspace(paddr, asid, Rights::ALL)
+        Capability::create_vspace(pt, asid, Rights::ALL)
     })
 }
 
@@ -125,7 +120,7 @@ pub fn alloc_tcb_cap() -> Option<Capability> {
         let vaddr = hal::mem::phys_to_virt(paddr);
         let tcb = vaddr.as_mut::<TCB>();
         *tcb = TCB::new();
-        Capability::create_tcb(vaddr, Rights::ALL)
+        Capability::create_tcb(tcb, Rights::ALL)
     })
 }
 
@@ -135,7 +130,36 @@ pub fn alloc_page() -> Option<PhysAddr> {
 
 /// 获取剩余的 Untyped 内存区域
 /// 这应该在 Root Task 创建完成后调用，用于将剩余内存移交给 Root Task
-pub fn get_untyped() -> UntypedDesc {
+pub fn get_untyped() -> UntypedRegion {
     let pmem = PMEM.lock();
-    UntypedDesc { paddr: pmem.current, size: (pmem.end - pmem.current).as_usize() / PGSIZE }
+    UntypedRegion {
+        start: pmem.current,
+        pages: (pmem.end - pmem.current).as_usize() / PGSIZE,
+        watermark: 0,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PhysFrame {
+    pub paddr: PhysAddr,
+    pub pages: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct MemoryRange {
+    pub start: PhysAddr,
+    pub size: usize,
+}
+
+impl MemoryRange {
+    pub fn from(start: PhysAddr, size: usize) -> MemoryRange {
+        MemoryRange { start, size }
+    }
+    pub fn end(&self) -> PhysAddr {
+        self.start + self.size
+    }
+    pub fn empty() -> Self {
+        Self { start: PhysAddr::null(), size: 0 }
+    }
 }

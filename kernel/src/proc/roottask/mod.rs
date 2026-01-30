@@ -1,6 +1,10 @@
+mod bootinfo;
+mod layout;
+
+pub use layout::STACK_VA;
+
 use super::scheduler;
 use super::{TCB, ThreadState};
-use crate::boot::{BootInfo, UntypedDesc};
 use crate::cap::{CNODE_BITS, ROOT_BITS};
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
@@ -8,34 +12,14 @@ use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::PageTable;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::initrd;
+use crate::irq::IRQ;
 use crate::mem::pmem;
-use crate::mem::{Perms, PhysAddr, VirtAddr};
+use crate::mem::{Perms, PhysAddr, PhysFrame, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::printk;
-
-// Common CSpace Slot Definitions
-pub const CSPACE_SLOT: usize = 1;
-pub const VSPACE_SLOT: usize = 2;
-pub const TCB_SLOT: usize = 3;
-// Root Task Specific Slots
-pub const CONSOLE_SLOT: usize = 5;
-pub const PLATFORM_SLOT: usize = 6;
-pub const UNTYPED_SLOT: usize = 7;
-pub const MMIO_SLOT: usize = 8;
-pub const IRQ_SLOT: usize = 9;
-
-pub const STACK_VA: usize = UTCB_VA - PGSIZE; // 用户栈映射地址
-pub const STACK_PAGES: usize = 16; // 用户栈页面数 16 * 4KB = 64KB
-pub const STACK_SIZE: usize = STACK_PAGES * PGSIZE; // 64KB
-pub const HEAP_PAGES: usize = 64; // 用户堆页面数 64 * 4KB = 256KB
-pub const HEAP_SIZE: usize = HEAP_PAGES * PGSIZE; // 256KB
-pub const HEAP_VA: usize = 0x2000_0000; // 用户堆地址
-pub const RES_VA_BASE: usize = 0x4000_0000; // 启动时提供的资源
-pub const SCRATCH_VA: usize = RES_VA_BASE; // Scratch 映射地址
-pub const BOOTINFO_VA: usize = RES_VA_BASE + PGSIZE; // Bootinfo映射地址
-pub const INITRD_VA: usize = BOOTINFO_VA + PGSIZE; // Initrd 映射地址 (Root Task)
-pub const ROOT_TASK_PRIORITY: u8 = 253; // Root Task 优先级
-
+use crate::printk::{ANSI_RESET, ANSI_YELLOW};
+use bootinfo::BootInfo;
+use layout::*;
 struct RootCaps {
     vspace: Capability,
     cspace: Capability,
@@ -196,7 +180,7 @@ fn init_bootinfo(bootinfo: &mut BootInfo) {
 
     // 填充 PLATFORM 信息
     if let Some(range) = hal::platform::range() {
-        bootinfo.info_desc = UntypedDesc { paddr: range.start, size: range.size };
+        bootinfo.info_desc = range;
     }
 
     // 填充启动参数
@@ -218,56 +202,48 @@ fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
 
     match hal::platform::range() {
         Some(range) => {
-            let platform_start = range.start.align_down(PGSIZE);
-            let platform_page_count = (range.size + PGSIZE - 1) / PGSIZE;
-            let platform_cap = Capability::create_frame(
-                platform_start,
-                platform_page_count,
-                Rights::READ | Rights::WRITE | Rights::GRANT,
-            );
+            let frame = PhysFrame { paddr: range.start, pages: range.size / PGSIZE };
+            let platform_cap =
+                Capability::create_frame(&frame, Rights::READ | Rights::WRITE | Rights::GRANT);
             cspace.insert(PLATFORM_SLOT, &platform_cap);
         }
-        None => printk!("proc: Warning: Platform range not found\n"),
+        None => printk!("proc: {}Warning{}: Platform range not found\n", ANSI_YELLOW, ANSI_RESET),
     }
 
     // === 1. MMIO Caps (Stored in MMIO CNode at slot 7) ===
     let mut slot = 1;
     let mmio_cnode = caps.mmio_cspace.obj_ptr().as_mut::<CNode>();
+    match hal::platform::mmio_ranges() {
+        Some(ranges) => {
+            for mmio_region in ranges {
+                let mmio_size = mmio_region.size;
+                if mmio_size > 0 {
+                    let cap = Capability::create_mmio(&mmio_region, Rights::ALL);
+                    // 插入到 MMIO 子 CNode
+                    mmio_cnode.insert(slot, &cap);
 
-    for mmio_region in hal::platform::mmio_ranges() {
-        let mmio_size = mmio_region.size;
-        if mmio_size > 0 {
-            let cap = Capability::create_mmio(mmio_region.start, mmio_region.size, Rights::ALL);
-            // 插入到 MMIO 子 CNode
-            mmio_cnode.insert(slot, &cap);
-
-            if bootinfo.mmio_count < bootinfo.mmio_list.len() {
-                bootinfo.mmio_list[bootinfo.mmio_count] =
-                    UntypedDesc { paddr: mmio_region.start, size: mmio_size };
-                bootinfo.mmio_count += 1;
+                    if bootinfo.mmio_count < bootinfo.mmio_list.len() {
+                        bootinfo.mmio_list[bootinfo.mmio_count] = *mmio_region;
+                        bootinfo.mmio_count += 1;
+                    }
+                    slot += 1;
+                }
             }
-            slot += 1;
         }
+        None => printk!("proc: {}Warning{}: No MMIO ranges found\n", ANSI_YELLOW, ANSI_RESET),
     }
 
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let slot = 1;
     let untyped_cnode = caps.untyped_cspace.obj_ptr().as_mut::<CNode>();
     let untyped_region = pmem::get_untyped();
-    let untyped_size = untyped_region.size;
-    if untyped_size > 0 {
-        let cap = Capability::create_untyped(
-            untyped_region.paddr,
-            (untyped_size + PGSIZE - 1) / PGSIZE,
-            Rights::ALL,
-        );
-        // 插入到 Untyped 子 CNode
-        untyped_cnode.insert(slot, &cap);
+    let cap = Capability::create_untyped(&untyped_region, Rights::ALL);
+    // 插入到 Untyped 子 CNode
+    untyped_cnode.insert(slot, &cap);
 
-        if bootinfo.untyped_count < bootinfo.untyped_list.len() {
-            bootinfo.untyped_list[bootinfo.untyped_count] = untyped_region;
-            bootinfo.untyped_count += 1;
-        }
+    if bootinfo.untyped_count < bootinfo.untyped_list.len() {
+        bootinfo.untyped_list[bootinfo.untyped_count] = untyped_region;
+        bootinfo.untyped_count += 1;
     }
 
     // === 3. IRQ Caps (Stored in Root CNode L1 directly, starting slot 8) ===
@@ -275,8 +251,9 @@ fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
     let mut slot = 1;
     let irq_cnode = caps.irq_cspace.obj_ptr().as_mut::<CNode>();
     for irq in 0..MAX_IRQS {
-        let cap = Capability::create_irqhandler(irq, Rights::ALL);
-        // 插入到 Untyped 子 CNode
+        let irq_obj = IRQ::new(irq);
+        let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);
+        // 插入到 IRQ 子 CNode
         irq_cnode.insert(slot, &cap);
         slot += 1;
     }

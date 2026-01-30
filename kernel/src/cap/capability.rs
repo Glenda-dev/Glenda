@@ -3,9 +3,11 @@ use super::Rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNode;
 use crate::hal;
+use crate::hal::mem::PageTable;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
-use crate::mem::{PhysAddr, VirtAddr};
+use crate::irq::IRQ;
+use crate::mem::{MemoryRange, PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
 use core::fmt::Display;
@@ -30,9 +32,10 @@ impl Display for Capability {
 
         match cap_type {
             CapType::Untyped => {
-                let (total, watermark) = self.untyped_info();
+                let pages = (self.words[1] >> 13) & 0x1FFFFFF;
+                let watermark = (self.words[1] >> 38) & 0x1FFFFFF;
                 s.field("start_paddr", &PhysAddr::from(self.words[0]));
-                s.field("total_pages", &total);
+                s.field("total_pages", &pages);
                 s.field("watermark", &watermark);
             }
             CapType::TCB => {
@@ -211,61 +214,55 @@ impl Capability {
         self.words[1] = (self.words[1] & mask) | (data << DATA_SHIFT);
     }
 
-    pub fn create_untyped(start_paddr: PhysAddr, total_pages: usize, rights: Rights) -> Self {
-        let w0 = start_paddr.as_usize();
+    pub fn create_untyped(untyped: &UntypedRegion, rights: Rights) -> Self {
+        let w0 = untyped.start.as_usize();
         // Word 1: Type (5) | Rights (8) | TotalPages (25) | FreePages (25)
         let w1 = (CapType::Untyped as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | ((total_pages & 0x1FFFFFF) << 13)
+            | ((untyped.pages & 0x1FFFFFF) << 13)
             | (0 << 38); // watermark starts at 0
 
         Self { words: [w0, w1] }
     }
 
-    // Helper for Untyped to get fields
-    pub fn untyped_info(&self) -> (usize, usize) {
-        let total_pages = (self.words[1] >> 13) & 0x1FFFFFF;
-        let watermark = (self.words[1] >> 38) & 0x1FFFFFF;
-        (total_pages, watermark)
-    }
-
-    // Helper to update Untyped watermark
-    pub fn set_untyped_watermark(&mut self, watermark: usize) {
-        let mask = !(0x1FFFFFFusize << 38);
-        self.words[1] = (self.words[1] & mask) | ((watermark & 0x1FFFFFF) << 38);
-    }
-
-    pub fn create_tcb(tcb_ptr: VirtAddr, rights: Rights) -> Self {
+    pub fn create_tcb(tcb: &TCB, rights: Rights) -> Self {
+        tcb.ref_count.fetch_add(1, Ordering::Relaxed);
+        let tcb_ptr = VirtAddr::from(tcb as *const TCB as usize);
         let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::TCB as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_endpoint(ep_ptr: VirtAddr, rights: Rights) -> Self {
+    pub fn create_endpoint(ep: &Endpoint, rights: Rights) -> Self {
+        ep.ref_count.fetch_add(1, Ordering::Relaxed);
+        let ep_ptr = VirtAddr::from(ep as *const Endpoint as usize);
         let w0 = ep_ptr.as_usize();
         let w1 = (CapType::Endpoint as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_reply(tcb_ptr: VirtAddr, rights: Rights) -> Self {
+    pub fn create_reply(tcb: &TCB, rights: Rights) -> Self {
+        tcb.ref_count.fetch_add(1, Ordering::Relaxed);
+        let tcb_ptr = VirtAddr::from(tcb as *const TCB as usize);
         let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::Reply as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_frame(paddr: PhysAddr, pages: usize, rights: Rights) -> Self {
-        assert!(paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
-        let w0 = paddr.as_usize();
+    pub fn create_frame(frame: &PhysFrame, rights: Rights) -> Self {
+        assert!(frame.paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
+        let w0 = frame.paddr.as_usize();
         let w1 = (CapType::Frame as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (pages << DATA_SHIFT);
+            | (frame.pages << DATA_SHIFT);
         Self { words: [w0, w1] }
     }
 
-    pub fn create_pagetable(paddr: PhysAddr, level: usize, rights: Rights) -> Self {
+    pub fn create_pagetable(pt: &PageTable, level: usize, rights: Rights) -> Self {
+        let paddr = hal::mem::virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
         let w0 = paddr.as_usize();
         let w1 = (CapType::PageTable as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
@@ -273,15 +270,17 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_cnode(cnode_ptr: VirtAddr, rights: Rights) -> Self {
+    pub fn create_cnode(cnode: &CNode, rights: Rights) -> Self {
+        cnode.ref_count.fetch_add(1, Ordering::Relaxed);
+        let cnode_ptr = VirtAddr::from(cnode as *const CNode as usize);
         let w0 = cnode_ptr.as_usize();
         let w1 = (CapType::CNode as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 
-    pub fn create_irqhandler(irq: usize, rights: Rights) -> Self {
-        let w0 = irq;
+    pub fn create_irqhandler(irq: &IRQ, rights: Rights) -> Self {
+        let w0 = irq.id();
         let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
@@ -294,17 +293,17 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_mmio(paddr: PhysAddr, size: usize, rights: Rights) -> Self {
-        let w0 = paddr.as_usize();
+    pub fn create_mmio(mmio: &MemoryRange, rights: Rights) -> Self {
+        let w0 = mmio.start.as_usize();
         let w1 = (CapType::MMIO as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (size << DATA_SHIFT);
+            | (mmio.size << DATA_SHIFT);
         Self { words: [w0, w1] }
     }
 
-    pub fn create_vspace(paddr: PhysAddr, asid: Asid, rights: Rights) -> Self {
+    pub fn create_vspace(pt: &PageTable, asid: Asid, rights: Rights) -> Self {
         let asid_val = asid.id as usize & ASID_MASK;
-
+        let paddr = hal::mem::virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
         // 获取 Generation (保留低 35 位: 64 - 13 - 16 = 35)
         // Bit 29 到 63
         let gen_val = asid.generation as usize; // 高位会被移位自动处理，或者可以按需在这里mask

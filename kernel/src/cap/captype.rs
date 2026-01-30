@@ -17,29 +17,24 @@ pub enum CapType {
     VSpace = 11,
 }
 
-pub mod types {
-    pub const EMPTY: usize = 0;
-    pub const UNTYPED: usize = 1;
-    pub const TCB: usize = 2;
-    pub const ENDPOINT: usize = 3;
-    pub const REPLY: usize = 4;
-    pub const FRAME: usize = 5;
-    pub const PAGETABLE: usize = 6;
-    pub const CNODE: usize = 7;
-    pub const IRQ_HANDLER: usize = 8;
-    pub const CONSOLE: usize = 9;
-    pub const MMIO: usize = 10;
-    pub const VSPACE: usize = 11;
-}
-
-pub mod sizes {
-    pub const TCB: usize = 1; // 4 KiB, 1 page
-    pub const ENDPOINT: usize = 1; // 256 B, 1 page
-    pub const REPLY: usize = 1; // 256 B, 1 page
-    pub const PAGETABLE: usize = 1; // 4 KiB, 1 page
-    pub const CNODE: usize = 4; // 16 KiB, 4 pages
-    pub const IRQ_HANDLER: usize = 1; // 256 B, 1 page
-    pub const VSPACE: usize = 1; // 4 KiB, 1 page
+impl CapType {
+    #[inline(always)]
+    pub const fn from(value: usize) -> Self {
+        match value {
+            1 => CapType::Untyped,
+            2 => CapType::TCB,
+            3 => CapType::Endpoint,
+            4 => CapType::Reply,
+            5 => CapType::Frame,
+            6 => CapType::PageTable,
+            7 => CapType::CNode,
+            8 => CapType::IrqHandler,
+            9 => CapType::Console,
+            10 => CapType::MMIO,
+            11 => CapType::VSpace,
+            _ => CapType::Empty,
+        }
+    }
 }
 
 impl CapType {

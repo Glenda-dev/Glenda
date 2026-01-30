@@ -6,7 +6,6 @@ pub use message::{MsgTag, label};
 pub use utcb::UTCB;
 
 use crate::cap::{Badge, CapType, Capability, Rights};
-use crate::mem::VirtAddr;
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
@@ -97,8 +96,7 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
-        let reply_cap =
-            Capability::create_reply(VirtAddr::from(current as *const TCB as usize), Rights::ALL);
+        let reply_cap = Capability::create_reply(current, Rights::ALL);
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap)) };
@@ -175,10 +173,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 
         // 如果发送者是在执行 Call，我们需要为接收者生成一个 Reply Cap
         let reply_cap = if sender.state == ThreadState::BlockedCall {
-            Some(Capability::create_reply(
-                VirtAddr::from(sender as *const TCB as usize),
-                Rights::ALL,
-            ))
+            Some(Capability::create_reply(sender, Rights::ALL))
         } else {
             None
         };

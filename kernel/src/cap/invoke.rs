@@ -1,13 +1,13 @@
 use super::method::*;
-use crate::cap::captype::{sizes, types};
-use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights, Slot};
+use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights};
 use crate::hal;
-use crate::hal::mem::{PGSIZE, PageTable};
+use crate::hal::mem::PGSIZE;
+use crate::hal::mem::PageTable;
 use crate::ipc;
 use crate::irq;
 use crate::mem::Perms;
-use crate::mem::{PhysAddr, VirtAddr};
-use crate::proc::{TCB, asid, scheduler};
+use crate::mem::{UntypedRegion, VirtAddr};
+use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::errcode;
 
 pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
@@ -372,11 +372,10 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
 }
 
 fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
-    if cap.cap_type() != CapType::Untyped {
-        return errcode::INVALID_OBJ_TYPE;
-    }
-    let start = cap.paddr();
-    let (total_pages, watermark) = cap.untyped_info();
+    let mut untyped = match UntypedRegion::from_cap(cap) {
+        Some(u) => u,
+        None => return errcode::INVALID_OBJ_TYPE,
+    };
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
@@ -386,10 +385,10 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
 
     match method {
         untypedmethod::RETYPE => {
-            // Retype: (type, obj_pages, n_objects, dest_cnode_ dest_slot_offset, dirty)
+            // Retype: (type, flags, n_objects, dest_cnode, dest_slot_offset, dirty)
             let obj_type = utcb.mrs_regs[0];
 
-            let obj_pages = utcb.mrs_regs[1];
+            let flags = utcb.mrs_regs[1];
             let n_objects = utcb.mrs_regs[2];
             let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[3]);
             let dest_slot_offset = utcb.mrs_regs[4];
@@ -403,99 +402,14 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
             if dest_cnode_cap.cap_type() == CapType::CNode {
                 let cn_vaddr = dest_cnode_cap.obj_ptr();
                 let dest_cnode = cn_vaddr.as_mut::<CNode>();
-
-                // 检查总大小
-                let needed_pages = n_objects * obj_pages;
-                if watermark + needed_pages > total_pages {
-                    return errcode::UNTYPE_OOM;
-                }
-
-                for i in 0..n_objects {
-                    let slot_idx = dest_slot_offset + i;
-                    let slot_addr = dest_cnode.get_slot_addr(slot_idx);
-                    if slot_addr == VirtAddr::null() {
-                        return errcode::INVALID_SLOT; // 槽位越界
-                    }
-                    let slot = unsafe { &*slot_addr.as_mut_ptr::<Slot>() };
-                    if !slot.cap.is_null() {
-                        return errcode::INVALID_SLOT; // 槽位已被占用
-                    }
-                }
-
-                let current_page_offset = watermark;
-
-                for i in 0..n_objects {
-                    let page_idx = current_page_offset + i * obj_pages;
-                    let obj_paddr = PhysAddr::from(start.as_usize() + page_idx * PGSIZE);
-                    let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
-                    let obj_size_bytes = obj_pages * PGSIZE;
-
-                    // 必须清零内存，防止旧数据残留 (除非是设备内存)
-                    if dirty == 0 {
-                        unsafe {
-                            core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes)
-                        };
-                    }
-
-                    let new_cap = match obj_type {
-                        // CNode
-                        types::CNODE => {
-                            if obj_pages != sizes::CNODE {
-                                return errcode::INVALID_OBJ_TYPE;
-                            }
-                            Capability::create_cnode(obj_vaddr, Rights::ALL)
-                        }
-                        // TCB
-                        types::TCB => {
-                            if obj_pages != sizes::TCB {
-                                return errcode::INVALID_OBJ_TYPE;
-                            }
-                            let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
-                            unsafe { tcb_ptr.write(TCB::new()) };
-                            Capability::create_tcb(obj_vaddr, Rights::ALL)
-                        }
-                        // ipc::Endpoint
-                        types::ENDPOINT => {
-                            if obj_pages != sizes::ENDPOINT {
-                                return errcode::INVALID_OBJ_TYPE;
-                            }
-                            let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
-                            unsafe { ep_ptr.write(ipc::Endpoint::new()) };
-                            Capability::create_endpoint(obj_vaddr, Rights::ALL)
-                        }
-                        // Frame
-                        types::FRAME => {
-                            // 初始化 Frame (清零已在上面完成)
-                            Capability::create_frame(obj_paddr, obj_pages, Rights::ALL)
-                        }
-                        // PageTable
-                        types::PAGETABLE => {
-                            if obj_pages != sizes::PAGETABLE {
-                                return errcode::INVALID_OBJ_TYPE;
-                            }
-                            // 初始化页表 (清零已在上面完成)
-                            Capability::create_pagetable(obj_paddr, 0, Rights::ALL)
-                        }
-                        types::VSPACE => {
-                            if obj_pages != sizes::VSPACE {
-                                return errcode::INVALID_OBJ_TYPE;
-                            }
-                            // 初始化虚拟地址空间 (清零已在上面完成)
-                            Capability::create_vspace(obj_paddr, asid::alloc(), Rights::ALL)
-                        }
-                        _ => return errcode::INVALID_OBJ_TYPE,
-                    };
-
-                    if !dest_cnode.insert(dest_slot_offset + i, &new_cap) {
-                        return errcode::INVALID_SLOT;
-                    }
-                }
-
-                // 更新 Untyped Cap 的 watermark
-                let new_watermark = current_page_offset + n_objects * obj_pages;
-                cap.set_untyped_watermark(new_watermark);
-
-                errcode::SUCCESS
+                untyped.retype(
+                    CapType::from(obj_type),
+                    flags,
+                    n_objects,
+                    dest_cnode,
+                    dest_slot_offset,
+                    dirty,
+                )
             } else {
                 errcode::INVALID_OBJ_TYPE
             }
