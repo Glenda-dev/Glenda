@@ -28,6 +28,44 @@ pub struct SystemConfig {
     pub profile: String,
 }
 
+fn default_cpus() -> u32 {
+    1
+}
+
+fn default_mem() -> String {
+    "1G".into()
+}
+
+fn default_display() -> String {
+    "nographic".into()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QemuConfig {
+    #[serde(default = "default_cpus")]
+    pub cpus: u32,
+    #[serde(default = "default_mem")]
+    pub mem: String,
+    #[serde(default = "default_display")]
+    pub display: String,
+    #[serde(default)]
+    pub bootargs: Option<String>,
+    #[serde(default)]
+    pub drive: Option<String>,
+}
+
+impl Default for QemuConfig {
+    fn default() -> Self {
+        Self {
+            cpus: default_cpus(),
+            mem: default_mem(),
+            display: default_display(),
+            bootargs: None,
+            drive: None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -38,6 +76,8 @@ pub struct Config {
     pub features: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub system: SystemConfig,
+    #[serde(default)]
+    pub qemu: QemuConfig,
 }
 
 impl Config {

@@ -1,6 +1,13 @@
 [system]
 arch = "riscv64"
 profile = "relwithdebuginfo"
+
+[qemu]
+cpus = 4
+mem = "2G"
+display = "nographic"
+drive = "disk.img"
+
 [[services]]
 name = "factotum"
 path = "service/factotum"

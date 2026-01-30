@@ -24,33 +24,9 @@ enum Cmd {
     /// Build the kernel
     Build,
     /// Build then boot the kernel in QEMU
-    Run {
-        /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 1)]
-        cpus: u32,
-
-        /// Memory for QEMU (e.g. 128M, 1G)
-        #[arg(long, default_value = "1G")]
-        mem: String,
-
-        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
-        #[arg(long, default_value = "nographic")]
-        display: String,
-    },
+    Run,
     /// Start QEMU paused and wait for GDB
     Gdb {
-        /// Number of virtual CPUs to pass to QEMU
-        #[arg(long, default_value_t = 1)]
-        cpus: u32,
-
-        /// Memory for QEMU (e.g. 128M, 1G)
-        #[arg(long, default_value = "1G")]
-        mem: String,
-
-        /// Display device for QEMU. Use "nographic" for serial-only, or a display backend (e.g. "gtk", "sdl", "none").
-        #[arg(long, default_value = "nographic")]
-        display: String,
-
         #[arg(long, default_value_t = 1234)]
         port: u16,
     },
@@ -61,15 +37,7 @@ enum Cmd {
     /// Generate disk.img
     Mkfs,
     /// Dump QEMU DTB to target/virt.dtb
-    DumpDtb {
-        /// Number of virtual CPUs
-        #[arg(long, default_value_t = 4)]
-        cpus: u32,
-
-        /// Memory for QEMU
-        #[arg(long, default_value = "1G")]
-        mem: String,
-    },
+    DumpDtb,
     Clean,
 }
 
@@ -90,20 +58,20 @@ fn main() -> anyhow::Result<()> {
 
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
-        Cmd::Run { cpus, mem, display } => {
+        Cmd::Run => {
             build::build(&cfg)?;
             fs::mkfs()?;
-            qemu::qemu_run(&cfg, cpus, &mem, &display)?;
+            qemu::qemu_run(&cfg)?;
         }
-        Cmd::Gdb { cpus, mem, display, port } => {
+        Cmd::Gdb { port } => {
             build::build(&cfg)?;
             fs::mkfs()?;
-            qemu::qemu_gdb(&cfg, cpus, &mem, &display, port)?;
+            qemu::qemu_gdb(&cfg, port)?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,
         Cmd::Mkfs => fs::mkfs()?,
-        Cmd::DumpDtb { cpus, mem } => qemu::qemu_dump_dtb(&cfg, cpus, &mem)?,
+        Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,
         Cmd::Clean => build::clean()?,
     }
     Ok(())
