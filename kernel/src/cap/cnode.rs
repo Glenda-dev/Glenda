@@ -232,7 +232,9 @@ impl CNode {
             panic!("CNode debug_print_recursive: too deep recursion");
         }
 
-        for i in 1..CNODE_SLOTS {
+        let start = { if depth == 0 { 2 } else { 1 } };
+
+        for i in start..CNODE_SLOTS {
             let slot = &self.slots[i];
             if slot.cap.cap_type() == CapType::Empty {
                 continue;
