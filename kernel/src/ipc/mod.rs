@@ -54,8 +54,8 @@ unsafe fn copy_msg(
 }
 
 fn set_badge(tcb: &mut TCB, badge: Badge) {
-    let tf = tcb.get_tf();
-    tf.set_badge(badge.get());
+    let utcb = tcb.get_utcb().expect("ipc: TCB has no UTCB");
+    utcb.mrs_regs[0] = badge.get();
 }
 
 /// 发送操作
@@ -160,7 +160,6 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
         }
-
         set_badge(current, pending);
         return;
     }

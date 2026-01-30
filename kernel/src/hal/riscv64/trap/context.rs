@@ -41,9 +41,6 @@ pub struct TrapFrame {
 }
 
 impl TrapFrame {
-    pub fn set_badge(&mut self, badge: usize) {
-        self.a1 = badge;
-    }
     pub fn configure(&mut self, entry_point: usize, stack_pointer: usize) {
         self.kernel_epc = entry_point;
         self.sp = stack_pointer;

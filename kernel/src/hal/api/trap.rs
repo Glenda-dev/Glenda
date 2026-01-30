@@ -6,10 +6,6 @@ use core::arch::naked_asm;
 pub struct TrapFrame;
 
 impl TrapFrame {
-    /// 设置消息的 badge
-    pub fn set_badge(&mut self, badge: usize) {
-        unimplemented!()
-    }
     /// 获取程序计数器 (PC/EPC)
     pub const fn get_epc(&self) -> usize {
         unimplemented!()

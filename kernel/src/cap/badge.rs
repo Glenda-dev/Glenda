@@ -1,6 +1,6 @@
 use super::capability::DATA_SHIFT;
 
-#[repr(transparent)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Badge(usize);
 
