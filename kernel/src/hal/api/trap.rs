@@ -18,10 +18,6 @@ impl TrapFrame {
     pub fn set_epc(&mut self, epc: usize) {
         unimplemented!()
     }
-    /// 设置 TrapFrame 到寄存器
-    pub fn set_tf(&mut self, tf_addr: usize) {
-        unimplemented!()
-    }
     /// 配置用户态返回信息
     pub fn configure(&mut self, entry_point: usize, stack_pointer: usize) {
         unimplemented!()

@@ -66,9 +66,6 @@ impl TrapFrame {
     pub const fn get_epc(&self) -> usize {
         self.kernel_epc
     }
-    pub fn set_tf(&mut self, tf_addr: usize) {
-        self.t6 = tf_addr;
-    }
     pub fn set_return_value(&mut self, value: usize) {
         self.a0 = value;
     }
