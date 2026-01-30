@@ -8,7 +8,7 @@ pub use layout::STACK_VA;
 use super::scheduler;
 use super::{TCB, ThreadState};
 use crate::cap::CNode;
-use crate::hal::mem::PageTable;
+use crate::mem::PageTable;
 use crate::printk;
 use bootinfo::BootInfo;
 use init::*;

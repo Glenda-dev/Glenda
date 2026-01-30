@@ -1,10 +1,8 @@
 mod addr;
-mod pagetable;
 mod pte;
 mod vm;
 
 pub use addr::{phys_to_virt, virt_to_phys};
-pub use pagetable::PageTable;
 pub use pte::Pte;
 
 pub const PGSIZE: usize = 4096;
@@ -18,9 +16,13 @@ pub const ASID_MASK: usize = 0xFFFF;
 pub const KSTACK_PAGES: usize = 4; // 16KB
 
 use super::asm;
-use crate::mem::{PhysAddr, VPN, VirtAddr};
+use crate::mem::TRAMPOLINE_VA;
+use crate::mem::{PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 const SATP_MODE: usize = 8;
+unsafe extern "C" {
+    static __trampoline: u8;
+}
 
 pub unsafe fn activate_vspace(val: usize) {
     unsafe {
@@ -59,4 +61,9 @@ pub fn get_vpn_index(va: VirtAddr, level: usize) -> VPN {
 pub fn kpt_setup(kpt: &mut PageTable) {
     vm::setup_trampoline(kpt);
     vm::setup_mmio(kpt);
+}
+
+pub fn pt_setup(pt: &mut PageTable) -> Result<(), ()> {
+    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
+    pt.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
 }

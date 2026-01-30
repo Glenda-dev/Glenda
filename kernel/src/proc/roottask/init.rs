@@ -4,9 +4,9 @@ use crate::cap::{CNODE_BITS, ROOT_BITS};
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
-use crate::hal::mem::PageTable;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
+use crate::mem::PageTable;
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, PhysFrame, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
@@ -107,7 +107,7 @@ pub fn init_vspace(
     }
 
     // 设置 Trampoline 映射
-    vspace.setup().expect("Failed to setup VSpace for root task");
+    hal::mem::pt_setup(vspace).expect("Failed to setup VSpace for root task");
 }
 pub fn init_bootinfo(bootinfo: &mut BootInfo) {
     // 初始化 BootInfo

@@ -1,4 +1,4 @@
-use crate::platform::MemoryRange;
+use crate::mem::MemoryRange;
 
 /// 平台信息结构体
 #[derive(Clone, Copy, Debug)]
@@ -46,7 +46,7 @@ pub fn range() -> Option<MemoryRange> {
 }
 
 /// 获取设备内存
-pub fn mmio_ranges() -> &'static [MemoryRange] {
+pub fn mmio_ranges() -> Option<&'static [MemoryRange]> {
     unimplemented!()
 }
 

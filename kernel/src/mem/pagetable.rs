@@ -1,13 +1,8 @@
-use super::Pte;
-use super::get_vpn_index;
-use super::phys_to_virt;
-use super::{PGNUM, PGSIZE};
-use crate::mem::TRAMPOLINE_VA;
+use crate::hal;
+use crate::hal::mem::Pte;
+use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
-unsafe extern "C" {
-    static __trampoline: u8;
-}
 
 // align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
 #[repr(C, align(4096))]
@@ -23,7 +18,7 @@ impl PageTable {
 
     /// 从物理地址获取页表的可变引用
     pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
-        let vaddr = phys_to_virt(paddr);
+        let vaddr = hal::mem::phys_to_virt(paddr);
         vaddr.as_mut::<PageTable>()
     }
 
@@ -39,8 +34,8 @@ impl PageTable {
 
         // 遍历 3 级页表 (Level 2 -> Level 1 -> Level 0)
         // 最后一级 (Level 0) 的 PTE 将被返回
-        for level in (1..3).rev() {
-            let idx = get_vpn_index(va, level).as_usize();
+        for level in (1..PT_LEVELS).rev() {
+            let idx = hal::mem::get_vpn_index(va, level).as_usize();
             let pte_val = table.entries[idx];
 
             if !pte_val.is_valid() {
@@ -57,12 +52,12 @@ impl PageTable {
 
             // 进入下一级页表
             let next_pa = pte_val.pa();
-            let next_va = phys_to_virt(next_pa);
+            let next_va = hal::mem::phys_to_virt(next_pa);
             table = next_va.as_mut::<PageTable>();
         }
 
         // 返回 Level 0 的 PTE
-        Some(&mut table.entries[get_vpn_index(va, 0).as_usize()] as *mut Pte)
+        Some(&mut table.entries[hal::mem::get_vpn_index(va, 0).as_usize()] as *mut Pte)
     }
 
     /// 映射内存区域 (机制)
@@ -122,7 +117,7 @@ impl PageTable {
             }
             current_va += PGSIZE;
         }
-        super::flush_tlb(None);
+        hal::mem::flush_tlb(None);
         Ok(())
     }
 
@@ -132,25 +127,25 @@ impl PageTable {
     /// * `table_pa`: 中间页表的物理地址
     /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
     pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
-        if level == 0 || level > 2 {
+        if level == 0 || level >= PT_LEVELS {
             return Err(()); // 无效层级
         }
 
         // 遍历到目标层级的上一级
         let mut table = self;
-        for l in ((level + 1)..3).rev() {
-            let idx = get_vpn_index(va, l).as_usize();
+        for l in ((level + 1)..PT_LEVELS).rev() {
+            let idx = hal::mem::get_vpn_index(va, l).as_usize();
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
                 return Err(()); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
-            let next_va = phys_to_virt(next_pa);
+            let next_va = hal::mem::phys_to_virt(next_pa);
             table = next_va.as_mut::<PageTable>();
         }
 
         // 在目标层级写入 PTE，指向新的页表
-        let idx = get_vpn_index(va, level).as_usize();
+        let idx = hal::mem::get_vpn_index(va, level).as_usize();
         let pte_ptr = &mut table.entries[idx];
 
         if pte_ptr.is_valid() {
@@ -177,8 +172,8 @@ impl PageTable {
         while va < end {
             // 手动遍历页表，如果中间层级缺失则分配
             let mut table = self as *mut PageTable;
-            for level in (1..3).rev() {
-                let idx = get_vpn_index(va, level).as_usize();
+            for level in (1..PT_LEVELS).rev() {
+                let idx = hal::mem::get_vpn_index(va, level).as_usize();
                 let entry = unsafe { &mut (*table).entries[idx] };
 
                 if !entry.is_valid() {
@@ -191,12 +186,12 @@ impl PageTable {
                 // 进入下一级
                 let next_pa = entry.pa();
                 // 在恒等映射模式下，物理地址即为内核虚拟地址
-                let next_va = phys_to_virt(next_pa);
+                let next_va = hal::mem::phys_to_virt(next_pa);
                 table = next_va.as_mut::<PageTable>();
             }
 
             // 设置最后一级 PTE
-            let idx = get_vpn_index(va, 0).as_usize();
+            let idx = hal::mem::get_vpn_index(va, 0).as_usize();
 
             let pte_ptr = unsafe { &mut (*table).entries[idx] };
             // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
@@ -208,12 +203,15 @@ impl PageTable {
     pub fn debug_print(&self) {
         use crate::printk;
 
-        #[inline(always)]
-        fn sv39_canon(va: usize) -> usize {
-            // sign-extend bit 38
-            let sign = (va >> 38) & 1;
-            if sign == 1 { va | (!0usize << 39) } else { va & ((1usize << 39) - 1) }
-        }
+        // #[inline(always)]
+        // fn sv39_canon(va: usize) -> usize {
+        //     // sign-extend bit 38
+        //     let sign = (va >> 38) & 1;
+        //     if sign == 1 { va | (!0usize << 39) } else { va & ((1usize << 39) - 1) }
+        // }
+
+        // Generic debug print is hard without knowing VA bits.
+        // For now I'll comment out canon or just print raw index constructed VA.
 
         let pgtbl_2 = self as *const PageTable as usize;
         printk!("L2 PT @ 0x{:x}\n", pgtbl_2);
@@ -229,7 +227,7 @@ impl PageTable {
             }
 
             let pgtbl_1_pa = pte2.pa();
-            let pgtbl_1_va = phys_to_virt(pgtbl_1_pa);
+            let pgtbl_1_va = hal::mem::phys_to_virt(pgtbl_1_pa);
             printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa.as_usize());
 
             let pgtbl_1 = pgtbl_1_va.as_ref::<PageTable>();
@@ -244,7 +242,7 @@ impl PageTable {
                 }
 
                 let pgtbl_0_pa = pte1.pa();
-                let pgtbl_0_va = phys_to_virt(pgtbl_0_pa);
+                let pgtbl_0_va = hal::mem::phys_to_virt(pgtbl_0_pa);
                 printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa.as_usize());
 
                 let pgtbl_0 = pgtbl_0_va.as_ref::<PageTable>();
@@ -260,7 +258,8 @@ impl PageTable {
 
                     let pa = pte0.pa();
                     let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
-                    let va = sv39_canon(va_raw);
+                    // let va = sv39_canon(va_raw);
+                    let va = va_raw; // Simplified for now
                     let flags = pte0.get_flags();
 
                     printk!(
@@ -273,9 +272,5 @@ impl PageTable {
                 }
             }
         }
-    }
-    pub fn setup(&mut self) -> Result<(), ()> {
-        let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
-        self.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
     }
 }

@@ -1,6 +1,6 @@
 use super::super::dtb;
 use super::PGSIZE;
-use super::PageTable;
+use crate::mem::PageTable;
 use super::phys_to_virt;
 use crate::mem::TRAMPOLINE_VA;
 use crate::mem::{Perms, PhysAddr, VirtAddr};

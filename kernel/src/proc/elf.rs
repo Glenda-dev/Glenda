@@ -1,6 +1,6 @@
 use crate::hal;
 use crate::hal::mem::PGSIZE;
-use crate::hal::mem::PageTable;
+use crate::mem::PageTable;
 use crate::mem::pmem;
 use crate::mem::{Perms, VirtAddr};
 use crate::printk;

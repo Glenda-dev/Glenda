@@ -3,7 +3,7 @@ use super::Rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNode;
 use crate::hal;
-use crate::hal::mem::PageTable;
+use crate::mem::PageTable;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::irq::IRQ;

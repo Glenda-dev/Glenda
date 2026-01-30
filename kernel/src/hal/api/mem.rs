@@ -1,4 +1,4 @@
-use crate::mem::{PPN, Perms, PhysAddr, VPN, VirtAddr};
+use crate::mem::{PPN, PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 /// 页大小
 pub const PGSIZE: usize = 4096;
@@ -12,16 +12,13 @@ pub const PGNUM: usize = 1;
 pub const MAX_ASID: usize = 1 << 16;
 /// 地址空间标识符掩码
 pub const ASID_MASK: usize = MAX_ASID - 1;
-
+/// 内核栈大小
+pub const KSTACK_PAGES: usize = 1;
+/// 用户地址
+pub const USER_VA: usize = 0x400000;
 /// 页表项类型
 #[derive(Clone, Copy, Debug)]
 pub struct Pte;
-/// 页表结构体
-/// align 4096 to avoid SFENCE.VMA issues with unaligned root pointers
-#[repr(C, align(4096))]
-pub struct PageTable {
-    pub entries: [Pte; PGNUM],
-}
 
 /// 刷新 TLB
 ///
@@ -60,7 +57,13 @@ pub fn get_vpn_index(va: VirtAddr, level: usize) -> VPN {
     unimplemented!()
 }
 
+/// 设置内核页表
 pub fn kpt_setup(kpt: &mut PageTable) {
+    unimplemented!()
+}
+
+/// 设置页表
+pub fn pt_setup(pt: &mut PageTable) -> Result<(), ()> {
     unimplemented!()
 }
 
@@ -96,82 +99,6 @@ impl Pte {
         unimplemented!()
     }
     pub const fn pa(&self) -> PhysAddr {
-        unimplemented!()
-    }
-}
-
-impl PageTable {
-    /// 创建一个新的空页表 (仅用于初始化)
-    pub const fn new() -> Self {
-        unimplemented!()
-    }
-
-    /// 从物理地址获取页表的可变引用
-    pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
-        unimplemented!()
-    }
-
-    /// 查找虚拟地址对应的 PTE 指针
-    ///
-    /// * `va`: 虚拟地址
-    /// * `alloc`: 必须为 false。微内核中，缺页必须由用户处理，内核不自动分配中间页表。
-    ///
-    /// 返回：
-    /// * `Some(pte)`: 找到对应的 PTE (可能是叶子节点，也可能是中间节点)
-    /// * `None`: 遍历过程中断 (中间页表不存在)
-    pub fn walk(&mut self, va: VirtAddr) -> Option<*mut Pte> {
-        unimplemented!()
-    }
-
-    /// 映射内存区域 (机制)
-    ///
-    /// * `va`: 虚拟起始地址
-    /// * `pa`: 物理起始地址
-    /// * `size`: 映射大小 (字节)
-    /// * `flags`: 权限标志
-    ///
-    /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
-    /// 用户必须先调用 map_table 来建立中间层级。
-    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    /// 解除映射
-    ///
-    /// * `va`: 虚拟地址
-    /// * `size`: 大小
-    ///
-    /// 注意：不负责释放物理内存。物理内存由 Capability 系统管理。
-    pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    /// 映射中间页表 (Map PageTable)
-    ///
-    /// * `va`: 目标虚拟地址范围的起始
-    /// * `table_pa`: 中间页表的物理地址
-    /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
-    pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    /// 映射并自动分配中间页表 (辅助函数)
-    ///
-    /// 如果中间页表不存在，则分配新的页表页。
-    /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
-    pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) {
-        unimplemented!()
-    }
-
-    /// 设置页表 (例如映射 trampoline)
-    ///
-    pub fn setup(&mut self) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    /// 调试打印页表内容
-    ///
-    pub fn debug_print(&self) {
         unimplemented!()
     }
 }

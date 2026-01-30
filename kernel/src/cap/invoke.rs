@@ -2,9 +2,9 @@ use super::method::*;
 use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
-use crate::hal::mem::PageTable;
 use crate::ipc;
 use crate::irq;
+use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::{UntypedRegion, VirtAddr};
 use crate::proc::{TCB, scheduler};
@@ -566,7 +566,7 @@ fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 Err(_) => errcode::MAPPING_FAILED,
             }
         }
-        vspacemethod::SETUP => match pt.setup() {
+        vspacemethod::SETUP => match hal::mem::pt_setup(pt) {
             Ok(()) => errcode::SUCCESS,
             Err(_) => errcode::MAPPING_FAILED,
         },

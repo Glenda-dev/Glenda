@@ -7,10 +7,12 @@ pub const TRAPFRAME_VA: usize = TRAMPOLINE_VA - PGSIZE; // Trapframe 映射地�
 pub const UTCB_VA: usize = TRAPFRAME_VA - PGSIZE; // UTCB 映射地址 0x3FFFFFD000
 
 pub use addr::{PPN, PhysAddr, VPN, VirtAddr};
+pub use pagetable::PageTable;
 pub use pmem::{MemoryRange, PhysFrame};
 pub use untyped::UntypedRegion;
 
 pub mod addr;
+pub mod pagetable;
 pub mod pmem;
 pub mod untyped;
 pub mod vm;

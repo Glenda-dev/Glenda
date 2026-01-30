@@ -3,7 +3,7 @@ use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
-use crate::hal::mem::PageTable;
+use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
 use crate::printk;
 use crate::proc::TCB;

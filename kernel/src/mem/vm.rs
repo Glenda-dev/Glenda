@@ -1,7 +1,7 @@
 use super::PGSIZE;
 use super::PhysAddr;
 use crate::hal;
-use crate::hal::mem::PageTable;
+use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
 use crate::printk;

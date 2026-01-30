@@ -1,12 +1,12 @@
 use super::asid;
 use crate::cap::{Badge, CNode, CapPtr, CapType, Capability};
 use crate::hal;
-use crate::hal::mem::PageTable;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::hal::proc::ProcContext;
 use crate::hal::trap::TrapFrame;
 use crate::hal::trap::{trap_user_handler, trap_user_return};
 use crate::ipc::UTCB;
+use crate::mem::PageTable;
 use crate::mem::VirtAddr;
 use crate::mem::pmem;
 use core::sync::atomic::AtomicUsize;
