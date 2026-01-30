@@ -241,7 +241,7 @@ fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
-    let pt_ptr = paddr.to_va();
+    let pt_ptr = hal::mem::phys_to_virt(paddr);
     let pt = pt_ptr.as_mut::<PageTable>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
@@ -427,7 +427,7 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                 for i in 0..n_objects {
                     let page_idx = current_page_offset + i * obj_pages;
                     let obj_paddr = PhysAddr::from(start.as_usize() + page_idx * PGSIZE);
-                    let obj_vaddr = obj_paddr.to_va();
+                    let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
                     let obj_size_bytes = obj_pages * PGSIZE;
 
                     // 必须清零内存，防止旧数据残留 (除非是设备内存)
@@ -591,7 +591,7 @@ fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
-    let pt_ptr = paddr.to_va();
+    let pt_ptr = hal::mem::phys_to_virt(paddr);
     let pt = pt_ptr.as_mut::<PageTable>();
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {

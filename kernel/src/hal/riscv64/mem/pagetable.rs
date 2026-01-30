@@ -1,9 +1,10 @@
 use super::Pte;
 use super::get_vpn_index;
-use super::{PGNUM, PGSIZE, PhysAddr, VirtAddr};
-use crate::mem::Perms;
+use super::phys_to_virt;
+use super::{PGNUM, PGSIZE};
 use crate::mem::TRAMPOLINE_VA;
 use crate::mem::pmem;
+use crate::mem::{Perms, PhysAddr, VirtAddr};
 unsafe extern "C" {
     static __trampoline: u8;
 }
@@ -22,7 +23,7 @@ impl PageTable {
 
     /// 从物理地址获取页表的可变引用
     pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
-        let vaddr = paddr.to_va();
+        let vaddr = phys_to_virt(paddr);
         vaddr.as_mut::<PageTable>()
     }
 
@@ -56,7 +57,7 @@ impl PageTable {
 
             // 进入下一级页表
             let next_pa = pte_val.pa();
-            let next_va = next_pa.to_va();
+            let next_va = phys_to_virt(next_pa);
             table = next_va.as_mut::<PageTable>();
         }
 
@@ -144,7 +145,7 @@ impl PageTable {
                 return Err(()); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
-            let next_va = next_pa.to_va();
+            let next_va = phys_to_virt(next_pa);
             table = next_va.as_mut::<PageTable>();
         }
 
@@ -190,7 +191,7 @@ impl PageTable {
                 // 进入下一级
                 let next_pa = entry.pa();
                 // 在恒等映射模式下，物理地址即为内核虚拟地址
-                let next_va = next_pa.to_va();
+                let next_va = phys_to_virt(next_pa);
                 table = next_va.as_mut::<PageTable>();
             }
 
@@ -228,7 +229,7 @@ impl PageTable {
             }
 
             let pgtbl_1_pa = pte2.pa();
-            let pgtbl_1_va = pgtbl_1_pa.to_va();
+            let pgtbl_1_va = phys_to_virt(pgtbl_1_pa);
             printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa.as_usize());
 
             let pgtbl_1 = pgtbl_1_va.as_ref::<PageTable>();
@@ -243,7 +244,7 @@ impl PageTable {
                 }
 
                 let pgtbl_0_pa = pte1.pa();
-                let pgtbl_0_va = pgtbl_0_pa.to_va();
+                let pgtbl_0_va = phys_to_virt(pgtbl_0_pa);
                 printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa.as_usize());
 
                 let pgtbl_0 = pgtbl_0_va.as_ref::<PageTable>();

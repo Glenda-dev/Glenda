@@ -150,8 +150,8 @@ pub fn scheduler() -> ! {
         } else {
             // 没有可运行的线程，进入低功耗等待
             unsafe {
-                hal::irq::enable();
                 hal::irq::wfi();
+                hal::irq::enable();
             }
         }
     }

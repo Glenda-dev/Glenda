@@ -49,7 +49,8 @@ static ROOT_TASK: Once<ProcPayload> = Once::new();
 
 pub fn init() {
     let range = hal::platform::initrd().expect("Initrd range not found");
-    let payload_ptr = range.start.to_va().as_ptr::<u8>();
+    let payload_va = hal::mem::phys_to_virt(range.start);
+    let payload_ptr = payload_va.as_ptr::<u8>();
     let total_size = range.end().as_usize() - range.start.as_usize();
 
     // Read header bytes (safely, avoid alignment assumptions)
@@ -192,7 +193,7 @@ impl ProcPayload {
 
         for j in 0..num_pages {
             let frame_pa = pmem::alloc_page().expect("Failed to allocate page for flat binary");
-            let frame_va = frame_pa.to_va();
+            let frame_va = hal::mem::phys_to_virt(frame_pa);
             // 2. 获取该物理页在内核中的虚拟地址（用于写入数据）
             let dst_va = frame_va + j * PGSIZE;
             let dst_slice =

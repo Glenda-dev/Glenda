@@ -95,15 +95,16 @@ pub fn alloc_cnode_cap(bits: u8) -> Option<Capability> {
     let size = CNODE_PAGES * PGSIZE;
     let align = PGSIZE;
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        let cnode = paddr.to_va().as_mut::<CNode>();
+        let vaddr = hal::mem::phys_to_virt(paddr);
+        let cnode = vaddr.as_mut::<CNode>();
         *cnode = CNode::new(bits);
-        Capability::create_cnode(paddr.to_va(), Rights::ALL)
+        Capability::create_cnode(vaddr, Rights::ALL)
     })
 }
 
 pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
-        let pt = paddr.to_va().as_mut::<PageTable>();
+        let pt = hal::mem::phys_to_virt(paddr).as_mut::<PageTable>();
         *pt = PageTable::new();
         Capability::create_pagetable(paddr, level, Rights::ALL)
     })
@@ -111,7 +112,7 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
 
 pub fn alloc_vspace_cap() -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
-        let pt = paddr.to_va().as_mut::<PageTable>();
+        let pt = hal::mem::phys_to_virt(paddr).as_mut::<PageTable>();
         *pt = PageTable::new();
         let asid = asid::alloc();
         Capability::create_vspace(paddr, asid, Rights::ALL)
@@ -121,9 +122,10 @@ pub fn alloc_vspace_cap() -> Option<Capability> {
 pub fn alloc_tcb_cap() -> Option<Capability> {
     let align = core::mem::align_of::<TCB>();
     PMEM.lock().alloc_addr(core::mem::size_of::<TCB>(), align).map(|paddr| {
-        let tcb = paddr.to_va().as_mut::<TCB>();
+        let vaddr = hal::mem::phys_to_virt(paddr);
+        let tcb = vaddr.as_mut::<TCB>();
         *tcb = TCB::new();
-        Capability::create_tcb(paddr.to_va(), Rights::ALL)
+        Capability::create_tcb(vaddr, Rights::ALL)
     })
 }
 

@@ -1,6 +1,5 @@
 use super::super::mem::PGSIZE;
 use super::super::{asm, cpu};
-use super::TrapFrame;
 use super::kernel_vector;
 use super::vector::user_return;
 use super::vector::user_vector;

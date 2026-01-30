@@ -32,7 +32,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
     let mem = hal::platform::memory_range().expect("Memory range not found in DTB");
     let mem_start_pa = mem.start;
-    let mem_start_va = mem_start_pa.to_va();
+    let mem_start_va = hal::mem::phys_to_virt(mem_start_pa);
     let mem_size = mem.size;
     flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
     printk!(
@@ -48,7 +48,7 @@ pub fn init_kernel_vm(hartid: usize) {
     let text_start = PhysAddr::from(unsafe { &__text_start as *const u8 as usize });
     let text_end = PhysAddr::from(unsafe { &__text_end as *const u8 as usize });
     let text_pa = text_start.align_down(PGSIZE);
-    let text_va = text_pa.to_va();
+    let text_va = hal::mem::phys_to_virt(text_pa);
     let text_size = (text_end - text_start).as_usize();
     flags = Perms::READ | Perms::EXECUTE | Perms::ACCESSED | Perms::GLOBAL;
     printk!(
@@ -64,7 +64,7 @@ pub fn init_kernel_vm(hartid: usize) {
     let rodata_start = PhysAddr::from(unsafe { &__rodata_start as *const u8 as usize });
     let rodata_end = PhysAddr::from(unsafe { &__rodata_end as *const u8 as usize });
     let rodata_pa = rodata_start.align_down(PGSIZE);
-    let rodata_va = rodata_pa.to_va();
+    let rodata_va = hal::mem::phys_to_virt(rodata_pa);
     let rodata_size = (rodata_end - rodata_start).as_usize();
     flags = Perms::READ | Perms::ACCESSED | Perms::GLOBAL;
     printk!(
@@ -85,7 +85,7 @@ pub fn init_kernel_vm(hartid: usize) {
     let initrd_end = initrd.start + initrd.size;
     let initrd_size = initrd.size;
     let initrd_pa = initrd_start.align_down(PGSIZE);
-    let initrd_va = initrd_pa.to_va();
+    let initrd_va = hal::mem::phys_to_virt(initrd_pa);
     printk!(
         "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
         initrd_start.as_usize(),
@@ -105,7 +105,7 @@ pub fn init_kernel_vm(hartid: usize) {
 pub fn switch_to_kernel(hartid: usize) {
     let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
     let kpt_va = VirtAddr::from(kpt as *const _ as usize);
-    let kpt_pa = kpt_va.to_pa();
+    let kpt_pa = hal::mem::virt_to_phys(kpt_va);
     let reg = hal::mem::get_mmu_register(kpt_pa, 0);
     unsafe {
         hal::mem::activate_vspace(reg);

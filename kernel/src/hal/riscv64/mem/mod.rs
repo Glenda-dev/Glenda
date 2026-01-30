@@ -1,15 +1,15 @@
+mod addr;
 mod pagetable;
 mod pte;
 mod vm;
 
+pub use addr::{phys_to_virt, virt_to_phys};
 pub use pagetable::PageTable;
 pub use pte::Pte;
 
 pub const PGSIZE: usize = 4096;
 pub const VA_MAX: usize = 1 << 38;
 pub const USER_VA: usize = 0x10000;
-pub const PHYS_MAP_BASE: usize = 0;
-pub const KERNEL_BASE: usize = 0;
 pub const PT_LEVELS: usize = 3;
 pub const PGNUM: usize = 512;
 pub const PTEFLAGS_MASK: usize = 0x3FF;

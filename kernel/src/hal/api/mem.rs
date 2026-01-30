@@ -4,10 +4,6 @@ use crate::mem::{PPN, Perms, PhysAddr, VPN, VirtAddr};
 pub const PGSIZE: usize = 4096;
 /// 最大虚拟地址
 pub const VA_MAX: usize = 0xFFFFFFFFFFFFFFFF;
-/// HHDM: 物理内存线性映射的虚拟基地址 (例如 0xFFFF_8000_0000_0000)
-pub const PHYS_MAP_BASE: usize = 0;
-/// 内核代码段加载的虚拟基地址 (例如 0xFFFF_FFFF_8020_0000)
-pub const KERNEL_BASE: usize = 0;
 /// 页表层级数
 pub const PT_LEVELS: usize = 1;
 /// 每级页表的页表项数量
@@ -178,4 +174,14 @@ impl PageTable {
     pub fn debug_print(&self) {
         unimplemented!()
     }
+}
+
+/// 物理地址与虚拟地址转换
+pub const fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
+    unimplemented!()
+}
+
+/// 虚拟地址与物理地址转换
+pub const fn virt_to_phys(va: VirtAddr) -> PhysAddr {
+    unimplemented!()
 }

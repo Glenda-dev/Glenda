@@ -14,12 +14,6 @@ impl PhysAddr {
     pub const fn as_usize(&self) -> usize {
         self.0
     }
-    pub const fn to_va(&self) -> VirtAddr {
-        VirtAddr(self.0)
-    }
-    pub const fn to_ppn(&self) -> PPN {
-        PPN(self.0 >> 12)
-    }
     pub const fn null() -> Self {
         Self(0)
     }
@@ -101,9 +95,6 @@ impl VirtAddr {
     }
     pub const fn as_usize(&self) -> usize {
         self.0
-    }
-    pub const fn to_pa(&self) -> PhysAddr {
-        PhysAddr(self.0)
     }
     pub fn as_mut_ptr<T>(&self) -> *mut T {
         self.0 as *mut T

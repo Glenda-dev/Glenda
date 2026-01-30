@@ -1,3 +1,4 @@
+use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::hal::mem::PageTable;
 use crate::mem::pmem;
@@ -114,11 +115,12 @@ impl<'a> ElfFile<'a> {
                 for j in 0..num_pages {
                     let frame_pa =
                         pmem::alloc_page().ok_or("Failed to allocate page for ELF segment")?;
+                    let frame_va = hal::mem::phys_to_virt(frame_pa);
                     let va = VirtAddr::from(aligned_va) + j * PGSIZE;
 
                     // Calculate how much to copy from data
                     let dst_slice = unsafe {
-                        core::slice::from_raw_parts_mut(frame_pa.to_va().as_mut_ptr::<u8>(), PGSIZE)
+                        core::slice::from_raw_parts_mut(frame_va.as_mut_ptr::<u8>(), PGSIZE)
                     };
                     dst_slice.fill(0);
 

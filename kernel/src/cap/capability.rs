@@ -2,6 +2,7 @@ use super::CapType;
 use super::Rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNode;
+use crate::hal;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::{PhysAddr, VirtAddr};
@@ -162,10 +163,10 @@ impl Capability {
             CapType::Endpoint => VirtAddr::from(self.words[0]),
             CapType::Reply => VirtAddr::from(self.words[0]),
             CapType::CNode => VirtAddr::from(self.words[0]),
-            CapType::Untyped => PhysAddr::from(self.words[0]).to_va(),
-            CapType::Frame => PhysAddr::from(self.words[0]).to_va(),
-            CapType::PageTable => PhysAddr::from(self.words[0]).to_va(),
-            CapType::VSpace => PhysAddr::from(self.words[0]).to_va(),
+            CapType::Untyped => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::Frame => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::PageTable => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::VSpace => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
             _ => VirtAddr::null(),
         }
     }

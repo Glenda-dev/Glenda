@@ -1,6 +1,7 @@
 use super::super::dtb;
 use super::PGSIZE;
 use super::PageTable;
+use super::phys_to_virt;
 use crate::mem::TRAMPOLINE_VA;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::printk;
@@ -32,7 +33,7 @@ pub fn setup_mmio(kpt: &mut PageTable) {
         Some(uart) => {
             let uart_base = PhysAddr::from(uart.base);
             let uart_pa = uart_base.align_down(PGSIZE);
-            let uart_va = uart_pa.to_va();
+            let uart_va = phys_to_virt(uart_pa);
             let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
             printk!(
                 "vm: Map UART [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
@@ -55,7 +56,7 @@ pub fn setup_mmio(kpt: &mut PageTable) {
         }
         Some(plic_range) => {
             let plic_pa = plic_range.start;
-            let plic_va = plic_pa.to_va();
+            let plic_va = phys_to_virt(plic_pa);
             let plic_size = plic_range.size;
             let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
             printk!(
