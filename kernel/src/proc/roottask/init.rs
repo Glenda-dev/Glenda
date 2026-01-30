@@ -1,6 +1,6 @@
 use super::bootinfo::BootInfo;
 use super::layout::*;
-use crate::cap::{CNode, Capability, Rights};
+use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
@@ -130,20 +130,20 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) {
     }
 }
 pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
-    cspace.insert(CSPACE_SLOT, &caps.cspace);
-    cspace.insert(VSPACE_SLOT, &caps.vspace);
-    cspace.insert(TCB_SLOT, &caps.tcb);
-    cspace.insert(CONSOLE_SLOT, &caps.console);
-    cspace.insert(UNTYPED_SLOT, &caps.untyped_cspace);
-    cspace.insert(MMIO_SLOT, &caps.mmio_cspace);
-    cspace.insert(IRQ_SLOT, &caps.irq_cspace);
+    cspace.insert(CSPACE_CAP, &caps.cspace);
+    cspace.insert(VSPACE_CAP, &caps.vspace);
+    cspace.insert(TCB_CAP, &caps.tcb);
+    cspace.insert(CONSOLE_CAP, &caps.console);
+    cspace.insert(UNTYPED_CAP, &caps.untyped_cspace);
+    cspace.insert(MMIO_CAP, &caps.mmio_cspace);
+    cspace.insert(IRQ_CAP, &caps.irq_cspace);
 
     match hal::platform::range() {
         Some(range) => {
             let frame = PhysFrame { paddr: range.start, pages: range.size / PGSIZE };
             let platform_cap =
                 Capability::create_frame(&frame, Rights::READ | Rights::WRITE | Rights::GRANT);
-            cspace.insert(PLATFORM_SLOT, &platform_cap);
+            cspace.insert(PLATFORM_CAP, &platform_cap);
         }
         None => printk!("proc: {}Warning{}: Platform range not found\n", ANSI_YELLOW, ANSI_RESET),
     }
@@ -158,7 +158,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
                 if mmio_size > 0 {
                     let cap = Capability::create_mmio(&mmio_region, Rights::ALL);
                     // 插入到 MMIO 子 CNode
-                    mmio_cnode.insert(slot, &cap);
+                    mmio_cnode.insert(CapPtr::from(slot), &cap);
 
                     if bootinfo.mmio_count < bootinfo.mmio_list.len() {
                         bootinfo.mmio_list[bootinfo.mmio_count] = *mmio_region;
@@ -177,7 +177,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
     let untyped_region = pmem::get_untyped();
     let cap = Capability::create_untyped(&untyped_region, Rights::ALL);
     // 插入到 Untyped 子 CNode
-    untyped_cnode.insert(slot, &cap);
+    untyped_cnode.insert(CapPtr::from(slot), &cap);
 
     if bootinfo.untyped_count < bootinfo.untyped_list.len() {
         bootinfo.untyped_list[bootinfo.untyped_count] = untyped_region;
@@ -192,7 +192,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
         let irq_obj = IRQ::new(irq);
         let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);
         // 插入到 IRQ 子 CNode
-        irq_cnode.insert(slot, &cap);
+        irq_cnode.insert(CapPtr::from(slot), &cap);
         slot += 1;
     }
     bootinfo.irq_count = MAX_IRQS;

@@ -295,11 +295,11 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
         cnodemethod::MINT => {
             // Mint: (src_cptr, dest_slot, badge, rights)
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let dest_slot = utcb.mrs_regs[1];
+            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
             let new_badge = Badge::from(utcb.mrs_regs[2]);
             let req_rights = utcb.mrs_regs[3] as u8;
 
-            if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
+            if let Some(src_cap) = tcb.cap_lookup(src_cptr) {
                 // 1. 权限收缩：新权限必须是源权限的子集
                 let final_rights =
                     Rights::from_bits_truncate(req_rights).intersection(src_cap.rights());
@@ -314,7 +314,7 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
                 let final_badge = if !src_badge.is_null() { src_badge } else { new_badge };
 
                 let new_cap = src_cap.mint(final_badge, final_rights);
-                if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
+                if cnode.insert_child(dest_cptr, &new_cap, &src_cap) {
                     errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
@@ -326,12 +326,12 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
         cnodemethod::COPY => {
             // Copy: (src_ dest_slot, rights)
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let dest_slot = utcb.mrs_regs[1];
+            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
             let rights = utcb.mrs_regs[2] as u8;
 
-            if let Some((src_cap, src_slot_addr)) = tcb.cap_lookup_slot(src_cptr) {
+            if let Some(src_cap) = tcb.cap_lookup(src_cptr) {
                 let new_cap = src_cap.mint(Badge::null(), Rights::from_bits_truncate(rights));
-                if cnode.insert_child(dest_slot, &new_cap, src_slot_addr) {
+                if cnode.insert_child(dest_cptr, &new_cap, &src_cap) {
                     errcode::SUCCESS
                 } else {
                     errcode::INVALID_SLOT
@@ -342,25 +342,13 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
         }
         cnodemethod::DELETE => {
             // Delete: (slot)
-            let slot = utcb.mrs_regs[0];
-            let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != VirtAddr::null() {
-                cnode.delete(slot);
-                errcode::SUCCESS
-            } else {
-                errcode::INVALID_SLOT
-            }
+            let cptr = CapPtr::from(utcb.mrs_regs[0]);
+            if cnode.delete(cptr) { errcode::SUCCESS } else { errcode::INVALID_SLOT }
         }
         cnodemethod::REVOKE => {
             // Revoke: (slot)
-            let slot = utcb.mrs_regs[0];
-            let slot_addr = cnode.get_slot_addr(slot);
-            if slot_addr != VirtAddr::null() {
-                cnode.revoke(slot);
-                errcode::SUCCESS
-            } else {
-                errcode::INVALID_SLOT
-            }
+            let cptr = CapPtr::from(utcb.mrs_regs[0]);
+            if cnode.revoke(cptr) { errcode::SUCCESS } else { errcode::INVALID_SLOT }
         }
         cnodemethod::DEBUG_PRINT => {
             cnode.debug_print();
@@ -384,14 +372,13 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
 
     match method {
         untypedmethod::RETYPE => {
-            // Retype: (type, flags, n_objects, dest_cnode, dest_slot_offset, dirty)
+            // Retype: (type, flags,  dest_cnode, dest_slot_offset, dirty)
             let obj_type = utcb.mrs_regs[0];
 
             let flags = utcb.mrs_regs[1];
-            let n_objects = utcb.mrs_regs[2];
-            let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[3]);
-            let dest_slot_offset = utcb.mrs_regs[4];
-            let dirty = utcb.mrs_regs[5];
+            let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[2]);
+            let dest_slot = CapPtr::from(utcb.mrs_regs[3]);
+            let dirty = utcb.mrs_regs[4];
 
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
@@ -399,16 +386,20 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
             };
 
             if dest_cnode_cap.cap_type() == CapType::CNode {
-                let cn_vaddr = dest_cnode_cap.obj_ptr();
-                let dest_cnode = cn_vaddr.as_mut::<CNode>();
-                untyped.retype(
-                    CapType::from(obj_type),
-                    flags,
-                    n_objects,
-                    dest_cnode,
-                    dest_slot_offset,
-                    dirty,
-                )
+                let dest_cnode = dest_cnode_cap.obj_ptr().as_mut::<CNode>();
+                if dest_cnode.check_cptr(dest_slot) {
+                    return errcode::INVALID_SLOT;
+                }
+                match untyped.retype(CapType::from(obj_type), flags, dirty) {
+                    Some(new_cap) => {
+                        if dest_cnode.insert_child(dest_slot, &new_cap, cap) {
+                            errcode::SUCCESS
+                        } else {
+                            errcode::INVALID_SLOT
+                        }
+                    }
+                    None => errcode::INVALID_OBJ_TYPE,
+                }
             } else {
                 errcode::INVALID_OBJ_TYPE
             }

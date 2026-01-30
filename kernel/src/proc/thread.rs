@@ -236,23 +236,6 @@ impl TCB {
             None
         }
     }
-
-    pub fn cap_lookup_slot(&self, cptr: CapPtr) -> Option<(Capability, VirtAddr)> {
-        // 1. 获取 Root CNode
-        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
-        if root_cap.cap_type() == CapType::CNode {
-            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
-            // 2. 在 CNode 中查找
-            // 使用 lookup_slot_ptr 直接获取目标 Slot 指针，避免 get_slot_addr 参数错误导致的 Panic
-            let slot_ptr = cnode.lookup_slot_ptr(cptr)?;
-            unsafe {
-                let slot = &*slot_ptr;
-                Some((slot.cap.clone(), VirtAddr::from(slot_ptr as usize)))
-            }
-        } else {
-            None
-        }
-    }
 }
 
 unsafe impl Send for TCB {}

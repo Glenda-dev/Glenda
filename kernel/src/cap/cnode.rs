@@ -122,67 +122,72 @@ impl CNode {
         }
     }
 
-    pub fn insert(&mut self, slot: usize, cap: &Capability) -> bool {
-        if slot >= CNODE_SLOTS {
-            return false;
-        }
-        self.slots[slot].cap = cap.clone();
+    pub fn insert(&mut self, cptr: CapPtr, cap: &Capability) -> bool {
+        let slot = match self.lookup_slot_ptr(cptr) {
+            None => return false,
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+        slot.cap = cap.clone();
         true
     }
 
-    pub fn insert_child(&mut self, slot: usize, cap: &Capability, parent_addr: VirtAddr) -> bool {
-        if slot >= CNODE_SLOTS {
+    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent: &Capability) -> bool {
+        if cptr.is_null() {
             return false;
         }
-
-        let slot_ref = &mut self.slots[slot];
-        let slot_ptr = slot_ref as *mut Slot;
-        let slot_addr = VirtAddr::from(slot_ptr as usize);
-
-        // 1. 插入能力
-        slot_ref.cap = cap.clone();
+        let slot = match self.lookup_slot_ptr(cptr) {
+            None => return false,
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+        slot.cap = cap.clone();
 
         // 2. 建立 CDT 关系
         let mut cdt = CDTNode::new();
-        cdt.parent = parent_addr;
-        if parent_addr != VirtAddr::null() {
-            let parent_slot = parent_addr.as_mut::<Slot>();
+        cdt.parent = parent.obj_ptr();
+        if parent.obj_ptr() != VirtAddr::null() {
+            let parent_slot = parent.obj_ptr().as_mut::<Slot>();
             let old_first_child = parent_slot.cdt.first_child;
 
             cdt.next_sibling = old_first_child;
             if old_first_child != VirtAddr::null() {
                 let next_sib_slot = old_first_child.as_mut::<Slot>();
-                next_sib_slot.cdt.prev_sibling = slot_addr;
+                next_sib_slot.cdt.prev_sibling = VirtAddr::from(slot as *mut Slot as usize);
             }
-            parent_slot.cdt.first_child = slot_addr;
+            parent_slot.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
         }
-        slot_ref.cdt = cdt;
+        slot.cdt = cdt;
         true
     }
 
-    pub fn remove(&mut self, slot: usize) -> Option<Capability> {
-        if slot >= CNODE_SLOTS {
-            return None;
-        }
-        let cap = self.slots[slot].cap.clone();
-        self.slots[slot].cap = Capability::empty();
+    pub fn remove(&mut self, cptr: CapPtr) -> Option<Capability> {
+        let slot = match self.lookup_slot_ptr(cptr) {
+            None => return None,
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+        let cap = slot.cap.clone();
+        slot.cap = Capability::empty();
         if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
     }
 
-    pub fn revoke(&mut self, slot: usize) {
-        if slot >= CNODE_SLOTS {
-            return;
-        }
-        let slot_addr = self.get_slot_addr(slot);
-        revoke_recursive(slot_addr);
+    pub fn revoke(&mut self, cptr: CapPtr) -> bool {
+        let slot = match self.lookup_slot_ptr(cptr) {
+            None => return false,
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+        revoke_recursive(slot);
+        true
     }
 
-    pub fn delete(&mut self, slot: usize) {
-        if slot >= CNODE_SLOTS {
-            return;
+    pub fn delete(&mut self, cptr: CapPtr) -> bool {
+        if cptr.is_null() {
+            return false;
         }
-        let slot_addr = self.get_slot_addr(slot);
-        delete_recursive(slot_addr);
+        let slot = match self.lookup_slot_ptr(cptr) {
+            None => return false,
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+        delete_recursive(slot);
+        true
     }
 
     pub fn debug_print(&self) {
@@ -215,40 +220,64 @@ impl CNode {
         }
     }
 
-    pub fn get_slot_addr(&self, index: usize) -> VirtAddr {
-        VirtAddr::from(&self.slots[index] as *const Slot as usize)
+    pub fn check_cptr(&self, cptr: CapPtr) -> bool {
+        if cptr.is_null() {
+            return false;
+        }
+
+        let index = cptr.index();
+        let next_cptr = cptr.next();
+
+        // 获取 Slot 指针
+        let slot_ptr = unsafe { self.slots.as_ptr().add(index) as *mut Slot };
+        let slot = unsafe { &*slot_ptr };
+
+        if next_cptr.is_null() {
+            return true;
+        } else {
+            if slot.cap.cap_type() == CapType::CNode {
+                let next_cnode_addr = slot.cap.obj_ptr();
+                if next_cnode_addr == VirtAddr::null() {
+                    return false;
+                }
+                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                // 递归调用
+                return next_cnode.check_cptr(next_cptr);
+            } else {
+                return false;
+            }
+        }
     }
 }
 
-fn revoke_recursive(slot_addr: VirtAddr) {
-    let slot = slot_addr.as_mut::<Slot>();
+fn revoke_recursive(slot: &mut Slot) {
     let mut child_addr = slot.cdt.first_child;
     while child_addr != VirtAddr::null() {
-        let next_sibling = (*(child_addr.as_mut::<Slot>())).cdt.next_sibling;
-        delete_recursive(child_addr);
+        let child_slot = &mut *child_addr.as_mut::<Slot>();
+        let next_sibling = child_slot.cdt.next_sibling;
+        delete_recursive(child_slot);
         child_addr = next_sibling;
     }
     slot.cdt.first_child = VirtAddr::null();
 }
 
-fn delete_recursive(slot_addr: VirtAddr) {
+fn delete_recursive(slot: &mut Slot) {
     // 1. 递归撤销所有子能力
-    revoke_recursive(slot_addr);
+    revoke_recursive(slot);
 
     // 2. 从 CDT 兄弟链表中移除
-    let slot = slot_addr.as_mut::<Slot>();
     let prev = slot.cdt.prev_sibling;
     let next = slot.cdt.next_sibling;
     let parent = slot.cdt.parent;
 
     if prev != VirtAddr::null() {
-        (*(prev.as_mut::<Slot>())).cdt.next_sibling = next;
+        prev.as_mut::<Slot>().cdt.next_sibling = next;
     } else if parent != VirtAddr::null() {
-        (*(parent.as_mut::<Slot>())).cdt.first_child = next;
+        parent.as_mut::<Slot>().cdt.first_child = next;
     }
 
     if next != VirtAddr::null() {
-        (*(next.as_mut::<Slot>())).cdt.prev_sibling = prev;
+        next.as_mut::<Slot>().cdt.prev_sibling = prev;
     }
 
     // 3. 清空槽位 (触发 Capability::drop)

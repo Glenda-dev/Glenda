@@ -1,13 +1,12 @@
 use super::PhysAddr;
 use crate::cap::CNODE_PAGES;
-use crate::cap::{CNode, CapType, Capability, Rights, Slot};
+use crate::cap::{CNode, CapType, Capability, Rights};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::ipc;
 use crate::mem::PageTable;
-use crate::mem::{PhysFrame, VirtAddr};
+use crate::mem::PhysFrame;
 use crate::proc::{TCB, asid};
-use crate::trap::syscall::errcode;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -39,15 +38,11 @@ impl UntypedRegion {
         Some(Self { start: cap.paddr(), pages: pages, watermark: watermark })
     }
 
-    pub fn retype(
-        &mut self,
-        obj_type: CapType,
-        flags: usize,
-        n_objects: usize,
-        dest_cnode: &mut CNode,
-        dest_slot_offset: usize,
-        dirty: usize,
-    ) -> usize {
+    pub fn check(&self, need_pages: usize) -> bool {
+        self.watermark + need_pages <= self.pages
+    }
+
+    pub fn retype(&mut self, obj_type: CapType, flags: usize, dirty: usize) -> Option<Capability> {
         let obj_pages = match obj_type {
             CapType::CNode => CNODE_PAGES,
             CapType::TCB => sizes::TCB,
@@ -56,82 +51,63 @@ impl UntypedRegion {
             CapType::PageTable => sizes::PAGETABLE,
             CapType::VSpace => sizes::VSPACE,
             CapType::Untyped => flags,
-            _ => return errcode::INVALID_OBJ_TYPE,
+            _ => return None,
         };
 
-        let needed_pages = n_objects * obj_pages;
+        let needed_pages = obj_pages;
         if self.watermark + needed_pages > self.pages {
-            return errcode::UNTYPE_OOM;
-        }
-
-        for i in 0..n_objects {
-            let slot_idx = dest_slot_offset + i;
-            let slot_addr = dest_cnode.get_slot_addr(slot_idx);
-            if slot_addr == VirtAddr::null() {
-                return errcode::INVALID_SLOT;
-            }
-            let slot = unsafe { &*slot_addr.as_mut_ptr::<Slot>() };
-            if !slot.cap.is_null() {
-                return errcode::INVALID_SLOT;
-            }
+            return None;
         }
 
         let current_page_offset = self.watermark;
 
-        for i in 0..n_objects {
-            let page_idx = current_page_offset + i * obj_pages;
-            let obj_paddr = PhysAddr::from(self.start.as_usize() + page_idx * PGSIZE);
-            let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
-            let obj_size_bytes = obj_pages * PGSIZE;
+        let page_idx = current_page_offset + obj_pages;
+        let obj_paddr = PhysAddr::from(self.start.as_usize() + page_idx * PGSIZE);
+        let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
+        let obj_size_bytes = obj_pages * PGSIZE;
 
-            if dirty == 0 {
-                unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
-            }
-
-            let new_cap = match obj_type {
-                CapType::CNode => {
-                    let cnode_ptr = obj_vaddr.as_mut_ptr::<CNode>();
-                    unsafe { cnode_ptr.write(CNode::new()) };
-                    Capability::create_cnode(unsafe { &*cnode_ptr }, Rights::ALL)
-                }
-                CapType::TCB => {
-                    let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
-                    unsafe { tcb_ptr.write(TCB::new()) };
-                    Capability::create_tcb(unsafe { &*tcb_ptr }, Rights::ALL)
-                }
-                CapType::Endpoint => {
-                    let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
-                    unsafe { ep_ptr.write(ipc::Endpoint::new()) };
-                    Capability::create_endpoint(unsafe { &*ep_ptr }, Rights::ALL)
-                }
-                CapType::Frame => {
-                    let frame = PhysFrame { paddr: obj_paddr, pages: obj_pages };
-                    Capability::create_frame(&frame, Rights::ALL)
-                }
-                CapType::PageTable => {
-                    let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
-                    unsafe { pt_ptr.write(PageTable::new()) };
-                    Capability::create_pagetable(unsafe { &*pt_ptr }, flags, Rights::ALL)
-                }
-                CapType::VSpace => {
-                    let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
-                    unsafe { pt_ptr.write(PageTable::new()) };
-                    Capability::create_vspace(unsafe { &*pt_ptr }, asid::alloc(), Rights::ALL)
-                }
-                CapType::Untyped => {
-                    let untyped =
-                        UntypedRegion { start: obj_paddr, pages: obj_pages, watermark: 0 };
-                    Capability::create_untyped(&untyped, Rights::ALL)
-                }
-                _ => return errcode::INVALID_OBJ_TYPE,
-            };
-
-            if !dest_cnode.insert(dest_slot_offset + i, &new_cap) {
-                return errcode::INVALID_SLOT;
-            }
+        if dirty == 0 {
+            unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
         }
 
+        let new_cap = match obj_type {
+            CapType::CNode => {
+                let cnode_ptr = obj_vaddr.as_mut_ptr::<CNode>();
+                unsafe { cnode_ptr.write(CNode::new()) };
+                Capability::create_cnode(unsafe { &*cnode_ptr }, Rights::ALL)
+            }
+            CapType::TCB => {
+                let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
+                unsafe { tcb_ptr.write(TCB::new()) };
+                Capability::create_tcb(unsafe { &*tcb_ptr }, Rights::ALL)
+            }
+            CapType::Endpoint => {
+                let ep_ptr = obj_vaddr.as_mut_ptr::<ipc::Endpoint>();
+                unsafe { ep_ptr.write(ipc::Endpoint::new()) };
+                Capability::create_endpoint(unsafe { &*ep_ptr }, Rights::ALL)
+            }
+            CapType::Frame => {
+                let frame = PhysFrame { paddr: obj_paddr, pages: obj_pages };
+                Capability::create_frame(&frame, Rights::ALL)
+            }
+            CapType::PageTable => {
+                let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
+                unsafe { pt_ptr.write(PageTable::new()) };
+                Capability::create_pagetable(unsafe { &*pt_ptr }, flags, Rights::ALL)
+            }
+            CapType::VSpace => {
+                let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
+                unsafe { pt_ptr.write(PageTable::new()) };
+                Capability::create_vspace(unsafe { &*pt_ptr }, asid::alloc(), Rights::ALL)
+            }
+            CapType::Untyped => {
+                let untyped = UntypedRegion { start: obj_paddr, pages: obj_pages, watermark: 0 };
+                Capability::create_untyped(&untyped, Rights::ALL)
+            }
+            _ => return None,
+        };
+
         self.watermark += needed_pages;
-        errcode::SUCCESS
+        Some(new_cap)
     }
 }
