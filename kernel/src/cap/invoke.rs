@@ -390,7 +390,7 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
 
             if dest_cnode_cap.cap_type() == CapType::CNode {
                 let dest_cnode = dest_cnode_cap.obj_ptr().as_mut::<CNode>();
-                if dest_cnode.check_cptr(dest_slot) {
+                if !dest_cnode.check_cptr(dest_slot) {
                     return errcode::INVALID_SLOT;
                 }
                 match untyped.retype(CapType::from(obj_type), flags, dirty) {
