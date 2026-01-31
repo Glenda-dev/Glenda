@@ -14,8 +14,8 @@ pub const IRQ_CAP: CapPtr = CapPtr::from(9);
 pub const STACK_VA: usize = UTCB_VA - PGSIZE; // 用户栈映射地址
 pub const STACK_PAGES: usize = 16; // 用户栈页面数 16 * 4KB = 64KB
 pub const STACK_SIZE: usize = STACK_PAGES * PGSIZE; // 64KB
-pub const HEAP_PAGES: usize = 64; // 用户堆页面数 64 * 4KB = 256KB
-pub const HEAP_SIZE: usize = HEAP_PAGES * PGSIZE; // 256KB
+pub const HEAP_PAGES: usize = 256; // 用户堆页面数 256 * 4KB = 1MB
+pub const HEAP_SIZE: usize = HEAP_PAGES * PGSIZE; // 1MB
 pub const HEAP_VA: usize = 0x2000_0000; // 用户堆地址
 pub const BOOTINFO_VA: usize = 0x4000_0000; // Bootinfo映射地址
 pub const INITRD_VA: usize = 0x5000_0000; // Initrd 映射地址 (Root Task)
