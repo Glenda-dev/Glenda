@@ -56,6 +56,16 @@ impl PmemManager {
         printk!("  End: {:#x}\n", self.end.as_usize());
         printk!("  Free: {} KB\n", (self.end - self.current).as_usize() / 1024);
     }
+
+    fn get_untyped(&mut self) -> UntypedRegion {
+        let region = UntypedRegion {
+            start: self.current,
+            pages: (self.end - self.current).as_usize() / PGSIZE,
+            watermark: 0,
+        };
+        self.current = self.end; // Mark all memory as used
+        region
+    }
 }
 
 static PMEM: Mutex<PmemManager> = Mutex::new(PmemManager::new());
@@ -143,12 +153,8 @@ pub fn alloc_page() -> Option<PhysAddr> {
 /// 获取剩余的 Untyped 内存区域
 /// 这应该在 Root Task 创建完成后调用，用于将剩余内存移交给 Root Task
 pub fn get_untyped() -> UntypedRegion {
-    let pmem = PMEM.lock();
-    UntypedRegion {
-        start: pmem.current,
-        pages: (pmem.end - pmem.current).as_usize() / PGSIZE,
-        watermark: 0,
-    }
+    let mut pmem = PMEM.lock();
+    pmem.get_untyped()
 }
 
 #[derive(Debug, Clone, Copy)]
