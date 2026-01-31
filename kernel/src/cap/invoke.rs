@@ -166,8 +166,8 @@ fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
         }
         tcbmethod::SET_REGISTERS => {
             // SetRegisters: (entry, sp)
-            let entry = utcb.mrs_regs[1];
-            let sp = utcb.mrs_regs[2];
+            let entry = utcb.mrs_regs[0];
+            let sp = utcb.mrs_regs[1];
             tcb.set_registers(entry, sp);
             errcode::SUCCESS
         }
