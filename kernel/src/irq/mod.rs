@@ -74,7 +74,7 @@ pub fn handle_claimed(cpuid: usize, id: usize) {
     let tbl = IRQ_TABLE.lock();
     if id >= MAX_IRQS {
         // still complete the IRQ
-        panic!("IRQ id {} out of range of MAX_IRQS {}", id, MAX_IRQS);
+        panic!("IRQ {} out of range of MAX_IRQS {}", id, MAX_IRQS);
     }
 
     if let Some(cap) = &tbl[id].notification {
@@ -85,6 +85,13 @@ pub fn handle_claimed(cpuid: usize, id: usize) {
             let ep = ep_ptr.as_mut::<ipc::Endpoint>();
             ipc::notify(ep, badge);
         }
+    } else {
+        // 未绑定通知对象，直接完成
+        printk!("irq: IRQ {} has no bound notification, completing directly\n", id);
+        // 对 PLIC 做 Complete（claim/complete 寄存器写入）
+        hal::irq::complete(id as u32, cpuid);
+        // 重新打开该 IRQ
+        hal::irq::unmask(id as u32, cpuid);
     }
 }
 
