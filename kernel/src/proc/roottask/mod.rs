@@ -3,6 +3,7 @@ mod init;
 mod initrd;
 mod layout;
 
+pub use bootinfo::BootInfo;
 pub use initrd::cat_file;
 pub use initrd::print_files;
 pub use layout::STACK_VA;
@@ -11,8 +12,8 @@ use super::scheduler;
 use super::{TCB, ThreadState};
 use crate::cap::CNode;
 use crate::mem::PageTable;
+use crate::platform::PlatformInfo;
 use crate::printk;
-use bootinfo::BootInfo;
 use init::*;
 use layout::*;
 
@@ -58,15 +59,18 @@ fn spawn_payload(root_task: ProcPayload) {
     init_vspace(vspace, caps.tf.paddr(), caps.utcb.paddr(), caps.bootinfo.paddr());
     root_task.map(vspace);
 
-    // 4. Setup BootInfo
+    // 4. Setup bootinfo
     let bootinfo = caps.bootinfo.obj_ptr().as_mut::<BootInfo>();
     init_bootinfo(bootinfo);
 
-    // 5. Setup CSpace
+    // 5. Setup platform info
+    let platform_info = caps.platform.obj_ptr().as_mut::<PlatformInfo>();
+    init_platform(platform_info);
+
+    // 6. Setup CSpace
     let cspace = caps.cspace.obj_ptr().as_mut::<CNode>();
     init_cspace(cspace, &caps, bootinfo);
-
-    // 6. Configure TCB resources
+    // 7. Configure TCB resources
     tcb.configure(
         Some(&caps.cspace),
         Some(&caps.vspace),
@@ -90,7 +94,7 @@ trapframe   (1 page)
 UTCB        (1 page)
 ustack      (N pages)
 ------------
-BootInfo    (1 page)  0x40000000
+platforminfo    (1 page)  0x40000000
 Initrd      (N pages) 0x40001000
 ————————————
 heap        (M pages) 0x20000000

@@ -4,6 +4,7 @@ use crate::hal;
 use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
+use crate::platform;
 use crate::printk;
 use spin::Once;
 
@@ -23,14 +24,19 @@ unsafe extern "C" {
 
 pub static KERNEL_PAGE_TABLE: Once<PageTable> = Once::new();
 
-pub fn init_kernel_vm(hartid: usize) {
+pub fn init_kernel_vm() {
+    let info = platform::get();
     let mut kpt = PageTable::new();
     let mut flags: Perms;
 
     // 1. 映射所有物理内存 (Identity Mapping)
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
-    let mem = hal::platform::memory_range().expect("Memory range not found in DTB");
+    let mem = info
+        .memory_regions
+        .iter()
+        .find(|r| r.region_type == platform::MemoryType::Ram)
+        .expect("No RAM region found in platform memory regions");
     let mem_start_pa = mem.start;
     let mem_start_va = hal::mem::phys_to_virt(mem_start_pa);
     let mem_size = mem.size;
@@ -80,7 +86,7 @@ pub fn init_kernel_vm(hartid: usize) {
     // .data 和 .bss 已经是 RW 了，不需要额外重映射，但为了逻辑完整也可以做
 
     // 映射initrd
-    let initrd = hal::platform::initrd().expect("Initrd range not found");
+    let initrd = platform::get().initrd;
     let initrd_start = initrd.start;
     let initrd_end = initrd.start + initrd.size;
     let initrd_size = initrd.size;
@@ -98,11 +104,12 @@ pub fn init_kernel_vm(hartid: usize) {
 
     hal::mem::kpt_setup(&mut kpt);
 
-    printk!("vm: Root page table built by hart {}\n", hartid);
+    printk!("vm: Root page table built\n");
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
 
-pub fn switch_to_kernel(hartid: usize) {
+pub fn switch_to_kernel() {
+    let cpuid = hal::cpu::cpu_id();
     let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
     let kpt_va = VirtAddr::from(kpt as *const _ as usize);
     let kpt_pa = hal::mem::virt_to_phys(kpt_va);
@@ -110,12 +117,13 @@ pub fn switch_to_kernel(hartid: usize) {
     unsafe {
         hal::mem::activate_vspace(reg);
     }
-    printk!("vm: Hart {} switched to kernel page table\n", hartid);
+    printk!("vm: CPU {} switched to kernel page table\n", cpuid);
 }
 
-pub fn switch_off(hartid: usize) {
+pub fn switch_off() {
+    let cpuid = hal::cpu::cpu_id();
     unsafe {
         hal::mem::deactivate_vspace();
     }
-    printk!("vm: Hart {} switching off vm\n", hartid);
+    printk!("vm: CPU {} switching off vm\n", cpuid);
 }

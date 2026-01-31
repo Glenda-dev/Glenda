@@ -1,4 +1,5 @@
 use super::asm;
+use super::cpu;
 use super::plic;
 
 pub const MAX_IRQS: usize = 128;
@@ -21,14 +22,14 @@ pub fn wfi() {
     }
 }
 pub fn init() {}
-pub fn init_cpu(cpuid: usize) {
+pub fn init_cpu() {
     unsafe {
         asm::sstatus_set(1); // SIE
         asm::sie_set(9); // sext
         asm::sie_set(1); // ssoft
         asm::sie_set(5); // stimer
-        plic::set_threshold(cpuid, 0);
-    }
+        plic::set_threshold(cpu::cpu_id(), 0);
+    };
 }
 pub fn claim(cpuid: usize) -> Option<u32> {
     let id = plic::claim(cpuid);

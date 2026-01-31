@@ -1,3 +1,4 @@
+use super::bootinfo::BOOTINFO_PAGES;
 use super::bootinfo::BootInfo;
 use super::layout::*;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
@@ -5,12 +6,15 @@ use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
-use crate::mem::PageTable;
 use crate::mem::pmem;
-use crate::mem::{Perms, PhysAddr, PhysFrame, VirtAddr};
+use crate::mem::{MemoryRange, PageTable};
+use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
+use crate::platform;
+use crate::platform::PLATFORM_PAGES;
+use crate::platform::PlatformInfo;
 use crate::printk;
-use crate::printk::{ANSI_RESET, ANSI_YELLOW};
+use crate::proc::roottask::bootinfo::BOOTINFO_MAGIC;
 
 pub struct RootCaps {
     pub vspace: Capability,
@@ -24,6 +28,7 @@ pub struct RootCaps {
     pub untyped_cspace: Capability,
     pub mmio_cspace: Capability,
     pub irq_cspace: Capability,
+    pub platform: Capability,
 }
 
 pub fn alloc_root_caps() -> RootCaps {
@@ -34,7 +39,9 @@ pub fn alloc_root_caps() -> RootCaps {
         utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
         tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
         kstack: pmem::alloc_frame_cap(KSTACK_PAGES).expect("Failed to alloc root Kernel Stack"),
-        bootinfo: pmem::alloc_frame_cap(1).expect("Failed to alloc root BootInfo"),
+        platform: pmem::alloc_frame_cap(PLATFORM_PAGES)
+            .expect("Failed to alloc root Platform Info"),
+        bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).expect("Failed to alloc root BootInfo"),
         console: Capability::create_console(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc Untyped CNode"),
         mmio_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc MMIO CNode"),
@@ -70,12 +77,12 @@ pub fn init_vspace(
     vspace.map_with_alloc(
         VirtAddr::from(BOOTINFO_VA),
         bootinfo_paddr,
-        PGSIZE,
+        BOOTINFO_PAGES * PGSIZE,
         Perms::USER | Perms::READ, // 只读
     );
 
     // 映射 Initrd 到固定位置
-    let range = hal::platform::initrd().expect("Initrd range not found");
+    let range = platform::get().initrd;
     vspace.map_with_alloc(
         VirtAddr::from(INITRD_VA),
         range.start.align_down(PGSIZE),
@@ -106,82 +113,66 @@ pub fn init_vspace(
     hal::mem::pt_setup(vspace).expect("Failed to setup VSpace for root task");
 }
 pub fn init_bootinfo(bootinfo: &mut BootInfo) {
-    // 初始化 BootInfo
-    *bootinfo = BootInfo::new();
-
-    // Init Initrd info
-    if let Some(range) = hal::platform::initrd() {
-        let align_off = range.start.as_usize() % PGSIZE;
-        bootinfo.initrd_start = INITRD_VA + align_off;
-        bootinfo.initrd_size = range.size;
-    }
-
-    // 填充 PLATFORM 信息
-    if let Some(range) = hal::platform::range() {
-        bootinfo.info_desc = range;
-    }
-
-    // 填充启动参数
-    if let Some(args) = hal::platform::bootargs() {
-        let bytes = args.as_bytes();
-        let len = core::cmp::min(bytes.len(), bootinfo.cmdline.len() - 1);
-        bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
-        bootinfo.cmdline[len] = 0;
-    }
+    bootinfo.magic = BOOTINFO_MAGIC;
+    // 设置 Initrd 信息
+    let initrd = platform::get().initrd;
+    let initrd_offset = initrd.start.as_usize() % PGSIZE;
+    bootinfo.initrd_start = INITRD_VA + initrd_offset;
+    bootinfo.initrd_size = initrd.size;
+}
+pub fn init_platform(platform: &mut PlatformInfo) {
+    let info = platform::get();
+    *platform = info.clone();
 }
 pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
+    let info = platform::get();
     cspace.insert(CSPACE_CAP, &caps.cspace);
     cspace.insert(VSPACE_CAP, &caps.vspace);
     cspace.insert(TCB_CAP, &caps.tcb);
     cspace.insert(CONSOLE_CAP, &caps.console);
+    cspace.insert(PLATFORM_CAP, &caps.platform);
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace);
     cspace.insert(MMIO_CAP, &caps.mmio_cspace);
     cspace.insert(IRQ_CAP, &caps.irq_cspace);
 
-    match hal::platform::range() {
-        Some(range) => {
-            let frame = PhysFrame { paddr: range.start, pages: range.size / PGSIZE };
-            let platform_cap =
-                Capability::create_frame(&frame, Rights::READ | Rights::WRITE | Rights::GRANT);
-            cspace.insert(PLATFORM_CAP, &platform_cap);
-        }
-        None => printk!("proc: {}Warning{}: Platform range not found\n", ANSI_YELLOW, ANSI_RESET),
-    }
-
     // === 1. MMIO Caps (Stored in MMIO CNode at slot 7) ===
     let mut slot = 1;
     let mmio_cnode = caps.mmio_cspace.obj_ptr().as_mut::<CNode>();
-    match hal::platform::mmio_ranges() {
-        Some(ranges) => {
-            for mmio_region in ranges {
-                let mmio_size = mmio_region.size;
-                if mmio_size > 0 {
-                    let cap = Capability::create_mmio(&mmio_region, Rights::ALL);
-                    // 插入到 MMIO 子 CNode
-                    mmio_cnode.insert(CapPtr::from(slot), &cap);
 
-                    if bootinfo.mmio_count < bootinfo.mmio_list.len() {
-                        bootinfo.mmio_list[bootinfo.mmio_count] = *mmio_region;
-                        bootinfo.mmio_count += 1;
-                    }
-                    slot += 1;
-                }
+    for i in 0..info.memory_regions.len() {
+        let region = &info.memory_regions[i];
+        if region.region_type == platform::MemoryType::Mmio {
+            let cap = Capability::create_mmio(
+                &MemoryRange { start: region.start, size: region.size },
+                Rights::ALL,
+            );
+            // 插入到 MMIO 子 CNode
+            mmio_cnode.insert(CapPtr::from(slot), &cap);
+
+            if bootinfo.mmio_count < bootinfo.mmio_list.len() {
+                bootinfo.mmio_list[bootinfo.mmio_count] =
+                    MemoryRange { start: region.start, size: region.size };
+                bootinfo.mmio_count += 1;
             }
+            slot += 1;
         }
-        None => printk!("proc: {}Warning{}: No MMIO ranges found\n", ANSI_YELLOW, ANSI_RESET),
     }
 
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
-    let slot = 1;
+    let (untyped_regions, count) = pmem::get_untyped();
     let untyped_cnode = caps.untyped_cspace.obj_ptr().as_mut::<CNode>();
-    let untyped_region = pmem::get_untyped();
-    let cap = Capability::create_untyped(&untyped_region, Rights::ALL);
-    // 插入到 Untyped 子 CNode
-    untyped_cnode.insert(CapPtr::from(slot), &cap);
 
-    if bootinfo.untyped_count < bootinfo.untyped_list.len() {
-        bootinfo.untyped_list[bootinfo.untyped_count] = untyped_region;
-        bootinfo.untyped_count += 1;
+    let mut slot = 1;
+    for i in 0..count {
+        let region = untyped_regions[i];
+        let cap = Capability::create_untyped(&region, Rights::ALL);
+        untyped_cnode.insert(CapPtr::from(slot), &cap);
+        slot += 1;
+
+        if bootinfo.untyped_count < bootinfo.untyped_list.len() {
+            bootinfo.untyped_list[bootinfo.untyped_count] = region;
+            bootinfo.untyped_count += 1;
+        }
     }
 
     // === 3. IRQ Caps (Stored in Root CNode L1 directly, starting slot 8) ===

@@ -4,10 +4,9 @@ pub mod roottask;
 pub mod scheduler;
 pub mod thread;
 
-use crate::hal::platform::PlatformInfo;
 pub use elf::ElfFile;
 pub use thread::{TCB, ThreadState};
 
-pub fn init(_cpuid: usize, _info: PlatformInfo) {
+pub fn init() {
     roottask::init();
 }

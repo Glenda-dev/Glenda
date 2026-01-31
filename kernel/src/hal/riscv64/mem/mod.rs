@@ -22,6 +22,7 @@ use crate::mem::{PageTable, Perms, PhysAddr, VPN, VirtAddr};
 const SATP_MODE: usize = 8;
 unsafe extern "C" {
     static __trampoline: u8;
+    static __alloc_start: u8;
 }
 
 pub unsafe fn activate_vspace(val: usize) {
@@ -66,4 +67,8 @@ pub fn kpt_setup(kpt: &mut PageTable) {
 pub fn pt_setup(pt: &mut PageTable) -> Result<(), ()> {
     let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
     pt.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
+}
+
+pub fn kernel_end_addr() -> PhysAddr {
+    unsafe { PhysAddr::from(&__alloc_start as *const u8 as usize) }
 }

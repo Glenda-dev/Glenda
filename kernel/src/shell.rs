@@ -3,6 +3,7 @@ use crate::cap::Capability;
 use crate::hal;
 use crate::mem;
 use crate::mem::{PageTable, VirtAddr};
+use crate::platform;
 use crate::printk;
 use crate::proc;
 use crate::proc::TCB;
@@ -156,7 +157,8 @@ fn print_help() {
 
 fn print_platform_info() {
     printk!("Platform: {}\n", hal::ARCH);
-    hal::platform::print();
+    let info = platform::get();
+    printk!("{:?}", info);
 }
 
 fn debug_struct(addr_str: &str, type_str: &str) {

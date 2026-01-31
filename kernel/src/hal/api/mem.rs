@@ -112,3 +112,8 @@ pub const fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
 pub const fn virt_to_phys(va: VirtAddr) -> PhysAddr {
     unimplemented!()
 }
+
+/// 获取内核结束地址
+pub const fn kernel_end_addr() -> PhysAddr {
+    unimplemented!()
+}

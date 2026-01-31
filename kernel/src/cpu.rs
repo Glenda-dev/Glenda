@@ -35,7 +35,8 @@ pub fn enable(cpu_id: usize) {
     cpu.enabled = true;
 }
 
-pub fn init(cpu_id: usize) {
+pub fn init() {
+    let cpu_id = cpu::cpu_id();
     let cpu = unsafe { &mut CPUS[cpu_id] };
     cpu.id = cpu_id;
     enable(cpu_id);

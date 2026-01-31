@@ -11,6 +11,7 @@ mod ipc;
 mod irq;
 mod logo;
 mod mem;
+mod platform;
 mod printk;
 mod proc;
 mod shell;
@@ -30,13 +31,14 @@ use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
  [1]: https://www.kernel.org/doc/Documentation/riscv/boot.rst
 
 */
-#[unsafe(no_mangle)]
-pub extern "C" fn glenda_main() -> ! {
-    let (cpuid, info) = hal::boot::detect();
-    init::init(cpuid, info);
+pub fn glenda_main() -> ! {
+    init::init();
+    let cpuid = hal::cpu::cpu_id();
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     if cpuid == 0 {
-        let bootargs = hal::platform::bootargs().unwrap_or("");
+        printk!("{}", logo::LOGO);
+        let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
+        printk!("bootargs: {}\n", bootargs);
         if bootargs.contains("-s") {
             shell::run();
         } else {

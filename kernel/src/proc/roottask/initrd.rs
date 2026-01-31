@@ -1,8 +1,7 @@
 use crate::hal;
 use crate::hal::mem::{PGSIZE, USER_VA};
-use crate::mem::PageTable;
 use crate::mem::pmem;
-use crate::mem::{Perms, VirtAddr};
+use crate::mem::{PageTable, Perms, VirtAddr};
 use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
@@ -66,13 +65,8 @@ const PAYLOAD_MAGIC: u32 = 0x99999999;
 static INITRD_REGION: Once<(VirtAddr, usize)> = Once::new();
 
 pub fn init() {
-    let range = match hal::platform::initrd() {
-        Some(r) => r,
-        None => {
-            printk!("proc: Initrd range not found\n");
-            return;
-        }
-    };
+    let info = hal::platform::info();
+    let range = info.initrd;
     let payload_va = hal::mem::phys_to_virt(range.start);
     let size = range.size;
 

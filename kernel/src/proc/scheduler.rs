@@ -62,7 +62,7 @@ static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
 
 fn kick_harts() {
     // 发送 IPI 给所有其他核心，唤醒它们或触发抢占
-    // 这里的 mask 应该根据实际启用的 hart 计算，暂时广播给所有
+    // 这里的 mask 应该根据实际启用的 cpu 计算，暂时广播给所有
     // 忽略错误
     let _ = hal::platform::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
     // SBI v0.2: hart_mask, hart_mask_base.
@@ -84,7 +84,7 @@ pub fn add_thread(tcb: &mut TCB) {
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_CPUS，则表示不绑定，默认使用当前核心
     let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
-    // 获取目标 Hart 的运行队列
+    // 获取目标 CPU 的运行队列
     // 注意：访问全局 HARTS 数组需要 unsafe，且要小心死锁（这里只持有一个锁，是安全的）
     let target_hart = unsafe { &cpu::CPUS[target_hart_id] };
     let mut queues = target_hart.ready_queues.lock();
@@ -116,8 +116,8 @@ pub fn scheduler() -> ! {
 
         // 2. 寻找最高优先级的 Ready 线程
         {
-            let hart = cpu::get();
-            let mut queues = hart.ready_queues.lock();
+            let cpu = cpu::get();
+            let mut queues = cpu.ready_queues.lock();
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
                 if let Some(tcb_ptr) = queues[prio].pop_front() {
@@ -134,14 +134,14 @@ pub fn scheduler() -> ! {
             // 更新状态
             tcb.state = ThreadState::Running;
 
-            // 获取当前 CPU 的 Hart 结构
-            let hart = cpu::get();
+            // 获取当前 CPU 的 CPU 结构
+            let cpu = cpu::get();
             // 设置当前运行的线程
             set_current(tcb_ptr);
 
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
-                hal::proc::switch_context(&mut hart.context, &mut tcb.context);
+                hal::proc::switch_context(&mut cpu.context, &mut tcb.context);
             }
             set_current(core::ptr::null_mut());
 
@@ -247,18 +247,18 @@ pub fn reschedule() {
 }
 
 pub fn current() -> Option<*mut TCB> {
-    let hart = hal::cpu::cpu_id();
-    let tcb_ptr = unsafe { CURRENT_TCB[hart] };
+    let cpu = hal::cpu::cpu_id();
+    let tcb_ptr = unsafe { CURRENT_TCB[cpu] };
     if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
 }
 
 fn set_current(tcb_ptr: *mut TCB) {
-    let hart = hal::cpu::cpu_id();
+    let cpu = hal::cpu::cpu_id();
     unsafe {
         if tcb_ptr.is_null() {
-            CURRENT_TCB[hart] = None;
+            CURRENT_TCB[cpu] = None;
         } else {
-            CURRENT_TCB[hart] = Some(tcb_ptr);
+            CURRENT_TCB[cpu] = Some(tcb_ptr);
         }
     }
 }

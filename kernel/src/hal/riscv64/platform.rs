@@ -1,6 +1,7 @@
+use super::cpu;
 use super::dtb;
 use super::sbi;
-use crate::mem::MemoryRange;
+use crate::platform::PlatformInfo;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -19,17 +20,22 @@ static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
 
 #[repr(transparent)]
 #[derive(Copy, Clone)]
-pub struct PlatformInfo(usize);
+pub struct PlatformHandle(usize);
 
-impl PlatformInfo {
-    pub fn from(raw: usize) -> Self {
-        PlatformInfo(raw)
+impl PlatformHandle {
+    pub fn from(addr: usize) -> Self {
+        PlatformHandle(addr as usize)
+    }
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0 as *const u8
+    }
+    pub fn bits(&self) -> usize {
+        self.0
     }
 }
 
-/// 获取引导参数
-pub fn bootargs() -> Option<&'static str> {
-    dtb::bootargs()
+pub fn info() -> PlatformInfo {
+    dtb::get_platform_info()
 }
 
 /// 关闭系统
@@ -50,52 +56,22 @@ pub fn send_ipi(mask: usize, mask_base: usize) {
     sbi::send_ipi(mask, mask_base).expect("Failed to send IPI");
 }
 
-/// 获取内存范围
-pub fn memory_range() -> Option<MemoryRange> {
-    dtb::memory_range()
-}
-
-/// 平台初始化
-pub fn init(info: PlatformInfo) {
-    let dtb = info.0 as *const u8;
-    dtb::init(dtb);
-}
-
-/// 获取initrd范围
-pub fn initrd() -> Option<MemoryRange> {
-    dtb::initrd_range()
-}
-
-/// 获取DTB范围
-pub fn range() -> Option<MemoryRange> {
-    Some(dtb::dtb_range())
-}
-
-/// 获取设备内存
-pub fn mmio_ranges() -> Option<&'static [MemoryRange]> {
-    Some(dtb::mmio_ranges())
-}
-
-/// 获取CPU数
-pub fn cpus() -> usize {
-    dtb::hart_count()
-}
-
-pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) {
+pub fn bootstrap_cpus() {
     if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return;
     }
     let start_addr = secondary_start as usize;
-    let opaque = info.0;
+    let opaque = dtb::dtb_addr();
     let harts = dtb::hart_count();
+    let cpuid = cpu::cpu_id();
     for target in 0..harts {
         if target == cpuid {
             continue;
         }
         match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => printk!("cpus: Started cpu {} via SBI\n", target),
+            Ok(()) => printk!("cpus: Started CPU {} via SBI\n", target),
             Err(err) => printk!(
-                "{}cpus: Failed to start cpu {} via SBI: error {}{}\n",
+                "{}cpus: Failed to start CPU {} via SBI: error {}{}\n",
                 ANSI_RED,
                 target,
                 err,
@@ -103,8 +79,4 @@ pub fn bootstrap_cpus(cpuid: usize, info: PlatformInfo) {
             ),
         }
     }
-}
-
-pub fn print() {
-    dtb::debug_print();
 }

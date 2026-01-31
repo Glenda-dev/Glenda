@@ -1,14 +1,12 @@
 use crate::hal;
-use crate::printk;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 const INTERVAL: usize = 1000000; // 100ms
 
 static SYS_TICKS: AtomicUsize = AtomicUsize::new(0);
 
-pub fn init(hartid: usize) {
+pub fn init() {
     program_next_tick();
-    printk!("timer: init hart {}", hartid);
 }
 
 pub fn create() {
@@ -24,7 +22,7 @@ pub fn get_ticks() -> usize {
     SYS_TICKS.load(Ordering::Relaxed)
 }
 
-pub fn start(_hartid: usize) {
+pub fn start() {
     hal::cpu::timer_set_next(hal::cpu::read_time() + INTERVAL);
 }
 

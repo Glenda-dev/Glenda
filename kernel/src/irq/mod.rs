@@ -15,9 +15,9 @@ pub fn init() {
     printk!("irq: Initialized global IRQs\n");
 }
 
-pub fn init_hart(cpuid: usize) {
-    hal::irq::init_cpu(cpuid);
-    printk!("irq: Initialized for cpu {}\n", cpuid);
+pub fn init_cpu() {
+    hal::irq::init_cpu();
+    printk!("irq: Initialized for cpu {}\n", hal::cpu::cpu_id());
 }
 
 #[derive(Clone)]
@@ -97,13 +97,13 @@ pub fn ack_irq(cpuid: usize, irq: usize) {
 
 /// 进入中断上下文
 pub fn enter() {
-    let hart = cpu::get();
-    hart.nest_count += 1;
+    let cpu = cpu::get();
+    cpu.nest_count += 1;
 }
 /// 退出中断上下文
 pub fn exit() {
-    let hart = cpu::get();
-    if hart.nest_count > 0 {
-        hart.nest_count -= 1;
+    let cpu = cpu::get();
+    if cpu.nest_count > 0 {
+        cpu.nest_count -= 1;
     }
 }

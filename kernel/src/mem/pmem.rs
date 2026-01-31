@@ -1,70 +1,134 @@
 use super::PhysAddr;
 use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
-use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
 use crate::printk;
 use crate::proc::TCB;
 use crate::proc::asid;
-use core::ptr::addr_of_mut;
+use crate::{hal, platform};
 use spin::Mutex;
 
-struct PmemManager {
+const MAX_PMEM_REGIONS: usize = 16;
+
+#[derive(Clone, Copy, Debug)]
+struct RegionState {
     start: PhysAddr,
     current: PhysAddr,
     end: PhysAddr,
 }
 
+impl RegionState {
+    const fn new() -> Self {
+        Self { start: PhysAddr::null(), current: PhysAddr::null(), end: PhysAddr::null() }
+    }
+}
+
+struct PmemManager {
+    regions: [RegionState; MAX_PMEM_REGIONS],
+    count: usize,
+}
+
 impl PmemManager {
     const fn new() -> Self {
-        Self { start: PhysAddr::from(0), current: PhysAddr::from(0), end: PhysAddr::from(0) }
+        Self { regions: [RegionState::new(); MAX_PMEM_REGIONS], count: 0 }
     }
 
-    fn init(&mut self, start: PhysAddr, end: PhysAddr) {
-        self.start = start;
-        self.current = start;
-        self.end = end;
+    fn add_region(&mut self, start: PhysAddr, end: PhysAddr) {
+        if self.count >= MAX_PMEM_REGIONS {
+            printk!("pmem: Warning, ignoring memory region [{}, {}) due to limit\n", start, end);
+            return;
+        }
+        if end <= start {
+            return;
+        }
+
+        self.regions[self.count] = RegionState { start, current: start, end };
+        self.count += 1;
+        printk!("pmem: Added region [{}, {})\n", start, end);
+    }
+
+    fn init(&mut self, kernel_end: PhysAddr, info: &platform::PlatformInfo) {
+        // Clear existing regions just in case
+        self.count = 0;
+
+        for i in 0..info.memory_region_count {
+            let r = &info.memory_regions[i];
+            if r.region_type == platform::MemoryType::Ram {
+                let r_start = r.start;
+                let r_end = r_start + r.size;
+
+                // Check overlap with kernel image (assumed to be from 0..kernel_end or ram_start..kernel_end)
+                // A simple heuristic: if the region contains kernel_end, we start allocation after kernel_end
+                // If the region is completely below kernel_end, we ignore it (it's kernel code/data)
+
+                let effective_start = if r_start < kernel_end && r_end > kernel_end {
+                    kernel_end
+                } else if r_end <= kernel_end {
+                    continue; // Region used by kernel
+                } else {
+                    r_start
+                };
+
+                self.add_region(effective_start, r_end);
+            }
+        }
     }
 
     fn alloc_addr(&mut self, size: usize, align: usize) -> Option<PhysAddr> {
-        //printk!("pmem: Allocating {} bytes with alignment {}\n", size, align);
-        if self.current.as_usize() == 0 {
-            return None;
-        }
-        // Ensure alignment for allocations
-        let aligned_current = self.current.align_up(align);
-        if aligned_current + size <= self.end {
-            let paddr = aligned_current;
-            self.current = aligned_current + size;
+        for i in 0..self.count {
+            let region = &mut self.regions[i];
+            // Ensure alignment for allocations
+            let aligned_current = region.current.align_up(align);
+            if aligned_current + size <= region.end {
+                let paddr = aligned_current;
+                region.current = aligned_current + size;
 
-            // Zero the allocated frame to prevent information leakage
-            unsafe {
-                core::ptr::write_bytes(paddr.as_mut_ptr::<u8>(), 0, size);
+                // Zero the allocated frame
+                unsafe {
+                    core::ptr::write_bytes(paddr.as_mut_ptr::<u8>(), 0, size);
+                }
+                return Some(paddr);
             }
-            Some(paddr)
-        } else {
-            None
         }
+        None
     }
 
     fn print_debug(&self) {
         printk!("PmemManager Status:\n");
-        printk!("  Start: {:#x}\n", self.start.as_usize());
-        printk!("  Current: {:#x}\n", self.current.as_usize());
-        printk!("  End: {:#x}\n", self.end.as_usize());
-        printk!("  Free: {} KB\n", (self.end - self.current).as_usize() / 1024);
+        for i in 0..self.count {
+            let r = &self.regions[i];
+            printk!(
+                "  Region {}: [{:#x}, {:#x}), Free: {} KB\n",
+                i,
+                r.current.as_usize(),
+                r.end.as_usize(),
+                (r.end - r.current).as_usize() / 1024
+            );
+        }
     }
 
-    fn get_untyped(&mut self) -> UntypedRegion {
-        let region = UntypedRegion {
-            start: self.current,
-            pages: (self.end - self.current).as_usize() / PGSIZE,
-            watermark: 0,
-        };
-        self.current = self.end; // Mark all memory as used
-        region
+    fn get_untyped_regions(&mut self) -> ([UntypedRegion; MAX_PMEM_REGIONS], usize) {
+        let mut list =
+            [UntypedRegion { start: PhysAddr::null(), pages: 0, watermark: 0 }; MAX_PMEM_REGIONS];
+
+        let mut count = 0;
+
+        for i in 0..self.count {
+            let region = &mut self.regions[i];
+            let size = region.end - region.current;
+            if size.as_usize() >= PGSIZE {
+                list[count] = UntypedRegion {
+                    start: region.current,
+                    pages: size.as_usize() / PGSIZE,
+                    watermark: 0,
+                };
+                region.current = region.end; // Mark used
+                count += 1;
+            }
+        }
+        (list, count)
     }
 }
 
@@ -74,21 +138,9 @@ pub fn debug_info() {
     PMEM.lock().print_debug();
 }
 
-pub fn initialize_regions(_hartid: usize) {
-    let mem_range = hal::platform::memory_range().expect("Memory range not found in DTB");
-    let mem_start = mem_range.start;
-    let mem_end = mem_range.start + mem_range.size;
-
-    unsafe extern "C" {
-        static mut __alloc_start: u8;
-    }
-    let alloc_start = PhysAddr::from(addr_of_mut!(__alloc_start) as usize);
-    let alloc_start = alloc_start.align_up(PGSIZE);
-
-    printk!("pmem: Physical Memory: [{:#x}, {:#x})\n", mem_start.as_usize(), mem_end.as_usize());
-    printk!("pmem: Allocator Start: {:#x}\n", alloc_start.as_usize());
-
-    PMEM.lock().init(alloc_start, mem_end);
+pub fn initialize_regions() {
+    let info = hal::platform::info();
+    PMEM.lock().init(hal::mem::kernel_end_addr(), &info);
 }
 
 /// 分配一个物理页 Capability
@@ -152,9 +204,9 @@ pub fn alloc_page() -> Option<PhysAddr> {
 
 /// 获取剩余的 Untyped 内存区域
 /// 这应该在 Root Task 创建完成后调用，用于将剩余内存移交给 Root Task
-pub fn get_untyped() -> UntypedRegion {
+pub fn get_untyped() -> ([UntypedRegion; MAX_PMEM_REGIONS], usize) {
     let mut pmem = PMEM.lock();
-    pmem.get_untyped()
+    pmem.get_untyped_regions()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -162,7 +214,6 @@ pub struct PhysFrame {
     pub paddr: PhysAddr,
     pub pages: usize,
 }
-
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct MemoryRange {

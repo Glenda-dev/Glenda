@@ -1,13 +1,12 @@
 use crate::hal;
-use crate::hal::platform::PlatformInfo;
 use crate::irq;
 use spin::Once;
 
 static IRQ_INIT: Once<()> = Once::new();
-pub fn init(hartid: usize, _info: PlatformInfo) {
+pub fn init() {
     IRQ_INIT.call_once(|| {
         hal::irq::init();
     });
-    hal::irq::init_cpu(hartid);
-    irq::timer::start(hartid);
+    hal::irq::init_cpu();
+    irq::timer::start();
 }

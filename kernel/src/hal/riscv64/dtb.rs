@@ -1,201 +1,67 @@
 use super::console::Config as UartConfig;
 use crate::mem::MemoryRange;
 use crate::mem::PhysAddr;
-use crate::printk;
-use core::cell::UnsafeCell;
-use core::cmp;
-use core::hint::spin_loop;
-use core::sync::atomic::{AtomicU8, Ordering};
+use crate::platform::{BusType, DeviceDesc, DeviceKind, MemoryRegion, MemoryType, PlatformInfo};
 use fdt::Fdt;
 use fdt::node::FdtNode;
+use spin::Once;
 
 const MAX_MMIO_REGIONS: usize = 64;
 
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceTreeInfo {
-    uart: Option<UartConfig>,
-    hart_count: usize,
-    memory: Option<MemoryRange>,
-    plic: Option<MemoryRange>,
-    initrd: Option<MemoryRange>,
-    bootargs: Option<&'static str>,
+    pub uart: Option<UartConfig>,
+    pub plic: Option<MemoryRange>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
-    mmio_regions: [MemoryRange; MAX_MMIO_REGIONS],
-    mmio_count: usize,
+    pub hart_count: usize,
 }
 
 impl DeviceTreeInfo {
     fn new(fdt: &Fdt, dtb_paddr: usize) -> Self {
-        let hart_count = parse_hart_count(fdt);
         let uart = parse_uart(fdt);
-        let memory = parse_memory(fdt);
         let plic = parse_plic(fdt);
-        let initrd = parse_initrd(fdt);
-        let bootargs = parse_bootargs(fdt);
         let dtb_size = fdt.total_size();
-        let (mmio_regions, mmio_count) = parse_mmio(fdt);
-        Self {
-            uart,
-            hart_count,
-            memory,
-            plic,
-            dtb_paddr,
-            dtb_size,
-            initrd,
-            bootargs,
-            mmio_regions,
-            mmio_count,
-        }
+        let hart_count = parse_hart_count(fdt);
+        Self { uart, plic, dtb_paddr, dtb_size, hart_count }
     }
 
     fn uart(&self) -> Option<UartConfig> {
         self.uart
     }
 
-    fn hart_count(&self) -> usize {
-        cmp::max(self.hart_count, 1)
-    }
-
-    fn memory(&self) -> Option<MemoryRange> {
-        self.memory
-    }
-
     fn plic(&self) -> Option<MemoryRange> {
         self.plic
     }
-
-    fn initrd(&self) -> Option<MemoryRange> {
-        self.initrd
-    }
-
-    fn bootargs(&self) -> Option<&'static str> {
-        self.bootargs
-    }
-
-    pub fn mmio_ranges(&self) -> &[MemoryRange] {
-        &self.mmio_regions[..self.mmio_count]
-    }
 }
+static DEVICE_TREE_INFO: Once<DeviceTreeInfo> = Once::new();
 
-const UNINITIALIZED: u8 = 0;
-const INITIALIZING: u8 = 1;
-const READY: u8 = 2;
-
-struct DeviceTreeCell {
-    state: AtomicU8,
-    value: UnsafeCell<Option<DeviceTreeInfo>>,
-}
-
-impl DeviceTreeCell {
-    const fn new() -> Self {
-        Self { state: AtomicU8::new(UNINITIALIZED), value: UnsafeCell::new(None) }
-    }
-
-    fn get(&self) -> Option<&DeviceTreeInfo> {
-        if self.state.load(Ordering::Acquire) == READY {
-            unsafe { (*self.value.get()).as_ref() }
-        } else {
-            None
-        }
-    }
-
-    fn get_or_try_init<F>(&self, init: F) -> Result<&DeviceTreeInfo, fdt::FdtError>
-    where
-        F: FnOnce() -> Result<DeviceTreeInfo, fdt::FdtError>,
-    {
-        loop {
-            match self.state.load(Ordering::Acquire) {
-                READY => return Ok(self.get_ready()),
-                UNINITIALIZED => {
-                    if self
-                        .state
-                        .compare_exchange(
-                            UNINITIALIZED,
-                            INITIALIZING,
-                            Ordering::AcqRel,
-                            Ordering::Acquire,
-                        )
-                        .is_ok()
-                    {
-                        break;
-                    }
-                }
-                _ => {
-                    while self.state.load(Ordering::Acquire) == INITIALIZING {
-                        spin_loop();
-                    }
-                }
-            }
-        }
-
-        match init() {
-            Ok(info) => unsafe {
-                *self.value.get() = Some(info);
-                self.state.store(READY, Ordering::Release);
-                Ok(self.get_ready())
-            },
-            Err(err) => {
-                self.state.store(UNINITIALIZED, Ordering::Release);
-                Err(err)
-            }
-        }
-    }
-
-    fn get_ready(&self) -> &DeviceTreeInfo {
-        unsafe { (*self.value.get()).as_ref().unwrap() }
-    }
-}
-
-unsafe impl Sync for DeviceTreeCell {}
-
-static DEVICE_TREE: DeviceTreeCell = DeviceTreeCell::new();
-
-fn _init(dtb: *const u8) -> Result<&'static DeviceTreeInfo, fdt::FdtError> {
-    DEVICE_TREE.get_or_try_init(|| {
-        unsafe { Fdt::from_ptr(dtb) }.map(|fdt| DeviceTreeInfo::new(&fdt, dtb as usize))
-    })
-}
-
-pub fn dtb_info() -> Option<(usize, usize)> {
-    DEVICE_TREE.get().map(|info| (info.dtb_paddr, info.dtb_size))
-}
-
-pub fn hart_count() -> usize {
-    DEVICE_TREE.get().map(DeviceTreeInfo::hart_count).unwrap_or(1)
+pub fn init(dtb: *const u8) {
+    let dtb = dtb as *const u8;
+    let fdt = unsafe { Fdt::from_ptr(dtb).expect("Failed to parse FDT") };
+    DEVICE_TREE_INFO.call_once(|| DeviceTreeInfo::new(&fdt, dtb as usize));
 }
 
 pub fn uart_config() -> Option<UartConfig> {
-    DEVICE_TREE.get().and_then(DeviceTreeInfo::uart)
-}
-
-pub fn memory_range() -> Option<MemoryRange> {
-    DEVICE_TREE.get().and_then(DeviceTreeInfo::memory)
+    DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::uart)
 }
 
 pub fn plic() -> Option<MemoryRange> {
-    DEVICE_TREE.get().and_then(DeviceTreeInfo::plic)
+    DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::plic)
 }
 
-pub fn initrd_range() -> Option<MemoryRange> {
-    DEVICE_TREE.get().and_then(DeviceTreeInfo::initrd)
+pub fn dtb_addr() -> usize {
+    let info = DEVICE_TREE_INFO.get().expect("Device Tree Not Initialzed");
+    info.dtb_paddr
 }
 
-pub fn bootargs() -> Option<&'static str> {
-    DEVICE_TREE.get().and_then(|info| info.bootargs)
-}
-
-pub fn mmio_ranges() -> &'static [MemoryRange] {
-    DEVICE_TREE.get().map(|info| info.mmio_ranges()).unwrap_or(&[])
-}
-
-pub fn dtb_range() -> MemoryRange {
-    let info = DEVICE_TREE.get().expect("Device Tree Not Initialzed");
-    MemoryRange::from(PhysAddr::from(info.dtb_paddr), info.dtb_size)
+pub fn hart_count() -> usize {
+    let info = DEVICE_TREE_INFO.get().expect("Device Tree Not Initialzed");
+    info.hart_count
 }
 
 fn parse_u64(data: &[u8]) -> u64 {
-    let mut res = 0;
+    let mut res = 0 as u64;
     for &b in data {
         res = (res << 8) | (b as u64);
     }
@@ -212,29 +78,18 @@ fn parse_uart(fdt: &Fdt) -> Option<UartConfig> {
 }
 
 fn parse_hart_count(fdt: &Fdt) -> usize {
-    let mut count = 0;
-    for cpu in fdt.cpus() {
-        let disabled = cpu
-            .property("status")
-            .and_then(|prop| prop.as_str())
-            .map(|status| status == "disabled")
-            .unwrap_or(false);
-
-        if !disabled {
-            count += 1;
+    match fdt.find_node("/cpus") {
+        None => 1,
+        Some(cpus_node) => {
+            let mut count = 0;
+            for cpu_node in cpus_node.children() {
+                if cpu_node.name.starts_with("cpu@") {
+                    count += 1;
+                }
+            }
+            count
         }
     }
-
-    cmp::max(count, 1)
-}
-
-fn parse_memory(fdt: &Fdt) -> Option<MemoryRange> {
-    let memory = fdt.memory();
-    let mut regions = memory.regions();
-    regions.find_map(|region| {
-        let start = region.starting_address as usize;
-        region.size.map(|size| MemoryRange { start: PhysAddr::from(start), size })
-    })
 }
 
 fn parse_plic(fdt: &Fdt) -> Option<MemoryRange> {
@@ -284,20 +139,6 @@ fn parse_bootargs(fdt: &Fdt) -> Option<&'static str> {
     }
 }
 
-pub fn init(dtb: *const u8) {
-    // 解析设备树
-    let dtb_result = _init(dtb);
-    match dtb_result {
-        Ok(_) => {
-            printk!("dtb: Device tree blob at {:p}\n", dtb);
-            printk!("dtb: {} harts detected\n", hart_count());
-        }
-        Err(err) => {
-            panic!("dtb: Device tree parsing failed: {:?}\n", err);
-        }
-    }
-}
-
 fn parse_mmio(fdt: &Fdt) -> ([MemoryRange; MAX_MMIO_REGIONS], usize) {
     let mut regions = [MemoryRange::empty(); MAX_MMIO_REGIONS];
     let mut count = 0;
@@ -329,30 +170,99 @@ fn parse_mmio(fdt: &Fdt) -> ([MemoryRange; MAX_MMIO_REGIONS], usize) {
     (regions, count)
 }
 
-fn print(fdt: &Fdt) {
-    printk!("dtb: Dump device tree:\n");
+pub fn get_platform_info() -> PlatformInfo {
+    let mut info = PlatformInfo::new();
+    let dtb = dtb_addr() as *const u8;
+    if let Ok(fdt) = unsafe { Fdt::from_ptr(dtb) } {
+        fill_platform_info(&fdt, &mut info);
+    }
+    info
+}
+
+fn fill_platform_info(fdt: &Fdt, info: &mut PlatformInfo) {
+    // Fill model name
     if let Some(root) = fdt.find_node("/") {
-        print_node(&root, 0);
+        if let Some(model) = root.property("model").and_then(|p| p.as_str()) {
+            let bytes = model.as_bytes();
+            let len = core::cmp::min(bytes.len(), 63);
+            info.model_name[..len].copy_from_slice(&bytes[..len]);
+        }
+    }
+
+    info.cpu_count = parse_hart_count(fdt);
+    let initrd = parse_initrd(fdt).expect("Initrd range not found");
+    info.initrd =
+        MemoryRegion { start: initrd.start, size: initrd.size, region_type: MemoryType::Ram };
+
+    // Fill memory
+    let memory = fdt.memory();
+    for region in memory.regions() {
+        info.add_memory(
+            PhysAddr::from(region.starting_address as usize),
+            region.size.unwrap_or(0),
+            MemoryType::Ram,
+        );
+    }
+
+    // Fill MMIO regions
+    let (mmio_regions, mmio_count) = parse_mmio(fdt);
+    for i in 0..mmio_count {
+        let region = mmio_regions[i];
+        info.add_memory(region.start, region.size, MemoryType::Mmio);
+    }
+
+    // Walk for devices
+    if let Some(root) = fdt.find_node("/") {
+        walk_device_tree(&root, u32::MAX, info);
     }
 }
 
-fn print_node(node: &FdtNode<'_, '_>, depth: usize) {
-    for _ in 0..depth {
-        printk!("  ");
-    }
-
-    let name = if node.name.is_empty() { "/" } else { node.name };
-    printk!("{}\n", name);
-
+fn walk_device_tree(node: &FdtNode, parent_idx: u32, info: &mut PlatformInfo) {
     for child in node.children() {
-        print_node(&child, depth + 1);
-    }
-}
+        let mut dev_idx = parent_idx;
+        let is_memory = child
+            .property("device_type")
+            .and_then(|p| p.as_str())
+            .map(|s| s == "memory")
+            .unwrap_or(false);
+        let is_cpu = child
+            .property("device_type")
+            .and_then(|p| p.as_str())
+            .map(|s| s == "cpu")
+            .unwrap_or(false);
 
-pub fn debug_print() {
-    let (addr, _) = dtb_info().expect("DTB not initialzed");
-    let dtb = addr as *const u8;
-    unsafe {
-        let _ = Fdt::from_ptr(dtb).map(|fdt| print(&fdt));
+        if !is_memory && !is_cpu {
+            if let Some(mut regs) = child.reg() {
+                if let Some(region) = regs.next() {
+                    let mut desc = DeviceDesc {
+                        compatible: [0; 64],
+                        base_addr: PhysAddr::from(region.starting_address as usize),
+                        size: region.size.unwrap_or(0),
+                        irq: 0,
+                        kind: DeviceKind::Unknown,
+                        parent_index: parent_idx,
+                        bus_type: BusType::System,
+                    };
+
+                    if let Some(compat) = child.compatible() {
+                        if let Some(first) = compat.all().next() {
+                            let bytes = first.as_bytes();
+                            let len = core::cmp::min(bytes.len(), 63);
+                            desc.compatible[..len].copy_from_slice(&bytes[..len]);
+
+                            if first.contains("uart") || first.contains("serial") {
+                                desc.kind = DeviceKind::Uart;
+                            } else if first.contains("plic") {
+                                desc.kind = DeviceKind::Intc;
+                            } else if first.contains("virtio") {
+                                desc.kind = DeviceKind::Virtio;
+                            }
+                        }
+                    }
+                    dev_idx = info.add_device(desc);
+                }
+            }
+        }
+        walk_device_tree(&child, dev_idx, info);
     }
 }

@@ -1,5 +1,7 @@
-use super::asm;
-use super::platform::PlatformInfo;
+use super::dtb;
+use super::platform::PlatformHandle;
+use crate::glenda_main;
+use crate::printk;
 use core::arch::global_asm;
 
 global_asm!(
@@ -27,7 +29,7 @@ global_asm!(
         mv   sp, t1
         li   s0, 0
 2:
-        tail glenda_main
+        tail glenda_boot
     .endm
 
 _start: // boot hart
@@ -57,22 +59,18 @@ pub enum BootLoaderType {
 
 pub static mut BOOT_LOADER_TYPE: BootLoaderType = BootLoaderType::OpenSBI;
 
-pub fn detect() -> (usize, PlatformInfo) {
-    let a0 = unsafe { asm::read_a0() };
-    let a1 = unsafe { asm::read_a1() };
-    let hartid = a0;
-    let info = PlatformInfo::from(a1);
-
+#[unsafe(no_mangle)]
+pub extern "C" fn glenda_boot(_a0: usize, a1: usize) -> ! {
+    let dtb = a1;
     #[cfg(feature = "multiboot2")]
     {
+        let mut dtb = dtb;
         use super::cpu;
-        let mut info = info;
-        let mut hartid = hartid;
         // Check for Multiboot2 magic
         if a0 == multiboot2::MULTIBOOT2_MAGIC as usize {
             let info = multiboot2::parse(a0, a1);
             if let Some(new_info) = info.dtb {
-                info = PlatformInfo::from(new_info as usize);
+                dtb = new_info;
             }
             if let (Some(start), Some(end)) = (info.initrd_start, info.initrd_end) {
                 unsafe {
@@ -81,11 +79,13 @@ pub fn detect() -> (usize, PlatformInfo) {
             }
             // If we are in Multiboot2, we might not know the hartid.
             // Assume 0 for the boot hart if not provided.
-            hartid = cpu::cpu_id();
             unsafe {
                 BOOT_LOADER_TYPE = BootLoaderType::Multiboot2;
             }
         }
     }
-    (hartid, info)
+    let dtb = PlatformHandle::from(dtb);
+    dtb::init(dtb.as_ptr());
+    printk!("hal: HAL initialized, dtb at 0x{:x}\n", dtb.bits());
+    glenda_main();
 }

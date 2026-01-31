@@ -88,6 +88,7 @@ impl Debug for PhysAddr {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct VirtAddr(usize);
 impl VirtAddr {
     pub const fn from(addr: usize) -> Self {

@@ -1,12 +1,11 @@
-use crate::hal::platform::PlatformInfo;
-use crate::mem::vm::{self, init_kernel_vm};
+use crate::mem::vm;
 use spin::Once;
 
 static VM_INIT: Once<()> = Once::new();
 
-pub fn init(cpuid: usize, _info: PlatformInfo) {
+pub fn init() {
     VM_INIT.call_once(|| {
-        init_kernel_vm(cpuid);
+        vm::init_kernel_vm();
     });
-    vm::switch_to_kernel(cpuid);
+    vm::switch_to_kernel();
 }

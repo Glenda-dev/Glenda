@@ -34,7 +34,7 @@ pub fn init() {
 }
 
 /// 初始化当前 CPU 的中断控制器相关设置
-pub fn init_cpu(cpuid: usize) {
+pub fn init_cpu() {
     unimplemented!()
 }
 
