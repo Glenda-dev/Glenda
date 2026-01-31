@@ -21,7 +21,7 @@ pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
         CapType::IrqHandler => invoke_irq_handler(cap, method),
         CapType::VSpace => invoke_vspace(cap, method),
         CapType::Reply => invoke_reply(cap, method),
-        CapType::Console => invoke_console(cap, method),
+        CapType::Kernel => invoke_kernel(cap, method),
         _ => errcode::INVALID_OBJ_TYPE,
     }
 }
@@ -194,6 +194,9 @@ fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             errcode::SUCCESS
         }
         tcbmethod::RESUME => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                return errcode::PERMISSION_DENIED;
+            }
             // Resume
             tcb.resume();
             // 将线程加入调度队列
@@ -459,7 +462,7 @@ fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
     }
 }
 
-fn invoke_console(cap: &mut Capability, method: usize) -> usize {
+fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
@@ -467,15 +470,7 @@ fn invoke_console(cap: &mut Capability, method: usize) -> usize {
     };
 
     match method {
-        consolemethod::PUT_CHAR => {
-            if cap.has_rights(Rights::WRITE) == false {
-                return errcode::PERMISSION_DENIED;
-            }
-            let c = utcb.mrs_regs[0] as u8 as char;
-            crate::printk!("{}", c);
-            errcode::SUCCESS
-        }
-        consolemethod::PUT_STR => {
+        kernelmethod::CONSOLE_PUT_STR => {
             if cap.has_rights(Rights::WRITE) == false {
                 return errcode::PERMISSION_DENIED;
             }
@@ -489,12 +484,19 @@ fn invoke_console(cap: &mut Capability, method: usize) -> usize {
                 errcode::INVALID_SLOT
             }
         }
-        consolemethod::GET_CHAR => {
+        kernelmethod::CONSOLE_GET_CHAR => {
             if cap.has_rights(Rights::READ) == false {
                 return errcode::PERMISSION_DENIED;
             }
             let c = hal::console::read() as usize;
             utcb.mrs_regs[0] = c;
+            errcode::SUCCESS
+        }
+        kernelmethod::SHELL => {
+            if cap.has_rights(Rights::EXECUTE) == false {
+                return errcode::PERMISSION_DENIED;
+            }
+            crate::shell::run();
             errcode::SUCCESS
         }
         _ => errcode::INVALID_METHOD,

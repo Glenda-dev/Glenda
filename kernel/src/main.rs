@@ -56,7 +56,5 @@ pub fn panic(info: &PanicInfo) -> ! {
         hal::mem::deactivate_vspace();
     }
     shell::run();
-    loop {
-        hal::irq::wfi();
-    }
+    hal::platform::shutdown()
 }

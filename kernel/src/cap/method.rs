@@ -42,10 +42,10 @@ pub mod irqmethod {
     pub const SET_PRIORITY: usize = 4;
 }
 
-pub mod consolemethod {
-    pub const PUT_CHAR: usize = 1;
-    pub const PUT_STR: usize = 2;
-    pub const GET_CHAR: usize = 3;
+pub mod kernelmethod {
+    pub const CONSOLE_PUT_STR: usize = 1;
+    pub const CONSOLE_GET_CHAR: usize = 2;
+    pub const SHELL: usize = 3;
 }
 
 pub mod vspacemethod {

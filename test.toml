@@ -21,3 +21,4 @@ path = "lib/libglenda-rs"
 build = "cargo"
 [features]
 kernel = []
+libglenda-rs = ["rt-bare"]

@@ -26,6 +26,7 @@ bitflags! {
         const SEND = 1 << 3; // 允许发送消息 (sys_send)
         const RECV = 1 << 4; // 允许接收消息 (sys_recv)
         const CALL = 1 << 5; // 允许调用对象方法 (sys_invoke)
+        const EXECUTE = 1 << 6; // 允许执行 (仅用于 TCB)
         const ALL = 0xFF;
     }
 }

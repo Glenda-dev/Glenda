@@ -1,12 +1,12 @@
 #![no_std]
 #![no_main]
 use glenda;
-use glenda::cap::CSPACE_CAP;
 use glenda::println;
+use glenda::runtime::KERNEL_CAP;
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
-    CSPACE_CAP.debug_print();
+    KERNEL_CAP.shell();
     println!("Hello World!");
     0
 }

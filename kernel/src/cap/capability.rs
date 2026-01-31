@@ -286,9 +286,9 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_console(rights: Rights) -> Self {
+    pub fn create_kernel(rights: Rights) -> Self {
         let w0 = 0;
-        let w1 = (CapType::Console as usize) & TYPE_MASK
+        let w1 = (CapType::Kernel as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }

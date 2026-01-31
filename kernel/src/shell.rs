@@ -104,7 +104,7 @@ fn execute_command(cmd_line: &str) -> bool {
                 printk!("Usage: cat <name>\n");
             }
         }
-        "boot" => return true,
+        "boot" | "exit" => return true,
         "kpt" => print_kpt(),
         "debug" => {
             if let (Some(addr_str), Some(type_str)) = (parts.next(), parts.next()) {

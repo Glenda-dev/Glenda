@@ -24,7 +24,7 @@ pub struct RootCaps {
     pub tf: Capability,
     pub kstack: Capability,
     pub bootinfo: Capability,
-    pub console: Capability,
+    pub kernel: Capability,
     pub untyped_cspace: Capability,
     pub mmio_cspace: Capability,
     pub irq_cspace: Capability,
@@ -42,7 +42,7 @@ pub fn alloc_root_caps() -> RootCaps {
         platform: pmem::alloc_frame_cap(PLATFORM_PAGES)
             .expect("Failed to alloc root Platform Info"),
         bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).expect("Failed to alloc root BootInfo"),
-        console: Capability::create_console(Rights::ALL),
+        kernel: Capability::create_kernel(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc Untyped CNode"),
         mmio_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc MMIO CNode"),
         irq_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc IRQ CNode"),
@@ -129,7 +129,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
     cspace.insert(CSPACE_CAP, &caps.cspace);
     cspace.insert(VSPACE_CAP, &caps.vspace);
     cspace.insert(TCB_CAP, &caps.tcb);
-    cspace.insert(CONSOLE_CAP, &caps.console);
+    cspace.insert(KERNEL_CAP, &caps.kernel);
     cspace.insert(PLATFORM_CAP, &caps.platform);
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace);
     cspace.insert(MMIO_CAP, &caps.mmio_cspace);
