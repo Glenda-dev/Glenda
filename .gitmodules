@@ -16,3 +16,6 @@
 [submodule "drivers"]
 	path = drivers
 	url = https://github.com/Glenda-dev/Glenda-drivers.git
+[submodule "examples/dosbox"]
+	path = examples/dosbox
+	url = https://github.com/Glenda-dev/dosbox-glenda.git

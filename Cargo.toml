@@ -6,6 +6,7 @@ members = [
     "service/nineball",
     "service/factotum",
     "service/unicorn",
+    "examples/dosbox",
     "drivers/virtio/common",
     "drivers/virtio/block",
     "drivers/ns16550a",

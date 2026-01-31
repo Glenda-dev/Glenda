@@ -7,7 +7,6 @@ cpus = 1
 mem = "1G"
 display = "nographic"
 bootargs = "-s"
-drive = "disk.img"
 
 [[services]]
 name = "hello"
