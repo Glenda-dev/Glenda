@@ -2,7 +2,9 @@ use super::{CapType, Capability};
 use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
 use crate::printk;
+use core::fmt::Display;
 use core::sync::atomic::AtomicUsize;
+use spin::Mutex;
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
@@ -10,6 +12,8 @@ pub const CNODE_BITS: usize = 8; // 256 slots per CNode
 pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
 pub const CNODE_MASK: usize = CNODE_SLOTS - 1;
 pub const CNODE_PAGES: usize = (CNODE_SIZE + PGSIZE - 1) / PGSIZE; // CNode 占用的页数
+
+static CDT_LOCK: Mutex<()> = Mutex::new(());
 
 /// 每8位作为一层的索引号
 #[repr(C)]
@@ -31,6 +35,12 @@ impl CapPtr {
     }
     pub const fn is_null(&self) -> bool {
         self.0 & CNODE_MASK == 0
+    }
+}
+
+impl Display for CapPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
     }
 }
 
@@ -127,11 +137,15 @@ impl CNode {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
         };
+        if slot.cap.cap_type() != CapType::Empty {
+            return false;
+        }
         slot.cap = cap.clone();
         true
     }
 
     pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent: &Capability) -> bool {
+        let _ = CDT_LOCK.lock();
         if cptr.is_null() {
             return false;
         }
@@ -139,6 +153,12 @@ impl CNode {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
         };
+
+        // 必须确保目标槽位为空，否则会破坏 CDT
+        if slot.cap.cap_type() != CapType::Empty {
+            return false;
+        }
+
         slot.cap = cap.clone();
 
         // 2. 建立 CDT 关系
@@ -159,17 +179,8 @@ impl CNode {
         true
     }
 
-    pub fn remove(&mut self, cptr: CapPtr) -> Option<Capability> {
-        let slot = match self.lookup_slot_ptr(cptr) {
-            None => return None,
-            Some(ptr) => unsafe { &mut *ptr },
-        };
-        let cap = slot.cap.clone();
-        slot.cap = Capability::empty();
-        if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
-    }
-
     pub fn revoke(&mut self, cptr: CapPtr) -> bool {
+        let _ = CDT_LOCK.lock();
         let slot = match self.lookup_slot_ptr(cptr) {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
@@ -179,6 +190,7 @@ impl CNode {
     }
 
     pub fn delete(&mut self, cptr: CapPtr) -> bool {
+        let _ = CDT_LOCK.lock();
         if cptr.is_null() {
             return false;
         }

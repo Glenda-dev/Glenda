@@ -300,12 +300,11 @@ fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
             let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
             let new_badge = Badge::from(utcb.mrs_regs[2]);
-            let req_rights = utcb.mrs_regs[3] as u8;
+            let req_rights = Rights::from_bits_truncate(utcb.mrs_regs[3] as u8);
 
             if let Some(src_cap) = tcb.cap_lookup(src_cptr) {
                 // 1. 权限收缩：新权限必须是源权限的子集
-                let final_rights =
-                    Rights::from_bits_truncate(req_rights).intersection(src_cap.rights());
+                let final_rights = req_rights.intersection(src_cap.rights());
 
                 // 2. Badge 检查：
                 // - 如果源 Cap 已有 Badge，则不能再次设置新 Badge (seL4 语义)
@@ -396,6 +395,8 @@ fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                 match untyped.retype(CapType::from(obj_type), flags, dirty) {
                     Some(new_cap) => {
                         if dest_cnode.insert_child(dest_slot, &new_cap, cap) {
+                            // 重要：将更新后的 watermark 写回原始 Untyped 能力
+                            cap.set_data(untyped.pages | (untyped.watermark << 25));
                             errcode::SUCCESS
                         } else {
                             errcode::INVALID_SLOT
@@ -524,7 +525,7 @@ fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
             // Map: (frame_cap, vaddr, flags)
             let frame_cptr = CapPtr::from(utcb.mrs_regs[0]);
             let vaddr = VirtAddr::from(utcb.mrs_regs[1]);
-            let flags = Perms::from_bits_truncate(utcb.mrs_regs[2]) | Perms::USER;
+            let flags = Perms::from_bits_truncate(utcb.mrs_regs[2]);
 
             let frame_cap = match tcb.cap_lookup(frame_cptr) {
                 Some(c) => c,
@@ -537,8 +538,10 @@ fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 return errcode::INVALID_OBJ_TYPE;
             };
 
+            let num_pages = frame_cap.get_data();
+
             // 执行映射
-            match pt.map(vaddr, frame_paddr, PGSIZE, flags) {
+            match pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags) {
                 Ok(()) => errcode::SUCCESS,
                 Err(_) => errcode::MAPPING_FAILED,
             }
@@ -554,7 +557,9 @@ fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 None => return errcode::INVALID_CAP,
             };
 
-            let table_paddr = if table_cap.cap_type() == CapType::VSpace {
+            let table_paddr = if table_cap.cap_type() == CapType::PageTable
+                || table_cap.cap_type() == CapType::VSpace
+            {
                 table_cap.paddr()
             } else {
                 return errcode::INVALID_OBJ_TYPE;

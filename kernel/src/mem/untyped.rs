@@ -8,7 +8,7 @@ use crate::mem::PageTable;
 use crate::mem::PhysFrame;
 use crate::proc::{TCB, asid};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct UntypedRegion {
     pub start: PhysAddr,
@@ -61,7 +61,7 @@ impl UntypedRegion {
 
         let current_page_offset = self.watermark;
 
-        let page_idx = current_page_offset + obj_pages;
+        let page_idx = current_page_offset;
         let obj_paddr = PhysAddr::from(self.start.as_usize() + page_idx * PGSIZE);
         let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
         let obj_size_bytes = obj_pages * PGSIZE;
