@@ -165,8 +165,7 @@ fn external_handler() {
     match id {
         None => return,
         Some(id) => {
-            // Delegate to irq manager to notify bound endpoint and complete
-            hal::irq::complete(id, cpuid);
+            irq::handle_claimed(cpuid, id as usize);
         }
     }
 }
