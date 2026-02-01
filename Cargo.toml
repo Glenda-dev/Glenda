@@ -23,4 +23,6 @@ panic = "abort"
 [profile.relwithdebuginfo]
 panic = "abort"
 inherits = "release"
+lto = true           # 开启链接时优化，跨 crate 删除无用代码
+codegen-units = 1    # 限制并行代码生成单元，有助于更好的全局优化
 debug = true         # 保留一些调试信息
