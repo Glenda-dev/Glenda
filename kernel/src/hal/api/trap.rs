@@ -1,4 +1,4 @@
-use crate::mem::VirtAddr;
+use crate::ipc::MsgArgs;
 use crate::trap::TrapCause;
 use core::arch::naked_asm;
 /// 陷阱帧结构体
@@ -48,6 +48,14 @@ impl TrapFrame {
     pub const fn get_sp(&self) -> usize {
         unimplemented!()
     }
+    /// 获取常见寄存器的值
+    pub fn get_registers(&self) -> MsgArgs {
+        unimplemented!()
+    }
+    /// 设置常见寄存器的值
+    pub fn set_registers(&mut self, regs: &MsgArgs) {
+        unimplemented!()
+    }
 }
 
 /// 初始化异常向量表
@@ -56,10 +64,13 @@ impl TrapFrame {
 pub unsafe fn vector_init() {
     unimplemented!()
 }
-
 /// 获取导致 Trap 的原因
 /// 返回架构无关的枚举 (Syscall, Timer, ExternalIrq, PageFault...)
-pub fn get_cause() -> TrapCause {
+pub fn match_cause(cause: usize) -> TrapCause {
+    unimplemented!()
+}
+/// 获取导致 Trap 的原因
+pub fn get_cause() -> usize {
     unimplemented!()
 }
 /// 获取 Trap 发生时的程序计数器 (PC/EPC)
@@ -67,8 +78,8 @@ pub fn get_pc() -> usize {
     unimplemented!()
 }
 
-/// 获取导致异常的地址 (如页错误的 faulting address)
-pub fn get_address() -> VirtAddr {
+/// 获取导致异常的值 (如页错误的 faulting address)
+pub fn get_value() -> usize {
     unimplemented!()
 }
 

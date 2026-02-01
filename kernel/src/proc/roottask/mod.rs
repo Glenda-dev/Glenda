@@ -79,7 +79,7 @@ fn spawn_payload(root_task: ProcPayload) {
         Some(&caps.kstack),
     );
     tcb.set_priority(ROOT_TASK_PRIORITY);
-    tcb.set_registers(entry_point, stack_top);
+    tcb.set_entrypoint(entry_point, stack_top);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
     printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);

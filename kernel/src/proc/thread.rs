@@ -5,6 +5,7 @@ use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::hal::proc::ProcContext;
 use crate::hal::trap::TrapFrame;
 use crate::hal::trap::{trap_user_handler, trap_user_return};
+use crate::ipc::MsgArgs;
 use crate::ipc::UTCB;
 use crate::mem::PageTable;
 use crate::mem::VirtAddr;
@@ -180,7 +181,7 @@ impl TCB {
         self.priority = prio;
     }
 
-    pub fn set_registers(&mut self, entry_point: usize, stack_top: usize) {
+    pub fn set_entrypoint(&mut self, entry_point: usize, stack_top: usize) {
         // 1. 获取内核栈顶和 mmu
         let kstack_top = self.get_kstack_top().as_usize();
         let mmu = self.mmu_register();
@@ -204,6 +205,11 @@ impl TCB {
 
     pub fn set_affinity(&mut self, hart_id: usize) {
         self.affinity = hart_id;
+    }
+
+    pub fn set_registers(&mut self, regs: &MsgArgs) {
+        let tf = self.get_tf();
+        tf.set_registers(regs);
     }
 
     pub fn resume(&mut self) {

@@ -11,11 +11,8 @@ pub use captype::CapType;
 pub use cnode::CNODE_PAGES;
 pub use cnode::{CNode, CapPtr};
 
-use crate::ipc::MAX_MRS;
 use bitflags::bitflags;
 use core::fmt::Display;
-
-pub type Args = [usize; MAX_MRS];
 
 bitflags! {
     #[derive(Clone,Copy)]

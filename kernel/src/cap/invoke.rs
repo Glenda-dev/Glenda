@@ -3,6 +3,7 @@ use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::ipc;
+use crate::ipc::MsgFlags;
 use crate::irq;
 use crate::mem::PageTable;
 use crate::mem::Perms;
@@ -10,6 +11,7 @@ use crate::mem::{UntypedRegion, VirtAddr};
 use crate::proc::{TCB, scheduler};
 use crate::trap::syscall::errcode;
 
+// TODO: 分离各个对象类型的 invoke 处理函数
 pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
     // 4. 根据对象类型分发
     match cap.cap_type() {
@@ -53,7 +55,7 @@ fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
             let tag = utcb.msg_tag;
             // 通过 invoke 发送时，暂时不支持传递能力，或者从 UTCB 中提取
             let mut cap_to_send = None;
-            if tag.has_cap() {
+            if tag.flags().contains(MsgFlags::HAS_CAP) {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
                         cap_to_send = Some(cap);
@@ -76,7 +78,7 @@ fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
             }
             let tag = utcb.msg_tag;
             let mut cap_to_send = None;
-            if tag.has_cap() {
+            if tag.flags().contains(MsgFlags::HAS_CAP) {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
                         cap_to_send = Some(cap);
@@ -164,11 +166,11 @@ fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             scheduler::reschedule();
             errcode::SUCCESS
         }
-        tcbmethod::SET_REGISTERS => {
+        tcbmethod::SET_ENTRYPOINT => {
             // SetRegisters: (entry, sp)
             let entry = utcb.mrs_regs[0];
             let sp = utcb.mrs_regs[1];
-            tcb.set_registers(entry, sp);
+            tcb.set_entrypoint(entry, sp);
             errcode::SUCCESS
         }
         tcbmethod::SET_FAULT_HANDLER => {
@@ -191,6 +193,11 @@ fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             // SetAffinity: (cpu_id)
             let cpu_id = utcb.mrs_regs[0];
             tcb.set_affinity(cpu_id);
+            errcode::SUCCESS
+        }
+        tcbmethod::SET_REGISTERS => {
+            // SetRegisters: (a0, a1, a2, a3, a4, a5, a6)
+            tcb.set_registers(&utcb.mrs_regs);
             errcode::SUCCESS
         }
         tcbmethod::RESUME => {

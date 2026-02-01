@@ -12,11 +12,12 @@ pub mod replymethod {
 pub mod tcbmethod {
     pub const CONFIGURE: usize = 1;
     pub const SET_PRIORITY: usize = 2;
-    pub const SET_REGISTERS: usize = 3;
+    pub const SET_ENTRYPOINT: usize = 3;
     pub const SET_FAULT_HANDLER: usize = 4;
     pub const SET_AFFINITY: usize = 5;
-    pub const RESUME: usize = 6;
-    pub const SUSPEND: usize = 7;
+    pub const SET_REGISTERS: usize = 6;
+    pub const RESUME: usize = 7;
+    pub const SUSPEND: usize = 8;
 }
 
 pub mod pagetablemethod {

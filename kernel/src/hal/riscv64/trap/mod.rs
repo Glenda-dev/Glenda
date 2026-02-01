@@ -3,7 +3,6 @@ mod user;
 mod vector;
 
 use super::asm;
-use crate::mem::VirtAddr;
 use crate::trap::TrapCause;
 use crate::trap::{TrapException, TrapInterrupt};
 use core::arch::asm;
@@ -25,21 +24,18 @@ pub unsafe fn vector_init() {
 
 /// 获取导致 Trap 的原因
 /// 返回架构无关的枚举 (Syscall, Timer, ExternalIrq, PageFault...)
-pub fn get_cause() -> TrapCause {
-    // 1. 读取 scause (Trap 原因)
-    let scause: usize = asm::read_scause();
-
+pub fn match_cause(cause: usize) -> TrapCause {
     // RISC-V scause 布局:
     // 最高位 (Interrupt Bit): 1=Interrupt, 0=Exception
     // 低位 (Exception Code)
-    let is_interrupt = (scause >> 63) != 0;
-    let code = scause & !(1 << 63);
+    let is_interrupt = (cause >> 63) != 0;
+    let code = cause & !(1 << 63);
 
     if is_interrupt {
         match code {
             5 => TrapCause::Interrupt(TrapInterrupt::Timer), // Supervisor Timer Interrupt
             9 => TrapCause::Interrupt(TrapInterrupt::External), // Supervisor External Interrupt
-            _ => TrapCause::Unknown(scause),
+            _ => TrapCause::Unknown(cause),
         }
     } else {
         match code {
@@ -49,7 +45,7 @@ pub fn get_cause() -> TrapCause {
             1 | 5 | 7 => TrapCause::Exception(TrapException::AccessFault),
             8 => TrapCause::Exception(TrapException::Syscall), // Environment call from U-mode
             12 | 13 | 15 => TrapCause::Exception(TrapException::PageFault), // Instruction/Load/Store Page Fault
-            _ => TrapCause::Unknown(scause),
+            _ => TrapCause::Unknown(cause),
         }
     }
 }
@@ -58,10 +54,14 @@ pub fn get_pc() -> usize {
     asm::read_sepc()
 }
 
-pub fn get_address() -> VirtAddr {
-    VirtAddr::from(asm::read_stval())
+pub fn get_value() -> usize {
+    asm::read_stval()
 }
 
 pub fn get_status() -> usize {
     asm::read_sstatus()
+}
+
+pub fn get_cause() -> usize {
+    asm::read_scause()
 }

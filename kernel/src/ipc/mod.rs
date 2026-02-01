@@ -1,16 +1,16 @@
 pub mod endpoint;
-pub mod message;
+pub mod msg;
+pub mod proto;
 pub mod utcb;
 
-pub use message::{MsgTag, label};
-pub use utcb::UTCB;
+pub use msg::{MsgFlags, MsgTag};
+pub use utcb::{MsgArgs, UTCB};
 
 use crate::cap::{Badge, CapType, Capability, Rights};
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
 pub use endpoint::Endpoint;
-pub use utcb::MAX_MRS;
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
@@ -138,7 +138,10 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
         if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
-            unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
+            unsafe {
+                (*utcb_ptr).msg_tag =
+                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE)
+            };
         }
 
         set_badge(receiver, badge);
@@ -158,7 +161,10 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
     if !pending.is_null() {
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
-            unsafe { (*utcb_ptr).msg_tag = MsgTag::new(label::NOTIFY, 0) };
+            unsafe {
+                (*utcb_ptr).msg_tag =
+                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE)
+            };
         }
         set_badge(current, pending);
         return;
