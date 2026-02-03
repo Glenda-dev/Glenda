@@ -154,27 +154,17 @@ impl TCB {
     /// 这是 Capability 系统分发 VSpace 和 CSpace 的关键接口
     pub fn configure(
         &mut self,
-        cspace: Option<&Capability>,
-        vspace: Option<&Capability>,
-        utcb_frame: Option<&Capability>,
-        trapframe: Option<&Capability>,
-        kstack: Option<&Capability>,
+        cspace: &Capability,
+        vspace: &Capability,
+        utcb_frame: &Capability,
+        trapframe: &Capability,
+        kstack: &Capability,
     ) {
-        if !cspace.is_none() {
-            self.cspace_root = cspace.cloned();
-        }
-        if !vspace.is_none() {
-            self.vspace_root = vspace.cloned();
-        }
-        if !utcb_frame.is_none() {
-            self.utcb_frame = utcb_frame.cloned();
-        }
-        if !trapframe.is_none() {
-            self.trapframe = trapframe.cloned();
-        }
-        if !kstack.is_none() {
-            self.kstack = kstack.cloned();
-        }
+        self.cspace_root = Some(cspace.clone());
+        self.vspace_root = Some(vspace.clone());
+        self.utcb_frame = Some(utcb_frame.clone());
+        self.trapframe = Some(trapframe.clone());
+        self.kstack = Some(kstack.clone());
     }
 
     pub fn set_priority(&mut self, prio: u8) {

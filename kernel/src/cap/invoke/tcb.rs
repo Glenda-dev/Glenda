@@ -37,24 +37,30 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             let utcb_cap = current_tcb.cap_lookup(utcb_cptr);
             let tf_cap = current_tcb.cap_lookup(tf_cptr);
             let kstack_cap = current_tcb.cap_lookup(kstack_cptr);
-            
-            if cspace_cap.is_none() || vspace_cap.is_none() || utcb_cap.is_none() || tf_cap.is_none() || kstack_cap.is_none() {
-                log!("TCB::Configure failed: missing caps {:?} {:?} {:?} {:?} {:?}", 
-                     cspace_cptr, vspace_cptr, utcb_cptr, tf_cptr, kstack_cptr);
-                 // Note: The original code continued anyway, which might be a bug or intended to allow partial config. 
-                 // But typically missing caps is an error. However, without knowing if they are Option args, 
-                 // I will KEEP the original behavior logic but add logs if I were to change it.
-                 // Actually the original code just did `cspace_cap.as_ref()` which produces `Option<&Capability>`.
-                 // So `tcb.configure` handles options. I will not add strict checks here to avoid changing logic.
+            if cspace_cap.is_none()
+                && vspace_cap.is_none()
+                && utcb_cap.is_none()
+                && tf_cap.is_none()
+                && kstack_cap.is_none()
+            {
+                log!(
+                    "TCB::Configure failed: missing caps {:?} {:?} {:?} {:?} {:?}",
+                    cspace_cptr,
+                    vspace_cptr,
+                    utcb_cptr,
+                    tf_cptr,
+                    kstack_cptr
+                );
+                return errcode::INVALID_CAP;
             }
 
             // 简化的配置逻辑
             tcb.configure(
-                cspace_cap.as_ref(),
-                vspace_cap.as_ref(),
-                utcb_cap.as_ref(),
-                tf_cap.as_ref(),
-                kstack_cap.as_ref(),
+                &cspace_cap.unwrap(),
+                &vspace_cap.unwrap(),
+                &utcb_cap.unwrap(),
+                &tf_cap.unwrap(),
+                &kstack_cap.unwrap(),
             );
             errcode::SUCCESS
         }

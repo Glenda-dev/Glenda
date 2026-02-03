@@ -33,7 +33,10 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
                     irq::bind_notification(irq, ep_cap.clone());
                     errcode::SUCCESS
                 } else {
-                    log!("IRQ::SetNotification failed: invalid target cap type {:?}", ep_cap.cap_type());
+                    log!(
+                        "IRQ::SetNotification failed: invalid target cap type {:?}",
+                        ep_cap.cap_type()
+                    );
                     errcode::INVALID_OBJ_TYPE
                 }
             } else {

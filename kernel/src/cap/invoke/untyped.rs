@@ -57,12 +57,18 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                         }
                     }
                     None => {
-                        log!("Untyped::Retype failed: retype failed (OOM or invalid type) {:?}", CapType::from(obj_type));
+                        log!(
+                            "Untyped::Retype failed: retype failed (OOM or invalid type) {:?}",
+                            CapType::from(obj_type)
+                        );
                         errcode::INVALID_OBJ_TYPE
                     }
                 }
             } else {
-                log!("Untyped::Retype failed: dest cap is not CNode {:?}", dest_cnode_cap.cap_type());
+                log!(
+                    "Untyped::Retype failed: dest cap is not CNode {:?}",
+                    dest_cnode_cap.cap_type()
+                );
                 errcode::INVALID_OBJ_TYPE
             }
         }
