@@ -70,7 +70,7 @@ fn interrupt_handler(e: TrapInterrupt, pc: usize, cause: usize, value: usize, st
         // 剩下的被认为是需要打印的内容
         _ => {
             printk!(
-                "{}TRAP(Interrupt){}: {}; pc=0x{:x}, cause=0x{:x}, value=0x{:x}, status=0x{:x}\n",
+                "{}TRAP(Interrupt){}: {}; pc={:#x}, cause={:#x}, value={:#x}, status={:#x}\n",
                 ANSI_YELLOW,
                 ANSI_RESET,
                 e,
@@ -150,7 +150,7 @@ fn fault_handler(
 
 fn unhandled_exception(e: TrapException, cause: usize, pc: usize, value: usize, status: usize) {
     printk!(
-        "\n{}TRAP(Exception){}: {} cause=0x{:x}, pc=0x{:x}, value=0x{:x}, status=0x{:x}\n",
+        "\n{}TRAP(Exception){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_RED,
         ANSI_RESET,
         e,
@@ -164,7 +164,7 @@ fn unhandled_exception(e: TrapException, cause: usize, pc: usize, value: usize, 
 
 fn unhandled_interrupt(e: TrapInterrupt, cause: usize, pc: usize, value: usize, status: usize) {
     printk!(
-        "{}TRAP(Interrupt){}: {} cause=0x{:x}, pc=0x{:x}, value=0x{:x}, status=0x{:x}\n",
+        "{}TRAP(Interrupt){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_YELLOW,
         ANSI_RESET,
         e,
@@ -182,7 +182,7 @@ fn syscall_handler(ctx: &mut TrapFrame) {
         let ra = ctx.get_ra();
         let sp = ctx.get_sp();
         panic!(
-            "Syscall with null cptr, method=0x{:x}, epc=0x{:x}, ra=0x{:x}, sp=0x{:x}",
+            "Syscall with null cptr, method={:#x}, epc={:#x}, ra={:#x}, sp={:#x}",
             method, epc, ra, sp
         );
     }

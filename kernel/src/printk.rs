@@ -1,9 +1,20 @@
 use crate::cpu;
 use crate::hal::console;
 use core::fmt::Arguments;
+use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
 
 static PRINTK_LOCK: Mutex<()> = Mutex::new(());
+pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_verbose(enable: bool) {
+    VERBOSE.store(enable, Ordering::Relaxed);
+}
+
+pub fn is_verbose() -> bool {
+    VERBOSE.load(Ordering::Relaxed)
+}
+
 pub fn _printk(args: Arguments) {
     if cpu::get().nest_count > 0 {
         console::print(args);
@@ -24,6 +35,28 @@ macro_rules! printk {
 macro_rules! printk_unsynced {
     ($fmt:expr) => { crate::printk::_printk_unsynced(format_args!($fmt)) };
     ($fmt:expr, $($arg:tt)*) => { crate::printk::_printk_unsynced(format_args!($fmt, $($arg)*)) };
+}
+
+#[cfg(feature = "logging")]
+#[macro_export]
+macro_rules! log {
+    ($fmt:expr) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("Glenda: {}\n", format_args!($fmt));
+        }
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("Glenda: {}\n", format_args!($fmt, $($arg)*));
+        }
+    };
+}
+
+#[cfg(not(feature = "logging"))]
+#[macro_export]
+macro_rules! log {
+    ($fmt:expr) => {};
+    ($fmt:expr, $($arg:tt)*) => {};
 }
 
 pub const ANSI_RESET: &str = "\x1b[0m";

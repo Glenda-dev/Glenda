@@ -7,13 +7,19 @@ use crate::trap::syscall::errcode;
 pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
     let mut untyped = match UntypedRegion::from_cap(cap) {
         Some(u) => u,
-        None => return errcode::INVALID_OBJ_TYPE,
+        None => {
+            log!("Untyped::invoke failed: invalid obj type {:?}", cap.cap_type());
+            return errcode::INVALID_OBJ_TYPE;
+        }
     };
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
-        None => return errcode::MAPPING_FAILED,
+        None => {
+            log!("Untyped::invoke failed: no UTCB");
+            return errcode::MAPPING_FAILED;
+        }
     };
 
     match method {
@@ -27,12 +33,16 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
 
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
-                None => return errcode::INVALID_CAP,
+                None => {
+                    log!("Untyped::Retype failed: dest CNode not found {:?}", dest_cnode_cptr);
+                    return errcode::INVALID_CAP;
+                }
             };
 
             if dest_cnode_cap.cap_type() == CapType::CNode {
                 let dest_cnode = dest_cnode_cap.obj_ptr().as_mut::<CNode>();
                 if !dest_cnode.check_cptr(dest_slot) {
+                    log!("Untyped::Retype failed: invalid dest slot {:?}", dest_slot);
                     return errcode::INVALID_SLOT;
                 }
                 match untyped.retype(CapType::from(obj_type), flags) {
@@ -42,15 +52,23 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                             cap.set_data(untyped.pages | (untyped.watermark << 25));
                             errcode::SUCCESS
                         } else {
+                            log!("Untyped::Retype failed: insert child failed at {:?}", dest_slot);
                             errcode::INVALID_SLOT
                         }
                     }
-                    None => errcode::INVALID_OBJ_TYPE,
+                    None => {
+                        log!("Untyped::Retype failed: retype failed (OOM or invalid type) {:?}", CapType::from(obj_type));
+                        errcode::INVALID_OBJ_TYPE
+                    }
                 }
             } else {
+                log!("Untyped::Retype failed: dest cap is not CNode {:?}", dest_cnode_cap.cap_type());
                 errcode::INVALID_OBJ_TYPE
             }
         }
-        _ => errcode::INVALID_METHOD,
+        _ => {
+            log!("Untyped::invoke failed: invalid method {}", method);
+            errcode::INVALID_METHOD
+        }
     }
 }

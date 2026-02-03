@@ -77,13 +77,13 @@ impl SubAssign<usize> for PhysAddr {
 
 impl Display for PhysAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        write!(f, "{:#x}", self.0)
     }
 }
 
 impl Debug for PhysAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        write!(f, "{:#x}", self.0)
     }
 }
 
@@ -162,12 +162,12 @@ impl SubAssign<usize> for VirtAddr {
 }
 impl Display for VirtAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        write!(f, "{:#x}", self.0)
     }
 }
 impl Debug for VirtAddr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        write!(f, "{:#x}", self.0)
     }
 }
 

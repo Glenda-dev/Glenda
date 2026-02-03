@@ -354,7 +354,6 @@ impl Capability {
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        use crate::printk;
         match self.cap_type() {
             CapType::TCB => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
@@ -366,7 +365,7 @@ impl Drop for Capability {
                     // 但这里不能直接调用 scheduler::remove，因为可能导致死锁或递归
                     // 通常做法是将 TCB 标记为 Zombie 或加入垃圾回收队列
                     // 简单起见，我们假设 TCB 内存由 Untyped 管理，这里只做逻辑销毁
-                    printk!("Dropped TCB Cap at {}\n", tcb_ptr);
+                    log!("Dropped TCB Cap at {}", tcb_ptr);
                 }
             }
             CapType::Endpoint => {
@@ -375,7 +374,7 @@ impl Drop for Capability {
                 if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy Endpoint
-                    printk!("Dropped Endpoint Cap at {}\n", ep_ptr);
+                    log!("Dropped Endpoint Cap at {}", ep_ptr);
                 }
             }
             CapType::CNode => {
@@ -384,7 +383,7 @@ impl Drop for Capability {
                 if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode
-                    printk!("Dropped CNode Cap at {}\n", vaddr);
+                    log!("Dropped CNode Cap at {}", vaddr);
                 }
             }
             _ => {}

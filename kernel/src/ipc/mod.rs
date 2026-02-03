@@ -3,14 +3,14 @@ pub mod msg;
 pub mod proto;
 pub mod utcb;
 
+pub use endpoint::Endpoint;
 pub use msg::{MsgFlags, MsgTag};
 pub use utcb::{MsgArgs, UTCB};
 
 use crate::cap::{Badge, CapType, Capability, Rights};
+
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
-
-pub use endpoint::Endpoint;
 
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
@@ -30,6 +30,7 @@ unsafe fn copy_msg(
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
 ) {
+    log!("ipc: copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
     let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
     let src = unsafe { &*src_ptr };
@@ -65,8 +66,10 @@ fn set_badge(tcb: &mut TCB, badge: Badge) {
 /// * `badge`: 发送 Capability 携带的身份标识
 /// * `cap`: 可选的要传递的能力
 pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
+    log!("ipc: send current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
+        log!("ipc: send matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // --- 快速路径: 匹配成功 ---
@@ -75,6 +78,7 @@ pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         // 唤醒接收者
         scheduler::wake_up(receiver);
     } else {
+        log!("ipc: send blocking");
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedSend;
         current.ipc_badge = badge;
@@ -91,8 +95,10 @@ pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
 /// Call 操作 (sys_call)
 /// 发送消息并等待回复，是原子的 Send + Recv
 pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
+    log!("ipc: call current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
+        log!("ipc: call matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
@@ -108,6 +114,7 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         current.state = ThreadState::BlockedCall;
         scheduler::block_current_thread();
     } else {
+        log!("ipc: call blocking");
         // --- 慢速路径: 阻塞在发送队列 ---
         current.state = ThreadState::BlockedCall;
         current.ipc_badge = badge;
@@ -121,19 +128,25 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
 /// Reply 操作
 /// 向指定的 TCB 发送回复消息
 pub fn reply(current: &mut TCB, target: &mut TCB) {
+    log!("ipc: reply current={:p} target={:p}", current, target);
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
+        log!("ipc: reply success");
         // Reply 不产生新的 Reply Cap
         unsafe { copy_msg(current, target, Badge::null(), None, None) };
 
         // 唤醒目标线程
         scheduler::wake_up(target);
+    } else {
+        log!("ipc: reply failed target state {:?}", target.state);
     }
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
 pub fn notify(ep: &Endpoint, badge: Badge) {
+    log!("ipc: notify ep={:p} badge={:?}", ep as *const _, badge);
     if let Some(receiver_ptr) = ep.dequeue_recv() {
+        log!("ipc: notify matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
@@ -147,6 +160,7 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
         set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
+        log!("ipc: notify pending");
         ep.notify(badge);
     }
 }
@@ -156,9 +170,11 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &Endpoint) {
+    log!("ipc: recv current={:p} ep={:p}", current, ep as *const _);
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     let pending = ep.poll_notification();
     if !pending.is_null() {
+        log!("ipc: recv matched notification");
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
@@ -172,6 +188,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 
     // 1. 检查是否有发送者在等待
     if let Some(sender_ptr) = ep.dequeue_send() {
+        log!("ipc: recv matched sender={:p}", sender_ptr);
         let sender = unsafe { &mut *sender_ptr };
         let badge = sender.ipc_badge;
         let cap = sender.ipc_cap.take();
@@ -197,6 +214,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 
         // 接收者收到数据，继续运行 (不阻塞)
     } else {
+        log!("ipc: recv blocking");
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedRecv;
 

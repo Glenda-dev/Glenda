@@ -1,5 +1,6 @@
 use crate::hal;
 use crate::hal::mem::{PGSIZE, USER_VA};
+
 use crate::mem::pmem;
 use crate::mem::{PageTable, Perms, VirtAddr};
 use crate::printk;
@@ -78,19 +79,14 @@ pub fn init() {
     let magic = u32::from_le_bytes([b0, b1, b2, b3]);
 
     if magic != PAYLOAD_MAGIC {
-        printk!(
-            "proc: {}Warning{}: Invalid payload magic: {:#x}\n",
-            ANSI_YELLOW,
-            ANSI_RESET,
-            magic
-        );
+        log!("proc: {}Warning{}: Invalid payload magic: {:#x}", ANSI_YELLOW, ANSI_RESET, magic);
         return;
     }
 
     // Store region
     INITRD_REGION.call_once(|| (payload_va, size));
     let count = count_entries();
-    printk!("proc: Initrd found, {} entries, {} KB\n", count, size / 1024);
+    log!("proc: Initrd found, {} entries, {} KB", count, size / 1024);
 }
 
 fn count_entries() -> u32 {

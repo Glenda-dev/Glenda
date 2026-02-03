@@ -2,6 +2,8 @@
 #![no_main]
 #![allow(dead_code)]
 
+#[macro_use]
+mod printk;
 mod boot;
 mod cap;
 mod cpu;
@@ -12,7 +14,6 @@ mod irq;
 mod logo;
 mod mem;
 mod platform;
-mod printk;
 mod proc;
 mod shell;
 mod trap;
@@ -39,6 +40,9 @@ pub fn glenda_main() -> ! {
         printk!("{}", logo::LOGO);
         let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
         printk!("bootargs: {}\n", bootargs);
+        if bootargs.contains("-v") {
+            printk::set_verbose(true);
+        }
         if bootargs.contains("-s") {
             shell::run();
         } else {

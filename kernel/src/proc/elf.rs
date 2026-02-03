@@ -1,9 +1,9 @@
 use crate::hal;
 use crate::hal::mem::PGSIZE;
+
 use crate::mem::PageTable;
 use crate::mem::pmem;
 use crate::mem::{Perms, VirtAddr};
-use crate::printk;
 use core::mem::size_of;
 
 pub const ELF_MAGIC: [u8; 4] = [0x7f, 0x45, 0x4c, 0x46];
@@ -95,8 +95,8 @@ impl<'a> ElfFile<'a> {
                 if ph.p_flags & PF_R != 0 {
                     flags |= Perms::READ;
                 }
-                printk!(
-                    "elf: Mapping segment at vaddr {:#x}, filesz: {}, memsz: {}, perms: {}\n",
+                log!(
+                    "elf: Mapping segment at vaddr {:#x}, filesz: {}, memsz: {}, perms: {}",
                     ph.p_vaddr,
                     ph.p_filesz,
                     ph.p_memsz,

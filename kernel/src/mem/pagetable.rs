@@ -1,6 +1,7 @@
 use crate::hal;
 use crate::hal::mem::Pte;
 use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
+
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 
@@ -76,12 +77,23 @@ impl PageTable {
         let mut current_pa = pa;
         let end_va = va + size;
         while current_va < end_va {
-            let pte_ptr = self.walk(current_va).ok_or_else(|| ())?;
+            let pte_ptr = if let Some(ptr) = self.walk(current_va) {
+                ptr
+            } else {
+                log!("PageTable::map failed: intermediate missing for va={:?}", current_va);
+                return Err(());
+            };
 
             unsafe {
                 let old_pte = *pte_ptr;
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
+                    log!(
+                        "PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}\n",
+                        current_va,
+                        old_pte.pa(),
+                        current_pa
+                    );
                     return Err(());
                 }
 
@@ -128,6 +140,7 @@ impl PageTable {
     /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
     pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
         if level == 0 || level >= PT_LEVELS {
+            log!("PageTable::map_table failed: invalid level {}", level);
             return Err(()); // 无效层级
         }
 
@@ -137,6 +150,11 @@ impl PageTable {
             let idx = hal::mem::get_vpn_index(va, l).as_usize();
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
+                log!(
+                    "PageTable::map_table failed: parent missing/huge at level {} va={:?}\n",
+                    l,
+                    va
+                );
                 return Err(()); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
@@ -149,6 +167,7 @@ impl PageTable {
         let pte_ptr = &mut table.entries[idx];
 
         if pte_ptr.is_valid() {
+            log!("PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
             return Err(()); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
@@ -163,8 +182,6 @@ impl PageTable {
     /// 如果中间页表不存在，则分配新的页表页。
     /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
     pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) {
-        assert!(va.is_aligned(PGSIZE));
-        assert!(pa.is_aligned(PGSIZE));
         let start = va;
         let end = va + size;
 
@@ -215,7 +232,7 @@ impl PageTable {
         // For now I'll comment out canon or just print raw index constructed VA.
 
         let pgtbl_2 = self as *const PageTable as usize;
-        printk!("L2 PT @ 0x{:x}\n", pgtbl_2);
+        printk!("L2 PT @ {:#x}\n", pgtbl_2);
 
         for i in 0..PGNUM {
             let pte2 = self.entries[i];
@@ -229,7 +246,7 @@ impl PageTable {
 
             let pgtbl_1_pa = pte2.pa();
             let pgtbl_1_va = hal::mem::phys_to_virt(pgtbl_1_pa);
-            printk!(".. L1[{}] pa=0x{:x}\n", i, pgtbl_1_pa.as_usize());
+            printk!(".. L1[{}] pa={:#x}\n", i, pgtbl_1_pa.as_usize());
 
             let pgtbl_1 = pgtbl_1_va.as_ref::<PageTable>();
             for j in 0..PGNUM {
@@ -244,7 +261,7 @@ impl PageTable {
 
                 let pgtbl_0_pa = pte1.pa();
                 let pgtbl_0_va = hal::mem::phys_to_virt(pgtbl_0_pa);
-                printk!(".. .. L0[{}] pa=0x{:x}\n", j, pgtbl_0_pa.as_usize());
+                printk!(".. .. L0[{}] pa={:#x}\n", j, pgtbl_0_pa.as_usize());
 
                 let pgtbl_0 = pgtbl_0_va.as_ref::<PageTable>();
                 for k in 0..PGNUM {
@@ -264,7 +281,7 @@ impl PageTable {
                     let flags = pte0.get_flags();
 
                     printk!(
-                        ".. .. .. page {} VA=0x{:x} -> PA=0x{:x} flags={}\n",
+                        ".. .. .. page {} VA={:#x} -> PA={:#x} flags={}\n",
                         k,
                         va,
                         pa.as_usize(),

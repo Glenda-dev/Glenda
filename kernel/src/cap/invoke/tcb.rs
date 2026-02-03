@@ -9,6 +9,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
     let tcb_ptr = if cap.cap_type() == CapType::TCB {
         cap.obj_ptr()
     } else {
+        log!("TCB::invoke failed: invalid obj type {:?}", cap.cap_type());
         return errcode::INVALID_OBJ_TYPE;
     };
 
@@ -16,7 +17,10 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
     let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match current_tcb.get_utcb() {
         Some(u) => u,
-        None => return errcode::MAPPING_FAILED,
+        None => {
+            log!("TCB::invoke failed: no UTCB");
+            return errcode::MAPPING_FAILED;
+        }
     };
 
     match method {
@@ -33,6 +37,16 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             let utcb_cap = current_tcb.cap_lookup(utcb_cptr);
             let tf_cap = current_tcb.cap_lookup(tf_cptr);
             let kstack_cap = current_tcb.cap_lookup(kstack_cptr);
+            
+            if cspace_cap.is_none() || vspace_cap.is_none() || utcb_cap.is_none() || tf_cap.is_none() || kstack_cap.is_none() {
+                log!("TCB::Configure failed: missing caps {:?} {:?} {:?} {:?} {:?}", 
+                     cspace_cptr, vspace_cptr, utcb_cptr, tf_cptr, kstack_cptr);
+                 // Note: The original code continued anyway, which might be a bug or intended to allow partial config. 
+                 // But typically missing caps is an error. However, without knowing if they are Option args, 
+                 // I will KEEP the original behavior logic but add logs if I were to change it.
+                 // Actually the original code just did `cspace_cap.as_ref()` which produces `Option<&Capability>`.
+                 // So `tcb.configure` handles options. I will not add strict checks here to avoid changing logic.
+            }
 
             // 简化的配置逻辑
             tcb.configure(
@@ -69,9 +83,11 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
                     tcb.set_fault_handler(ep_cap, native);
                     errcode::SUCCESS
                 } else {
+                    log!("TCB::SetFaultHandler failed: invalid obj type {:?}", ep_cap.cap_type());
                     errcode::INVALID_OBJ_TYPE
                 }
             } else {
+                log!("TCB::SetFaultHandler failed: cap not found {:?}", ep_cptr);
                 errcode::INVALID_CAP
             }
         }
@@ -88,6 +104,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
         }
         tcbmethod::RESUME => {
             if !cap.has_rights(Rights::EXECUTE) {
+                log!("TCB::Resume failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
             // Resume
@@ -122,6 +139,9 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             }
             errcode::SUCCESS
         }
-        _ => errcode::INVALID_METHOD,
+        _ => {
+            log!("TCB::invoke failed: invalid method {}", method);
+            errcode::INVALID_METHOD
+        }
     }
 }

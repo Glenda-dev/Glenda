@@ -10,6 +10,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
     let ep_ptr = if cap.cap_type() == CapType::Endpoint {
         cap.obj_ptr()
     } else {
+        log!("IPC::invoke failed: invalid obj type {:?}", cap.cap_type());
         return errcode::INVALID_OBJ_TYPE;
     };
 
@@ -20,12 +21,16 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
     // 获取 UTCB 以读取参数 (msg_info)
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
-        None => return errcode::MAPPING_FAILED,
+        None => {
+            log!("IPC::invoke failed: no UTCB");
+            return errcode::MAPPING_FAILED;
+        }
     };
 
     match method {
         ipcmethod::SEND => {
             if !cap.has_rights(Rights::SEND) {
+                log!("IPC::Send failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
             let tag = utcb.msg_tag;
@@ -35,7 +40,11 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
                         cap_to_send = Some(cap);
+                    } else {
+                        log!("IPC::Send warning: cannot grant cap {:?}", utcb.cap_transfer);
                     }
+                } else {
+                    log!("IPC::Send warning: cap to transfer not found {:?}", utcb.cap_transfer);
                 }
             }
             ipc::send(tcb, ep, badge, cap_to_send);
@@ -43,6 +52,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
         }
         ipcmethod::RECV => {
             if !cap.has_rights(Rights::RECV) {
+                log!("IPC::Recv failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
             ipc::recv(tcb, ep);
@@ -50,6 +60,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
         }
         ipcmethod::CALL => {
             if !cap.has_rights(Rights::CALL) {
+                log!("IPC::Call failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
             let tag = utcb.msg_tag;
@@ -58,7 +69,11 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
                         cap_to_send = Some(cap);
+                    } else {
+                        log!("IPC::Call warning: cannot grant cap {:?}", utcb.cap_transfer);
                     }
+                } else {
+                    log!("IPC::Call warning: cap to transfer not found {:?}", utcb.cap_transfer);
                 }
             }
             ipc::call(tcb, ep, badge, cap_to_send);
@@ -66,12 +81,16 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
         }
         ipcmethod::NOTIFY => {
             if !cap.has_rights(Rights::SEND) {
+                log!("IPC::Notify failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
             ipc::notify(ep, badge);
             errcode::SUCCESS
         }
-        _ => errcode::INVALID_METHOD,
+        _ => {
+            log!("IPC::invoke failed: invalid method {}", method);
+            errcode::INVALID_METHOD
+        }
     }
 }
 
@@ -79,6 +98,7 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> usize {
     let tcb_ptr = if cap.cap_type() == CapType::Reply {
         cap.obj_ptr()
     } else {
+        log!("Reply::invoke failed: invalid obj type {:?}", cap.cap_type());
         return errcode::INVALID_OBJ_TYPE;
     };
 
@@ -89,6 +109,9 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> usize {
             ipc::reply(current_tcb, target_tcb);
             errcode::SUCCESS
         }
-        _ => errcode::INVALID_METHOD,
+        _ => {
+            log!("Reply::invoke failed: invalid method {}", method);
+            errcode::INVALID_METHOD
+        }
     }
 }

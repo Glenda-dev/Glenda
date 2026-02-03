@@ -11,9 +11,9 @@ pub use layout::STACK_VA;
 use super::scheduler;
 use super::{TCB, ThreadState};
 use crate::cap::CNode;
+
 use crate::mem::PageTable;
 use crate::platform::PlatformInfo;
-use crate::printk;
 use init::*;
 use layout::*;
 
@@ -37,7 +37,7 @@ pub fn spawn_first() {
     if let Some(task) = initrd::get_by_index(0) {
         let len = task.metadata.name.iter().position(|&c| c == 0).unwrap_or(32);
         let name = core::str::from_utf8(&task.metadata.name[..len]).unwrap_or("unknown");
-        printk!("proc: Spawning default root task '{}'\n", name);
+        log!("proc: Spawning default root task '{}'", name);
         spawn_payload(task);
     } else {
         panic!("proc: No root task found in initrd");
@@ -82,7 +82,7 @@ fn spawn_payload(root_task: ProcPayload) {
     tcb.set_entrypoint(entry_point, stack_top);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
-    printk!("proc: Root Task created. Entry: {:#x}, SP: {:#x}\n", entry_point, stack_top);
+    log!("proc: Root Task created. Entry: {:#x}, SP: {:#x}", entry_point, stack_top);
 
     //cspace.debug_print();
     //vspace.debug_print();

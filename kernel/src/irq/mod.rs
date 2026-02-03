@@ -6,18 +6,18 @@ use crate::cpu;
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::ipc;
-use crate::printk;
+
 use spin::Mutex;
 
 pub fn init() {
     // 初始化 IRQ 表与定时器
     hal::irq::init();
-    printk!("irq: Initialized global IRQs\n");
+    log!("irq: Initialized global IRQs");
 }
 
 pub fn init_cpu() {
     hal::irq::init_cpu();
-    printk!("irq: Initialized for cpu {}\n", hal::cpu::cpu_id());
+    log!("irq: Initialized for cpu {}", hal::cpu::cpu_id());
 }
 
 #[derive(Clone)]
@@ -87,7 +87,7 @@ pub fn handle_claimed(cpuid: usize, id: usize) {
         }
     } else {
         // 未绑定通知对象，直接完成
-        printk!("irq: IRQ {} has no bound notification, completing directly\n", id);
+        log!("irq: IRQ {} has no bound notification, completing directly", id);
         // 对 PLIC 做 Complete（claim/complete 寄存器写入）
         hal::irq::complete(id as u32, cpuid);
         // 重新打开该 IRQ

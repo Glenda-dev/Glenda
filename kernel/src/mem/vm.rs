@@ -1,11 +1,11 @@
 use super::PGSIZE;
 use super::PhysAddr;
 use crate::hal;
+
 use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
 use crate::platform;
-use crate::printk;
 use spin::Once;
 
 // TODO: HHDM support
@@ -41,7 +41,7 @@ pub fn init_kernel_vm() {
     let mem_start_va = hal::mem::phys_to_virt(mem_start_pa);
     let mem_size = mem.size;
     flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
-    printk!(
+    log!(
         "vm: Map RAM [{:#x}, {:#x}) -> [{:#x}, {:#x}) {flags}\n",
         mem_start_pa.as_usize(),
         (mem_start_pa + mem_size).as_usize(),
@@ -57,7 +57,7 @@ pub fn init_kernel_vm() {
     let text_va = hal::mem::phys_to_virt(text_pa);
     let text_size = (text_end - text_start).as_usize();
     flags = Perms::READ | Perms::EXECUTE | Perms::ACCESSED | Perms::GLOBAL;
-    printk!(
+    log!(
         "vm: Map .text [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
         text_start.as_usize(),
         text_end.as_usize(),
@@ -73,7 +73,7 @@ pub fn init_kernel_vm() {
     let rodata_va = hal::mem::phys_to_virt(rodata_pa);
     let rodata_size = (rodata_end - rodata_start).as_usize();
     flags = Perms::READ | Perms::ACCESSED | Perms::GLOBAL;
-    printk!(
+    log!(
         "vm: Map .rodata [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
         rodata_start.as_usize(),
         rodata_end.as_usize(),
@@ -92,7 +92,7 @@ pub fn init_kernel_vm() {
     let initrd_size = initrd.size;
     let initrd_pa = initrd_start.align_down(PGSIZE);
     let initrd_va = hal::mem::phys_to_virt(initrd_pa);
-    printk!(
+    log!(
         "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
         initrd_start.as_usize(),
         initrd_end.as_usize(),
@@ -104,7 +104,7 @@ pub fn init_kernel_vm() {
 
     hal::mem::kpt_setup(&mut kpt);
 
-    printk!("vm: Root page table built\n");
+    log!("vm: Root page table built");
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
 
@@ -117,7 +117,7 @@ pub fn switch_to_kernel() {
     unsafe {
         hal::mem::activate_vspace(reg);
     }
-    printk!("vm: CPU {} switched to kernel page table\n", cpuid);
+    log!("vm: CPU {} switched to kernel page table", cpuid);
 }
 
 pub fn switch_off() {
@@ -125,5 +125,5 @@ pub fn switch_off() {
     unsafe {
         hal::mem::deactivate_vspace();
     }
-    printk!("vm: CPU {} switching off vm\n", cpuid);
+    log!("vm: CPU {} switching off vm", cpuid);
 }

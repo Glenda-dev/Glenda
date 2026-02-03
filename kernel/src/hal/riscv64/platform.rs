@@ -1,8 +1,8 @@
 use super::cpu;
 use super::dtb;
 use super::sbi;
+
 use crate::platform::PlatformInfo;
-use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -69,8 +69,8 @@ pub fn bootstrap_cpus() {
             continue;
         }
         match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => printk!("cpus: Started CPU {} via SBI\n", target),
-            Err(err) => printk!(
+            Ok(()) => log!("cpus: Started CPU {} via SBI", target),
+            Err(err) => log!(
                 "{}cpus: Failed to start CPU {} via SBI: error {}{}\n",
                 ANSI_RED,
                 target,

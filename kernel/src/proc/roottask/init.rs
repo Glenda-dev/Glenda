@@ -6,6 +6,7 @@ use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
+
 use crate::mem::pmem;
 use crate::mem::{MemoryRange, PageTable};
 use crate::mem::{Perms, PhysAddr, VirtAddr};
@@ -13,7 +14,6 @@ use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::platform;
 use crate::platform::PLATFORM_PAGES;
 use crate::platform::PlatformInfo;
-use crate::printk;
 use crate::proc::roottask::bootinfo::BOOTINFO_MAGIC;
 
 pub struct RootCaps {
@@ -55,7 +55,7 @@ pub fn init_vspace(
     utcb_paddr: PhysAddr,
     bootinfo_paddr: PhysAddr,
 ) {
-    printk!("proc: Setting up Root Task VSpace at {:#x}\n", vspace as *const _ as usize);
+    log!("proc: Setting up Root Task VSpace at {:#x}", vspace as *const _ as usize);
     // 2. 映射 TrapFrame (Trampoline 下方)
     // TrapFrame 仅由 S 态的 user_vector/user_return 访问
     vspace.map_with_alloc(

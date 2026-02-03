@@ -1,7 +1,6 @@
 use super::dtb;
 use super::platform::PlatformHandle;
 use crate::glenda_main;
-use crate::printk;
 use core::arch::global_asm;
 
 global_asm!(
@@ -86,6 +85,6 @@ pub extern "C" fn glenda_boot(_a0: usize, a1: usize) -> ! {
     }
     let dtb = PlatformHandle::from(dtb);
     dtb::init(dtb.as_ptr());
-    printk!("hal: HAL initialized, dtb at 0x{:x}\n", dtb.bits());
+    log!("hal: HAL initialized, dtb at {:#x}", dtb.bits());
     glenda_main();
 }

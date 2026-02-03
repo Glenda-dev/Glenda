@@ -7,6 +7,7 @@ cpus = 1
 mem = "2G"
 display = "nographic"
 drive = "disk.img"
+bootargs = "-v"
 
 [[services]]
 name = "factotum"
@@ -30,6 +31,12 @@ kind = "service"
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
+[[services]]
+name = "hello"
+path = "examples/hello"
+build = "cargo"
+output = "build/hello.elf"
+kind = "service"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]

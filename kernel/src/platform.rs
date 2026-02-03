@@ -1,7 +1,6 @@
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::PhysAddr;
-use crate::printk;
 use core::fmt;
 use core::mem::size_of;
 use spin::Once;
@@ -214,7 +213,7 @@ impl PlatformInfo {
 
 pub fn init() {
     PLATFORM_INFO.call_once(|| hal::platform::info());
-    printk!("platform: Initialized via HAL\n");
+    log!("platform: Initialized via HAL");
 }
 
 pub fn get() -> &'static PlatformInfo {

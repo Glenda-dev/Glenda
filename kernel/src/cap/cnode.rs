@@ -17,7 +17,7 @@ static CDT_LOCK: Mutex<()> = Mutex::new(());
 
 /// 每8位作为一层的索引号
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct CapPtr(usize);
 
 impl CapPtr {
@@ -40,7 +40,7 @@ impl CapPtr {
 
 impl Display for CapPtr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "0x{:x}", self.0)
+        write!(f, "{:#x}", self.0)
     }
 }
 

@@ -2,6 +2,7 @@ use super::PhysAddr;
 use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
 use crate::hal::mem::PGSIZE;
+
 use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
 use crate::printk;
@@ -37,7 +38,7 @@ impl PmemManager {
 
     fn add_region(&mut self, start: PhysAddr, end: PhysAddr) {
         if self.count >= MAX_PMEM_REGIONS {
-            printk!("pmem: Warning, ignoring memory region [{}, {}) due to limit\n", start, end);
+            log!("pmem: Warning, ignoring memory region [{}, {}) due to limit", start, end);
             return;
         }
         if end <= start {
@@ -46,7 +47,7 @@ impl PmemManager {
 
         self.regions[self.count] = RegionState { start, current: start, end };
         self.count += 1;
-        printk!("pmem: Added region [{}, {})\n", start, end);
+        log!("pmem: Added region [{}, {})", start, end);
     }
 
     fn init(&mut self, kernel_end: PhysAddr, info: &platform::PlatformInfo) {

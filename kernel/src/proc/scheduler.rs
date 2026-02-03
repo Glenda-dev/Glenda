@@ -121,7 +121,7 @@ pub fn scheduler() -> ! {
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
                 if let Some(tcb_ptr) = queues[prio].pop_front() {
-                    // printk!("scheduler: selected thread with priority {}\n", prio);
+                    // log!("scheduler: selected thread with priority {}", prio);
                     next_thread = Some(tcb_ptr);
                     break;
                 }

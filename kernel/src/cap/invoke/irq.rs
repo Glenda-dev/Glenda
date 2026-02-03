@@ -9,13 +9,17 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
     let irq = if cap.cap_type() == CapType::IrqHandler {
         cap.value()
     } else {
+        log!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
         return errcode::INVALID_OBJ_TYPE;
     };
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
-        None => return errcode::MAPPING_FAILED,
+        None => {
+            log!("IRQ::invoke failed: no UTCB");
+            return errcode::MAPPING_FAILED;
+        }
     };
 
     match method {
@@ -29,9 +33,11 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
                     irq::bind_notification(irq, ep_cap.clone());
                     errcode::SUCCESS
                 } else {
+                    log!("IRQ::SetNotification failed: invalid target cap type {:?}", ep_cap.cap_type());
                     errcode::INVALID_OBJ_TYPE
                 }
             } else {
+                log!("IRQ::SetNotification failed: cap not found {:?}", ep_cptr);
                 errcode::INVALID_CAP
             }
         }
@@ -52,6 +58,9 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
             hal::irq::set_priority(irq as u32, priority as u8);
             errcode::SUCCESS
         }
-        _ => errcode::INVALID_METHOD,
+        _ => {
+            log!("IRQ::invoke failed: invalid method {}", method);
+            errcode::INVALID_METHOD
+        }
     }
 }

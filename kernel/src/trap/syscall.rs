@@ -1,5 +1,6 @@
 use crate::cap::CapPtr;
 use crate::cap::invoke;
+
 use crate::proc::scheduler;
 
 pub mod errcode {
@@ -24,7 +25,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
     let cspace = tcb.get_cspace();
     match cspace.lookup_slot_ptr(cptr) {
         None => {
-            crate::printk!("syscall: Invalid slot at cptr {:#x}\n", cptr.bits());
+            log!("syscall: Invalid slot at cptr {:#x}", cptr.bits());
             errcode::INVALID_SLOT
         }
         // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）
