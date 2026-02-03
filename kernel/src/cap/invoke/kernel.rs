@@ -21,16 +21,23 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 log!("Kernel::ConsolePutStr failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
-            let offset = utcb.mrs_regs[0];
-            let len = utcb.mrs_regs[1];
-            if let Some(_) = utcb.with_str(offset, len, |s| {
-                printk!("{}", s);
-            }) {
-                errcode::SUCCESS
-            } else {
-                log!("Kernel::ConsolePutStr failed: invalid buffer");
-                errcode::INVALID_SLOT
+
+            let mut buf = [0u8; 128];
+            loop {
+                let n = utcb.read_bytes(&mut buf);
+                if n == 0 {
+                    break;
+                }
+                // 简单的 best-effort 处理：尝试作为 UTF-8 打印，失败则逐字节打印
+                if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+                    printk!("{}", s);
+                } else {
+                    for &b in &buf[..n] {
+                        printk!("{}", b as char);
+                    }
+                }
             }
+            errcode::SUCCESS
         }
         kernelmethod::CONSOLE_GET_CHAR => {
             if cap.has_rights(Rights::READ) == false {
