@@ -1,6 +1,5 @@
 pub mod cause;
 pub mod handler;
-pub mod info;
 pub mod syscall;
 
 pub use cause::{TrapCause, TrapException, TrapInterrupt};
