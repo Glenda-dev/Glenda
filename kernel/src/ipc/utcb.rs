@@ -1,4 +1,4 @@
-use super::MsgTag;
+use super::{Badge, MsgTag};
 use crate::cap::CapPtr;
 use crate::mem::VirtAddr;
 
@@ -19,6 +19,8 @@ pub struct UTCB {
     pub cap_transfer: CapPtr,
     /// 接收窗口描述符 (CNode CPTR + Index)
     pub recv_window: CapPtr,
+    /// Badge 标识
+    pub badge: Badge,
     /// 线程本地存储指针
     pub tls: VirtAddr,
     pub head: usize,
@@ -30,20 +32,18 @@ pub struct UTCB {
 pub const BUFFER_MAX_SIZE: usize = 3 * 1024; // 3KB
 
 impl UTCB {
-    pub fn copy_to(&self, dest: &mut UTCB) {
+    pub fn copy_to(&mut self, dest: &mut UTCB) {
+        // 只复制消息相关的字段
         dest.msg_tag = self.msg_tag;
         dest.mrs_regs = self.mrs_regs;
-        dest.cap_transfer = self.cap_transfer;
-        dest.recv_window = self.recv_window;
-        dest.tls = self.tls;
-        dest.head = self.head;
-        dest.tail = self.tail;
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                self.ipc_buffer.as_ptr(),
-                dest.ipc_buffer.as_mut_ptr(),
-                BUFFER_MAX_SIZE,
-            );
+
+        // 注意：不复制 tls, recv_window, cap_transfer 等线程私有/接收控制字段
+        // dest.cap_transfer = self.cap_transfer;
+        // dest.recv_window = self.recv_window;
+        // dest.tls = self.tls;
+
+        while let Some(b) = self.read_byte() {
+            dest.write_byte(b);
         }
     }
 
@@ -57,6 +57,26 @@ impl UTCB {
 
     pub fn available_space(&self) -> usize {
         BUFFER_MAX_SIZE - self.available_data() - 1
+    }
+
+    pub fn read_byte(&mut self) -> Option<u8> {
+        if self.available_data() > 0 {
+            let b = self.ipc_buffer[self.head];
+            self.head = (self.head + 1) % BUFFER_MAX_SIZE;
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    pub fn write_byte(&mut self, b: u8) -> bool {
+        if self.available_space() > 0 {
+            self.ipc_buffer[self.tail] = b;
+            self.tail = (self.tail + 1) % BUFFER_MAX_SIZE;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn read(&mut self, data: &mut [u8]) -> usize {

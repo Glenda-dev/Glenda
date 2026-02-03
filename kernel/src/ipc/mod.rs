@@ -33,13 +33,13 @@ unsafe fn copy_msg(
     log!("ipc: copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
     let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
-    let src = unsafe { &*src_ptr };
+    let src = unsafe { &mut *src_ptr };
     let dst = unsafe { &mut *dst_ptr };
     // 1. 传递消息内容
     src.copy_to(dst);
 
     // 2. 传递 Badge
-    set_badge(receiver, badge);
+    dst.badge = badge;
 
     // 3. 传递 Capability (如果提供且接收者准备好了接收窗口)
     // 优先传递用户指定的 cap，如果没有则传递内核生成的 reply_cap
@@ -52,11 +52,6 @@ unsafe fn copy_msg(
             slot.cap = c;
         }
     }
-}
-
-fn set_badge(tcb: &mut TCB, badge: Badge) {
-    let utcb = tcb.get_utcb().expect("ipc: TCB has no UTCB");
-    utcb.mrs_regs[0] = badge.get();
 }
 
 /// 发送操作
@@ -153,11 +148,11 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
         if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
             unsafe {
                 (*utcb_ptr).msg_tag =
-                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE)
+                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE);
+                (*utcb_ptr).badge = badge;
             };
         }
 
-        set_badge(receiver, badge);
         scheduler::wake_up(receiver);
     } else {
         log!("ipc: notify pending");
@@ -179,10 +174,10 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
                 (*utcb_ptr).msg_tag =
-                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE)
+                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE);
+                (*utcb_ptr).badge = pending;
             };
         }
-        set_badge(current, pending);
         return;
     }
 

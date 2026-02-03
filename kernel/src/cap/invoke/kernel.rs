@@ -71,12 +71,10 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 }
 
                 // Write to UTCB buffer
-                if utcb.available_space() > 0 {
-                    utcb.write(&[b]);
-                    count += 1;
-                } else {
+                if !utcb.write_byte(b) {
                     break; // Buffer full
                 }
+                count += 1;
             }
 
             utcb.mrs_regs[0] = count;
