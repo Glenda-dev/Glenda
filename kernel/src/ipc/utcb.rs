@@ -2,7 +2,7 @@ use super::{Badge, MsgTag};
 use crate::cap::CapPtr;
 use crate::mem::VirtAddr;
 
-pub const MAX_MRS: usize = 7; // 最大消息寄存器数量
+pub const MAX_MRS: usize = 8; // 最大消息寄存器数量
 
 pub type MsgArgs = [usize; MAX_MRS];
 

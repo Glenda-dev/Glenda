@@ -82,7 +82,7 @@ impl TrapFrame {
     }
     // TODO: Fix this
     pub fn get_registers(&self) -> MsgArgs {
-        [self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a7]
+        [self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6, self.a7]
     }
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         self.a0 = regs[0];
@@ -91,6 +91,7 @@ impl TrapFrame {
         self.a3 = regs[3];
         self.a4 = regs[4];
         self.a5 = regs[5];
-        self.a7 = regs[6];
+        self.a6 = regs[6];
+        self.a7 = regs[7];
     }
 }
