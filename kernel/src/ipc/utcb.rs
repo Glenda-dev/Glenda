@@ -1,6 +1,5 @@
 use super::{Badge, MsgTag};
 use crate::cap::CapPtr;
-use crate::mem::VirtAddr;
 
 pub const MAX_MRS: usize = 8; // 最大消息寄存器数量
 
@@ -21,11 +20,9 @@ pub struct UTCB {
     pub recv_window: CapPtr,
     /// Badge 标识
     pub badge: Badge,
-    /// 线程本地存储指针
-    pub tls: VirtAddr,
+    /// ipc缓冲区
     pub head: usize,
     pub tail: usize,
-    /// ipc缓冲区
     pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }
 

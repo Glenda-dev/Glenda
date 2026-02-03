@@ -1,4 +1,5 @@
 use crate::ipc::MsgArgs;
+use crate::proc::thread;
 use crate::trap::TrapCause;
 use core::arch::naked_asm;
 /// 陷阱帧结构体
@@ -15,7 +16,7 @@ impl TrapFrame {
         unimplemented!()
     }
     /// 配置用户态返回信息
-    pub fn configure(&mut self, entry_point: usize, stack_pointer: usize) {
+    pub fn configure(&mut self, entry_point: usize, stack_pointer: usize, thread_pointer: usize) {
         unimplemented!()
     }
     /// 配置内核态返回信息

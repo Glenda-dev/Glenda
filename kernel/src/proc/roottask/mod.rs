@@ -73,7 +73,7 @@ fn spawn_payload(root_task: ProcPayload) {
     // 7. Configure TCB resources
     tcb.configure(&caps.cspace, &caps.vspace, &caps.utcb, &caps.tf, &caps.kstack);
     tcb.set_priority(ROOT_TASK_PRIORITY);
-    tcb.set_entrypoint(entry_point, stack_top);
+    tcb.set_entrypoint(entry_point, stack_top, 0);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
     log!("proc: Root Task created. Entry: {:#x}, SP: {:#x}", entry_point, stack_top);

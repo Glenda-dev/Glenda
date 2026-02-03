@@ -43,9 +43,10 @@ pub struct TrapFrame {
 }
 
 impl TrapFrame {
-    pub fn configure(&mut self, entry_point: usize, stack_pointer: usize) {
+    pub fn configure(&mut self, entry_point: usize, stack_pointer: usize, thread_pointer: usize) {
         self.kernel_epc = entry_point;
         self.sp = stack_pointer;
+        self.tp = thread_pointer;
     }
     pub fn configure_kernel(
         &mut self,

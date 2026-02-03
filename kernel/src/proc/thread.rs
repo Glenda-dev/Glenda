@@ -171,7 +171,7 @@ impl TCB {
         self.priority = prio;
     }
 
-    pub fn set_entrypoint(&mut self, entry_point: usize, stack_top: usize) {
+    pub fn set_entrypoint(&mut self, entry_point: usize, stack_top: usize, thread_pointer: usize) {
         // 1. 获取内核栈顶和 mmu
         let kstack_top = self.get_kstack_top().as_usize();
         let mmu = self.mmu_register();
@@ -180,7 +180,7 @@ impl TCB {
         let tf = self.get_tf();
 
         // 3. 设置用户态初始状态
-        tf.configure(entry_point, stack_top);
+        tf.configure(entry_point, stack_top, thread_pointer);
         tf.configure_kernel(mmu, hal::cpu::cpu_id(), kstack_top, trap_user_handler as usize);
 
         // 4. 设置内核上下文，使其在被调度时跳转到 trap_user_return

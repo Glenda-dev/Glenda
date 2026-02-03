@@ -76,7 +76,8 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             // SetRegisters: (entry, sp)
             let entry = utcb.mrs_regs[0];
             let sp = utcb.mrs_regs[1];
-            tcb.set_entrypoint(entry, sp);
+            let tp = utcb.mrs_regs[2];
+            tcb.set_entrypoint(entry, sp, tp);
             errcode::SUCCESS
         }
         tcbmethod::SET_FAULT_HANDLER => {
