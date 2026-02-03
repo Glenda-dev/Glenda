@@ -42,7 +42,7 @@ impl UntypedRegion {
         self.watermark + need_pages <= self.pages
     }
 
-    pub fn retype(&mut self, obj_type: CapType, flags: usize, dirty: usize) -> Option<Capability> {
+    pub fn retype(&mut self, obj_type: CapType, flags: usize) -> Option<Capability> {
         let obj_pages = match obj_type {
             CapType::CNode => CNODE_PAGES,
             CapType::TCB => sizes::TCB,
@@ -65,10 +65,7 @@ impl UntypedRegion {
         let obj_paddr = PhysAddr::from(self.start.as_usize() + page_idx * PGSIZE);
         let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
         let obj_size_bytes = obj_pages * PGSIZE;
-
-        if dirty == 0 {
-            unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
-        }
+        unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
 
         let new_cap = match obj_type {
             CapType::CNode => {

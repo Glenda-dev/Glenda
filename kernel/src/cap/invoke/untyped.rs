@@ -24,7 +24,6 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
             let flags = utcb.mrs_regs[1];
             let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[2]);
             let dest_slot = CapPtr::from(utcb.mrs_regs[3]);
-            let dirty = utcb.mrs_regs[4];
 
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
@@ -36,7 +35,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                 if !dest_cnode.check_cptr(dest_slot) {
                     return errcode::INVALID_SLOT;
                 }
-                match untyped.retype(CapType::from(obj_type), flags, dirty) {
+                match untyped.retype(CapType::from(obj_type), flags) {
                     Some(new_cap) => {
                         if dest_cnode.insert_child(dest_slot, &new_cap, cap) {
                             // 重要：将更新后的 watermark 写回原始 Untyped 能力
