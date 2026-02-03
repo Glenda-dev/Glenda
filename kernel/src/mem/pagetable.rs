@@ -180,7 +180,7 @@ impl PageTable {
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
         *pte_ptr = Pte::from(table_pa, Perms::VALID);
         crate::printk!(
-            "PageTable: mapped table at 0x{:x} level {} (PTE: 0x{:x} in table 0x{:p})\n",
+            "PageTable: mapped table at 0x{:x} level {} (PTE: 0x{:x} in table {:p})\n",
             va.as_usize(),
             level,
             pte_ptr.as_usize(),
