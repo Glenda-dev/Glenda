@@ -11,6 +11,7 @@ const MAX_MMIO_REGIONS: usize = 64;
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceTreeInfo {
     pub uart: Option<UartConfig>,
+    pub uart_debug: Option<UartConfig>,
     pub plic: Option<MemoryRange>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
@@ -20,14 +21,19 @@ pub struct DeviceTreeInfo {
 impl DeviceTreeInfo {
     fn new(fdt: &Fdt, dtb_paddr: usize) -> Self {
         let uart = parse_uart(fdt);
+        let uart_debug = uart.clone();
         let plic = parse_plic(fdt);
         let dtb_size = fdt.total_size();
         let hart_count = parse_hart_count(fdt);
-        Self { uart, plic, dtb_paddr, dtb_size, hart_count }
+        Self { uart, uart_debug, plic, dtb_paddr, dtb_size, hart_count }
     }
 
     fn uart(&self) -> Option<UartConfig> {
         self.uart
+    }
+
+    fn uart_debug(&self) -> Option<UartConfig> {
+        self.uart_debug
     }
 
     fn plic(&self) -> Option<MemoryRange> {
@@ -44,6 +50,10 @@ pub fn init(dtb: *const u8) {
 
 pub fn uart_config() -> Option<UartConfig> {
     DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::uart)
+}
+
+pub fn uart_config_debug() -> Option<UartConfig> {
+    DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::uart_debug)
 }
 
 pub fn plic() -> Option<MemoryRange> {
@@ -202,6 +212,13 @@ fn fill_platform_info(fdt: &Fdt, info: &mut PlatformInfo) {
             region.size.unwrap_or(0),
             MemoryType::Ram,
         );
+    }
+
+    // Fill bootargs
+    if let Some(args) = parse_bootargs(fdt) {
+        let bytes = args.as_bytes();
+        let len = core::cmp::min(bytes.len(), 255);
+        info.bootargs[..len].copy_from_slice(&bytes[..len]);
     }
 
     // Fill MMIO regions
