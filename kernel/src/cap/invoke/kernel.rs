@@ -24,7 +24,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
 
             let mut buf = [0u8; 128];
             loop {
-                let n = utcb.read_bytes(&mut buf);
+                let n = utcb.read(&mut buf);
                 if n == 0 {
                     break;
                 }
@@ -46,6 +46,40 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
             }
             let c = hal::console::read() as usize;
             utcb.mrs_regs[0] = c;
+            errcode::SUCCESS
+        }
+        kernelmethod::CONSOLE_GET_STR => {
+            if cap.has_rights(Rights::READ) == false {
+                log!("Kernel::ConsoleGetStr failed: permission denied");
+                return errcode::PERMISSION_DENIED;
+            }
+            // 清空 UTCB 缓冲区以便写入
+            utcb.head = 0;
+            utcb.tail = 0;
+
+            // Implementation: loop read char until \n or \r
+            let mut count = 0;
+            loop {
+                let c = hal::console::read();
+                let b = c as u8;
+
+                // Echo back
+                crate::printk!("{}", c as char);
+
+                if b == b'\r' || b == b'\n' {
+                    break;
+                }
+
+                // Write to UTCB buffer
+                if utcb.available_space() > 0 {
+                    utcb.write(&[b]);
+                    count += 1;
+                } else {
+                    break; // Buffer full
+                }
+            }
+
+            utcb.mrs_regs[0] = count;
             errcode::SUCCESS
         }
         kernelmethod::SHELL => {

@@ -46,7 +46,8 @@ pub mod irqmethod {
 pub mod kernelmethod {
     pub const CONSOLE_PUT_STR: usize = 1;
     pub const CONSOLE_GET_CHAR: usize = 2;
-    pub const SHELL: usize = 3;
+    pub const CONSOLE_GET_STR: usize = 3;
+    pub const SHELL: usize = 4;
 }
 
 pub mod vspacemethod {

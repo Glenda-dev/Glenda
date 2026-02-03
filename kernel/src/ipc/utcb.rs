@@ -59,11 +59,20 @@ impl UTCB {
         BUFFER_MAX_SIZE - self.available_data() - 1
     }
 
-    pub fn read_bytes(&mut self, data: &mut [u8]) -> usize {
+    pub fn read(&mut self, data: &mut [u8]) -> usize {
         let len = core::cmp::min(data.len(), self.available_data());
         for i in 0..len {
             data[i] = self.ipc_buffer[self.head];
             self.head = (self.head + 1) % BUFFER_MAX_SIZE;
+        }
+        len
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> usize {
+        let len = core::cmp::min(data.len(), self.available_space());
+        for i in 0..len {
+            self.ipc_buffer[self.tail] = data[i];
+            self.tail = (self.tail + 1) % BUFFER_MAX_SIZE;
         }
         len
     }
