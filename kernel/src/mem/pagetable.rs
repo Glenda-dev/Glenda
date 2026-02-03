@@ -76,24 +76,12 @@ impl PageTable {
         let mut current_pa = pa;
         let end_va = va + size;
         while current_va < end_va {
-            let pte_ptr = self.walk(current_va).ok_or_else(|| {
-                crate::printk!(
-                    "PageTable: map failed, walk returned None for va 0x{:x}\n",
-                    current_va.as_usize()
-                );
-                ()
-            })?;
+            let pte_ptr = self.walk(current_va).ok_or_else(|| ())?;
 
             unsafe {
                 let old_pte = *pte_ptr;
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
-                    crate::printk!(
-                        "PageTable: remapping at 0x{:x} (PA: 0x{:x} -> 0x{:x})\n",
-                        current_va.as_usize(),
-                        old_pte.pa().as_usize(),
-                        current_pa.as_usize()
-                    );
                     return Err(());
                 }
 
@@ -140,7 +128,6 @@ impl PageTable {
     /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
     pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
         if level == 0 || level >= PT_LEVELS {
-            crate::printk!("PageTable: map_table failed, invalid level {}\n", level);
             return Err(()); // 无效层级
         }
 
@@ -150,13 +137,6 @@ impl PageTable {
             let idx = hal::mem::get_vpn_index(va, l).as_usize();
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
-                crate::printk!(
-                    "PageTable: map_table failed, parent at level {} for va 0x{:x} is invalid or leaf (PTE: 0x{:x} at table 0x{:p})\n",
-                    l,
-                    va.as_usize(),
-                    pte_val.as_usize(),
-                    table
-                );
                 return Err(()); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
@@ -169,23 +149,10 @@ impl PageTable {
         let pte_ptr = &mut table.entries[idx];
 
         if pte_ptr.is_valid() {
-            crate::printk!(
-                "PageTable: map_table failed, slot for va 0x{:x} at level {} is already occupied (PTE: 0x{:x})\n",
-                va.as_usize(),
-                level,
-                pte_ptr.as_usize()
-            );
             return Err(()); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
         *pte_ptr = Pte::from(table_pa, Perms::VALID);
-        crate::printk!(
-            "PageTable: mapped table at 0x{:x} level {} (PTE: 0x{:x} in table {:p})\n",
-            va.as_usize(),
-            level,
-            pte_ptr.as_usize(),
-            table
-        );
         hal::mem::flush_tlb(None);
 
         Ok(())
