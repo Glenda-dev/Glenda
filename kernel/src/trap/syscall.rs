@@ -17,9 +17,6 @@ pub mod errcode {
 
 pub fn dispatch(cptr: usize, method: usize) -> usize {
     let cptr = CapPtr::from(cptr);
-    if cptr.is_null() {
-        return errcode::INVALID_SLOT;
-    }
     // 获取当前线程
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let cspace = tcb.get_cspace();
@@ -33,6 +30,11 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
             // 2. 读取 Capability 副本进行操作
             //    必须使用副本，因为 Rust 不允许同时持有 &mut Slot 和其它引用
             let mut cap = unsafe { (*slot_ptr).cap.clone() };
+
+            if cap.is_null() {
+                log!("syscall: Invalid capability at cptr {:#x}, method: {}", cptr.bits(), method);
+                return errcode::INVALID_CAP;
+            }
 
             // 3. 执行分发 (invoke_untyped 会修改 cap 的 watermark)
             let result = invoke::dispatch(&mut cap, method);

@@ -7,9 +7,9 @@ mod untyped;
 mod vspace;
 
 use crate::cap::{CapType, Capability};
+use crate::log;
 use crate::trap::syscall::errcode;
 
-// TODO: 分离各个对象类型的 invoke 处理函数
 pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
     // 4. 根据对象类型分发
     match cap.cap_type() {
@@ -22,6 +22,9 @@ pub fn dispatch(cap: &mut Capability, method: usize) -> usize {
         CapType::VSpace => vspace::invoke_vspace(cap, method),
         CapType::Reply => ipc::invoke_reply(cap, method),
         CapType::Kernel => kernel::invoke_kernel(cap, method),
-        _ => errcode::INVALID_OBJ_TYPE,
+        _ => {
+            log!("Invoke: Invalid capability: {:?}\n", cap);
+            errcode::INVALID_OBJ_TYPE
+        }
     }
 }
