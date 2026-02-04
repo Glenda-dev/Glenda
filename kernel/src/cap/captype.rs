@@ -15,8 +15,7 @@ pub enum CapType {
     CNode = 7,
     IrqHandler = 8,
     Kernel = 9,
-    MMIO = 10,
-    VSpace = 11,
+    VSpace = 10,
 }
 
 impl CapType {

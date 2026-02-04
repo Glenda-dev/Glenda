@@ -62,10 +62,6 @@ impl Display for Capability {
             CapType::IrqHandler => {
                 s.field("irq", &self.words[0]);
             }
-            CapType::MMIO => {
-                s.field("paddr", &PhysAddr::from(self.words[0]));
-                s.field("size", &(self.words[1] >> DATA_SHIFT));
-            }
             CapType::VSpace => {
                 let (paddr, id) = self.vspace_info();
                 let asid = id.id;
@@ -292,15 +288,6 @@ impl Capability {
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
-
-    pub fn create_mmio(mmio: &MemoryRange, rights: Rights) -> Self {
-        let w0 = mmio.start.as_usize();
-        let w1 = (CapType::MMIO as usize) & TYPE_MASK
-            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (mmio.size << DATA_SHIFT);
-        Self { words: [w0, w1] }
-    }
-
     pub fn create_vspace(pt: &PageTable, asid: Asid, rights: Rights) -> Self {
         let asid_val = asid.id as usize & ASID_MASK;
         let paddr = hal::mem::virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));

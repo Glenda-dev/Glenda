@@ -6,9 +6,8 @@ use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
-
 use crate::mem::pmem;
-use crate::mem::{MemoryRange, PageTable};
+use crate::mem::{MemoryRange, PageTable, PhysFrame};
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::platform;
@@ -142,8 +141,8 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
     for i in 0..info.memory_regions.len() {
         let region = &info.memory_regions[i];
         if region.region_type == platform::MemoryType::Mmio {
-            let cap = Capability::create_mmio(
-                &MemoryRange { start: region.start, size: region.size },
+            let cap = Capability::create_frame(
+                &PhysFrame { paddr: region.start, pages: (region.size + PGSIZE - 1) / PGSIZE },
                 Rights::ALL,
             );
             // 插入到 MMIO 子 CNode
