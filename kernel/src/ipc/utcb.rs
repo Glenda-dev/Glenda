@@ -17,7 +17,7 @@ pub struct UTCB {
     pub mrs_regs: MsgArgs,
     /// Capability 传递描述符 (CPTR)
     pub cap_transfer: CapPtr,
-    /// 接收窗口描述符 (CNode CPTR + Index)
+    /// 接收窗口描述符 (CNode CPTR)
     pub recv_window: CapPtr,
     /// Badge 标识
     pub badge: Badge,
@@ -34,12 +34,6 @@ impl UTCB {
         // 只复制消息相关的字段
         dest.msg_tag = self.msg_tag;
         dest.mrs_regs = self.mrs_regs;
-
-        if self.msg_tag.flags().contains(MsgFlags::HAS_CAP) {
-            dest.cap_transfer = self.cap_transfer;
-        } else {
-            dest.cap_transfer = CapPtr::null();
-        }
 
         if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
             while let Some(b) = self.read_byte() {
