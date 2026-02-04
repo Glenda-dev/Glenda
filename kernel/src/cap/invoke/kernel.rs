@@ -81,10 +81,11 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
             errcode::SUCCESS
         }
         kernelmethod::SHELL => {
-            if cap.has_rights(Rights::EXECUTE) == false {
+            if !cap.has_rights(Rights::EXECUTE) {
                 log!("Kernel::Shell failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
+            #[cfg(feature = "shell")]
             crate::shell::run();
             errcode::SUCCESS
         }

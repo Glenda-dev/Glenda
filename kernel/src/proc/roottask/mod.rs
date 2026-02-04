@@ -1,11 +1,9 @@
-mod bootinfo;
-mod init;
-mod initrd;
-mod layout;
+pub mod bootinfo;
+pub mod init;
+pub mod initrd;
+pub mod layout;
 
 pub use bootinfo::BootInfo;
-pub use initrd::cat_file;
-pub use initrd::print_files;
 pub use layout::STACK_VA;
 
 use super::scheduler;

@@ -15,6 +15,7 @@ mod logo;
 mod mem;
 mod platform;
 mod proc;
+#[cfg(feature = "shell")]
 mod shell;
 mod trap;
 
@@ -44,7 +45,7 @@ pub fn glenda_main() -> ! {
             printk::set_verbose(true);
         }
         if bootargs.contains("-s") {
-            shell::run();
+            run_shell();
         } else {
             proc::roottask::spawn_first();
         }
@@ -59,6 +60,11 @@ pub fn panic(info: &PanicInfo) -> ! {
     unsafe {
         hal::mem::deactivate_vspace();
     }
-    shell::run();
+    run_shell();
     hal::platform::shutdown()
+}
+
+fn run_shell() {
+    #[cfg(feature = "shell")]
+    shell::run();
 }

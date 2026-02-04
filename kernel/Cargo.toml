@@ -9,6 +9,7 @@ fdt = "0.1.5"
 spin = "0.10.0"
 
 [features]
-default = ["logging"]
+default = ["logging", "shell"]
 multiboot2 = []
 logging = []
+shell = []

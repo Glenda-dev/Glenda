@@ -8,80 +8,11 @@ use crate::printk;
 use crate::proc;
 use crate::proc::TCB;
 
-struct ShellBuffer {
-    buffer: [u8; 128],
-    len: usize,
-}
-
-impl ShellBuffer {
-    fn new() -> Self {
-        Self { buffer: [0; 128], len: 0 }
-    }
-
-    fn push(&mut self, c: u8) {
-        if self.len < self.buffer.len() {
-            self.buffer[self.len] = c;
-            self.len += 1;
-        }
-    }
-
-    fn pop(&mut self) {
-        if self.len > 0 {
-            self.len -= 1;
-        }
-    }
-
-    fn as_str(&self) -> &str {
-        core::str::from_utf8(&self.buffer[..self.len]).unwrap_or("")
-    }
-
-    fn clear(&mut self) {
-        self.len = 0;
-    }
-}
-
-pub fn run() {
-    let mut buffer = ShellBuffer::new();
-    loop {
-        print_prompt();
-
-        loop {
-            let c = hal::console::read();
-
-            match c {
-                b'\r' | b'\n' => {
-                    printk!("\n");
-                    if execute_command(buffer.as_str()) {
-                        return;
-                    }
-                    buffer.clear();
-                    break;
-                }
-                0x08 | 0x7F => {
-                    // Backspace
-                    if buffer.len > 0 {
-                        buffer.pop();
-                        printk!("\x08 \x08");
-                    }
-                }
-                c => {
-                    buffer.push(c);
-                    printk!("{}", c as char);
-                }
-            }
-        }
-    }
-}
-
-fn print_prompt() {
-    printk!("glenda> ");
-}
-
-fn execute_command(cmd_line: &str) -> bool {
+pub fn execute_command(cmd_line: &str) -> bool {
     let mut parts = cmd_line.trim().split_whitespace();
     let cmd = match parts.next() {
         Some(c) => c,
-        None => return false,
+        None => return false, // Empty line
     };
 
     match cmd {
@@ -89,7 +20,8 @@ fn execute_command(cmd_line: &str) -> bool {
         "info" => print_platform_info(),
         "mem" => mem::pmem::debug_info(),
         "sched" => proc::scheduler::debug_info(),
-        "ls" => proc::roottask::print_files(),
+        "ps" => proc::scheduler::debug_info(), // Alias to sched for now
+        "ls" => proc::roottask::initrd::print_files(),
         "exec" => {
             if let Some(name) = parts.next() {
                 proc::roottask::spawn(name);
@@ -99,12 +31,12 @@ fn execute_command(cmd_line: &str) -> bool {
         }
         "cat" => {
             if let Some(name) = parts.next() {
-                proc::roottask::cat_file(name);
+                proc::roottask::initrd::cat_file(name);
             } else {
                 printk!("Usage: cat <name>\n");
             }
         }
-        "boot" | "exit" => return true,
+        "boot" | "exit" => return true, // Signal to exit shell
         "kpt" => print_kpt(),
         "debug" => {
             if let (Some(addr_str), Some(type_str)) = (parts.next(), parts.next()) {
@@ -147,12 +79,16 @@ fn print_help() {
     printk!("  kpt              - Show kernel pagetable\n");
     printk!("  inspect          - Inspect memory\n");
     printk!("  sched            - Show scheduler status\n");
+    printk!("  ps               - List processes/threads (scheduler status)\n");
     printk!("  ls               - List initrd files\n");
     printk!("  exec <name>      - Spawn process from initrd\n");
+    printk!("  cat <name>       - Concatenate and print file content\n");
     printk!("  boot             - Boot system (exit shell)\n");
     printk!("  shutdown         - Shutdown machine\n");
     printk!("  reboot           - Reboot machine\n");
+    printk!("  gdb              - Trigger GDB breakpoint\n");
     printk!("  debug <addr> <type> - Debug print struct at address\n");
+    printk!("       types: tcb, pagetable, cnode, capability\n");
 }
 
 fn print_platform_info() {
@@ -179,7 +115,7 @@ fn debug_struct(addr_str: &str, type_str: &str) {
     match type_str {
         "tcb" => {
             let tcb = VirtAddr::from(addr).as_ref::<TCB>();
-            printk!("{:?}", tcb);
+            tcb.debug_print();
         }
         "pagetable" => {
             let pt = VirtAddr::from(addr).as_ref::<PageTable>();

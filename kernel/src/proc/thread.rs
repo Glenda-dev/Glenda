@@ -10,6 +10,7 @@ use crate::ipc::UTCB;
 use crate::mem::PageTable;
 use crate::mem::VirtAddr;
 use crate::mem::pmem;
+use core::fmt::Display;
 use core::sync::atomic::AtomicUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,7 +233,54 @@ impl TCB {
             None
         }
     }
+
+    pub fn debug_print(&self) {
+        use crate::printk;
+        printk!("TCB @ {:#x}:\n", self as *const _ as usize);
+        printk!("  state:          {:?}\n", self.state);
+        printk!("  priority:       {}\n", self.priority);
+        printk!("  affinity:       {}\n", self.affinity);
+        printk!("  timeslice:      {}\n", self.timeslice);
+        printk!("  context:        {:?}\n", self.context);
+
+        if let Some(cap) = &self.cspace_root {
+            printk!("  cspace_root:    {}\n", cap);
+        }
+        if let Some(cap) = &self.vspace_root {
+            printk!("  vspace_root:    {}\n", cap);
+        }
+        if let Some(cap) = &self.utcb_frame {
+            printk!("  utcb_frame:     {}\n", cap);
+        }
+        if let Some(cap) = &self.trapframe {
+            printk!("  trapframe:      {}\n", cap);
+        }
+        if let Some(cap) = &self.kstack {
+            printk!("  kstack:         {}\n", cap);
+        }
+
+        if let Some(handler) = &self.fault_handler {
+            printk!("  fault_handler:  {}\n", handler);
+        }
+
+        if let Some(partner) = self.ipc_partner {
+            printk!("  ipc_partner:    {:#x}\n", partner as usize);
+        }
+
+        printk!("  privileged:     {}\n", self.privileged);
+        printk!("  native:         {}\n", self.native);
+    }
 }
 
 unsafe impl Send for TCB {}
 unsafe impl Sync for TCB {}
+
+impl Display for TCB {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "TCB {{ state: {:?}, priority: {}, affinity: {} }}",
+            self.state, self.priority, self.affinity
+        )
+    }
+}
