@@ -1,6 +1,5 @@
 #![allow(dead_code)]
-#![allow(unused_imports)]
-#![allow(unused_variables)]
+#![allow(unused)]
 
 pub mod boot;
 pub mod console;

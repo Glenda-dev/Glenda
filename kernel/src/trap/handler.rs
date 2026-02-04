@@ -4,7 +4,7 @@ use crate::debug::gdb;
 use crate::hal;
 use crate::hal::trap::TrapFrame;
 use crate::ipc;
-use crate::ipc::proto;
+use crate::ipc::protocol;
 use crate::ipc::{MsgFlags, MsgTag};
 use crate::irq;
 use crate::irq::timer;
@@ -109,40 +109,40 @@ fn fault_handler(
                     utcb.mrs_regs[0] = value; // addr
                     utcb.mrs_regs[1] = pc; // pc
                     utcb.mrs_regs[2] = cause; // cause
-                    proto::PAGE_FAULT
+                    protocol::PAGE_FAULT
                 }
                 TrapException::IllegalInstruction => {
                     utcb.mrs_regs[0] = value; // instruction
                     utcb.mrs_regs[1] = pc; // pc
-                    proto::ILLEGAL_INSTRUCTION
+                    protocol::ILLEGAL_INSTRUCTION
                 }
                 TrapException::Breakpoint => {
                     utcb.mrs_regs[0] = pc; // pc
-                    proto::BREAKPOINT
+                    protocol::BREAKPOINT
                 }
                 TrapException::AccessFault => {
                     utcb.mrs_regs[0] = value; // addr
                     utcb.mrs_regs[1] = pc; // pc
-                    proto::ACCESS_FAULT
+                    protocol::ACCESS_FAULT
                 }
                 TrapException::AccessMisaligned => {
                     utcb.mrs_regs[0] = value; // addr
                     utcb.mrs_regs[1] = pc; // pc
-                    proto::ACCESS_MISALIGNED
+                    protocol::ACCESS_MISALIGNED
                 }
                 TrapException::Syscall => {
                     utcb.mrs_regs = ctx.get_registers();
-                    proto::SYSCALL
+                    protocol::SYSCALL
                 }
                 _ => {
                     utcb.mrs_regs[0] = cause; // cause
                     utcb.mrs_regs[1] = value; // value
                     utcb.mrs_regs[2] = pc; // pc
-                    proto::UNKNOWN_FAULT
+                    protocol::UNKNOWN_FAULT
                 }
             };
 
-            utcb.msg_tag = MsgTag::new(proto::KERNEL_PROTO, label, MsgFlags::NONE);
+            utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, label, MsgFlags::NONE);
         }
         let ep_ptr = handler_cap.obj_ptr();
         let ep = ep_ptr.as_mut::<ipc::Endpoint>();

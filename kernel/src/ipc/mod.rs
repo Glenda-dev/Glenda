@@ -1,6 +1,6 @@
 pub mod endpoint;
 pub mod msg;
-pub mod proto;
+pub mod protocol;
 pub mod utcb;
 
 pub use endpoint::Endpoint;
@@ -148,7 +148,7 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
         if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
             unsafe {
                 (*utcb_ptr).msg_tag =
-                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE);
+                    MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
                 (*utcb_ptr).badge = badge;
             };
         }
@@ -174,7 +174,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
                 (*utcb_ptr).msg_tag =
-                    MsgTag::new(proto::KERNEL_PROTO, proto::NOTIFY, MsgFlags::NONE);
+                    MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
                 (*utcb_ptr).badge = pending;
             };
         }
