@@ -7,7 +7,7 @@ use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::irq::IRQ;
 use crate::mem::PageTable;
-use crate::mem::{MemoryRange, PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
+use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
 use core::fmt::Display;
