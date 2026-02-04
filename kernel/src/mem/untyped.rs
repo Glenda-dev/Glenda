@@ -76,6 +76,8 @@ impl UntypedRegion {
             CapType::TCB => {
                 let tcb_ptr = obj_vaddr.as_mut_ptr::<TCB>();
                 unsafe { tcb_ptr.write(TCB::new()) };
+                // Register TCB for GDB debugging
+                TCB::register(tcb_ptr);
                 Capability::create_tcb(unsafe { &*tcb_ptr }, Rights::ALL)
             }
             CapType::Endpoint => {

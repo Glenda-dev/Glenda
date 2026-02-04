@@ -1,7 +1,9 @@
+use super::thread::ALL_THREADS;
 use super::thread::{TCB, ThreadState};
 use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
+use crate::printk;
 
 // 最大优先级数量 (0-255)
 pub const MAX_PRIORITY: usize = 256;
@@ -299,5 +301,33 @@ pub fn debug_info() {
             }
         }
         printk!("    Total Ready: {}\n", total_ready);
+    }
+}
+
+pub fn ps() {
+    printk!("ID (Addr)  Prio  State       Aff\n");
+    printk!("--------------------------------\n");
+
+    unsafe {
+        let mut curr = ALL_THREADS;
+        while let Some(ptr) = curr {
+            let tcb = &*ptr;
+
+            let state_str = match tcb.state {
+                ThreadState::Inactive => "Inactive   ",
+                ThreadState::Ready => "Ready      ",
+                ThreadState::Running => "Running    ",
+                ThreadState::BlockedSend => "BlockedSend",
+                ThreadState::BlockedRecv => "BlockedRecv",
+                ThreadState::BlockedCall => "BlockedCall",
+            };
+
+            // 使用地址作为 ID
+            let aff = if tcb.affinity == usize::MAX { -1 } else { tcb.affinity as isize };
+
+            printk!("{:#08x} {:<5} {:<11} {}\n", ptr as usize, tcb.priority, state_str, aff);
+
+            curr = tcb.global_next;
+        }
     }
 }

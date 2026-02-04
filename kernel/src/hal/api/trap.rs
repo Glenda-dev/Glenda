@@ -7,6 +7,10 @@ use core::arch::naked_asm;
 pub struct TrapFrame;
 
 impl TrapFrame {
+    /// 创建一个新的 TrapFrame 实例
+    pub const fn new() -> Self {
+        Self
+    }
     /// 获取程序计数器 (PC/EPC)
     pub const fn get_epc(&self) -> usize {
         unimplemented!()

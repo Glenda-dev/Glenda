@@ -69,6 +69,7 @@ fn spawn_payload(root_task: ProcPayload) {
     let cspace = caps.cspace.obj_ptr().as_mut::<CNode>();
     init_cspace(cspace, &caps, bootinfo);
     // 7. Configure TCB resources
+    TCB::register(tcb);
     tcb.configure(&caps.cspace, &caps.vspace, &caps.utcb, &caps.tf, &caps.kstack);
     tcb.set_priority(ROOT_TASK_PRIORITY);
     tcb.set_entrypoint(entry_point, stack_top, 0);

@@ -73,7 +73,13 @@ pub struct TCB {
 
     // 是否为原生线程
     pub native: bool,
+
+    // Global thread list for debugging
+    pub global_prev: Option<*mut TCB>,
+    pub global_next: Option<*mut TCB>,
 }
+
+pub static mut ALL_THREADS: Option<*mut TCB> = None;
 
 impl TCB {
     pub const fn new() -> Self {
@@ -99,6 +105,18 @@ impl TCB {
             utcb_frame: None,
             privileged: false,
             native: true,
+            global_prev: None,
+            global_next: None,
+        }
+    }
+
+    pub fn register(tcb: *mut TCB) {
+        unsafe {
+            if let Some(head) = ALL_THREADS {
+                (*head).global_prev = Some(tcb);
+                (*tcb).global_next = Some(head);
+            }
+            ALL_THREADS = Some(tcb);
         }
     }
 

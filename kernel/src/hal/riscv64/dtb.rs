@@ -11,7 +11,6 @@ const MAX_MMIO_REGIONS: usize = 64;
 #[derive(Debug, Clone, Copy)]
 pub struct DeviceTreeInfo {
     pub uart: Option<UartConfig>,
-    pub uart_debug: Option<UartConfig>,
     pub plic: Option<MemoryRange>,
     pub dtb_paddr: usize,
     pub dtb_size: usize,
@@ -21,19 +20,14 @@ pub struct DeviceTreeInfo {
 impl DeviceTreeInfo {
     fn new(fdt: &Fdt, dtb_paddr: usize) -> Self {
         let uart = parse_uart(fdt);
-        let uart_debug = uart.clone();
         let plic = parse_plic(fdt);
         let dtb_size = fdt.total_size();
         let hart_count = parse_hart_count(fdt);
-        Self { uart, uart_debug, plic, dtb_paddr, dtb_size, hart_count }
+        Self { uart, plic, dtb_paddr, dtb_size, hart_count }
     }
 
     fn uart(&self) -> Option<UartConfig> {
         self.uart
-    }
-
-    fn uart_debug(&self) -> Option<UartConfig> {
-        self.uart_debug
     }
 
     fn plic(&self) -> Option<MemoryRange> {
@@ -50,10 +44,6 @@ pub fn init(dtb: *const u8) {
 
 pub fn uart_config() -> Option<UartConfig> {
     DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::uart)
-}
-
-pub fn uart_config_debug() -> Option<UartConfig> {
-    DEVICE_TREE_INFO.get().and_then(DeviceTreeInfo::uart_debug)
 }
 
 pub fn plic() -> Option<MemoryRange> {
