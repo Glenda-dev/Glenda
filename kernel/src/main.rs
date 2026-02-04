@@ -7,6 +7,7 @@ mod printk;
 mod boot;
 mod cap;
 mod cpu;
+mod debug;
 mod hal;
 mod init;
 mod ipc;

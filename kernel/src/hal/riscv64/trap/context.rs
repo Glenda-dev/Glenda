@@ -3,43 +3,43 @@ use crate::ipc::MsgArgs;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TrapFrame {
-    kernel_satp: usize,       // 内核页表地址
-    kernel_sp: usize,         // 内核栈指针
-    kernel_trapvector: usize, // 内核陷阱向量地址
-    kernel_epc: usize,        // 用户态程序计数器
-    kernel_hartid: usize,     // 处理器核ID
+    pub kernel_satp: usize,       // 内核页表地址
+    pub kernel_sp: usize,         // 内核栈指针
+    pub kernel_trapvector: usize, // 内核陷阱向量地址
+    pub kernel_epc: usize,        // 用户态程序计数器
+    pub kernel_hartid: usize,     // 处理器核ID
     // 通用寄存器
-    ra: usize,
-    sp: usize,
-    gp: usize,
-    tp: usize,
-    t0: usize,
-    t1: usize,
-    t2: usize,
-    s0: usize,
-    s1: usize,
-    a0: usize,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-    s2: usize,
-    s3: usize,
-    s4: usize,
-    s5: usize,
-    s6: usize,
-    s7: usize,
-    s8: usize,
-    s9: usize,
-    s10: usize,
-    s11: usize,
-    t3: usize,
-    t4: usize,
-    t5: usize,
-    t6: usize,
+    pub ra: usize,
+    pub sp: usize,
+    pub gp: usize,
+    pub tp: usize,
+    pub t0: usize,
+    pub t1: usize,
+    pub t2: usize,
+    pub s0: usize,
+    pub s1: usize,
+    pub a0: usize,
+    pub a1: usize,
+    pub a2: usize,
+    pub a3: usize,
+    pub a4: usize,
+    pub a5: usize,
+    pub a6: usize,
+    pub a7: usize,
+    pub s2: usize,
+    pub s3: usize,
+    pub s4: usize,
+    pub s5: usize,
+    pub s6: usize,
+    pub s7: usize,
+    pub s8: usize,
+    pub s9: usize,
+    pub s10: usize,
+    pub s11: usize,
+    pub t3: usize,
+    pub t4: usize,
+    pub t5: usize,
+    pub t6: usize,
 }
 
 impl TrapFrame {
@@ -94,5 +94,43 @@ impl TrapFrame {
         self.a5 = regs[5];
         self.a6 = regs[6];
         self.a7 = regs[7];
+    }
+    pub fn for_each_register<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        f(0); // x0
+        f(self.ra);
+        f(self.sp);
+        f(self.gp);
+        f(self.tp);
+        f(self.t0);
+        f(self.t1);
+        f(self.t2);
+        f(self.s0);
+        f(self.s1);
+        f(self.a0);
+        f(self.a1);
+        f(self.a2);
+        f(self.a3);
+        f(self.a4);
+        f(self.a5);
+        f(self.a6);
+        f(self.a7);
+        f(self.s2);
+        f(self.s3);
+        f(self.s4);
+        f(self.s5);
+        f(self.s6);
+        f(self.s7);
+        f(self.s8);
+        f(self.s9);
+        f(self.s10);
+        f(self.s11);
+        f(self.t3);
+        f(self.t4);
+        f(self.t5);
+        f(self.t6);
+        f(self.kernel_epc);
     }
 }

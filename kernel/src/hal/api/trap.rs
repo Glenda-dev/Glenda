@@ -57,6 +57,13 @@ impl TrapFrame {
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         unimplemented!()
     }
+    /// 遍历所有寄存器并应用函数 f
+    pub fn for_each_register<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        unimplemented!()
+    }
 }
 
 /// 初始化异常向量表

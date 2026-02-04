@@ -1,5 +1,6 @@
 use super::{TrapCause, TrapException, TrapInterrupt};
 use crate::cap::CapType;
+use crate::debug::gdb;
 use crate::hal;
 use crate::hal::trap::TrapFrame;
 use crate::ipc;
@@ -46,6 +47,12 @@ fn exception_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
+    if e == TrapException::Breakpoint {
+        gdb::enter(ctx);
+        ctx.advance_pc();
+        return;
+    }
+
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
         if tcb.native && e == TrapException::Syscall {
