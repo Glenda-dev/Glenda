@@ -21,6 +21,9 @@ static CDT_LOCK: Mutex<()> = Mutex::new(());
 pub struct CapPtr(usize);
 
 impl CapPtr {
+    pub const fn null() -> Self {
+        CapPtr(0)
+    }
     pub const fn from(slot: usize) -> Self {
         CapPtr(slot)
     }

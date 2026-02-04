@@ -135,7 +135,7 @@ impl TrapFrame {
         self.a6 = regs[6];
         self.a7 = regs[7];
     }
-    pub fn for_each_register<F>(&self, mut f: F)
+    pub fn for_each_register<F>(&self, f: F)
     where
         F: FnMut(usize),
     {

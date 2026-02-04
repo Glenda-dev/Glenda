@@ -1,5 +1,6 @@
 use super::{Badge, MsgTag};
 use crate::cap::CapPtr;
+use crate::ipc::MsgFlags;
 
 pub const MAX_MRS: usize = 8; // 最大消息寄存器数量
 
@@ -34,13 +35,16 @@ impl UTCB {
         dest.msg_tag = self.msg_tag;
         dest.mrs_regs = self.mrs_regs;
 
-        // 注意：不复制 tls, recv_window, cap_transfer 等线程私有/接收控制字段
-        // dest.cap_transfer = self.cap_transfer;
-        // dest.recv_window = self.recv_window;
-        // dest.tls = self.tls;
+        if self.msg_tag.flags().contains(MsgFlags::HAS_CAP) {
+            dest.cap_transfer = self.cap_transfer;
+        } else {
+            dest.cap_transfer = CapPtr::null();
+        }
 
-        while let Some(b) = self.read_byte() {
-            dest.write_byte(b);
+        if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
+            while let Some(b) = self.read_byte() {
+                dest.write_byte(b);
+            }
         }
     }
 

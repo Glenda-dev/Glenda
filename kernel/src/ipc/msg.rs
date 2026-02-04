@@ -38,5 +38,6 @@ bitflags! {
         const OK = 1 << 0;
         const ERROR = 1 << 1;
         const HAS_CAP = 1 << 2;
+        const HAS_BUFFER = 1 << 3;
     }
 }

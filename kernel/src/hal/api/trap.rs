@@ -62,7 +62,7 @@ impl TrapFrame {
         unimplemented!()
     }
     /// 遍历所有寄存器并应用函数 f
-    pub fn for_each_register<F>(&self, mut f: F)
+    pub fn for_each_register<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
