@@ -16,7 +16,7 @@ members = [
     "examples/hello",
     "tests/ipc",
     "tests/cap",
-    "tests/heap",
+    "tests/heap", "lib/libape",
 ]
 resolver = "2"
 

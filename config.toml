@@ -33,6 +33,11 @@ path = "lib/libglenda-rs"
 build = "cargo"
 output = ""
 [[libraries]]
+name = "libape"
+path = "lib/libape"
+build = "cargo"
+output = ""
+[[libraries]]
 name = "libglenda"
 path = "lib/libglenda"
 build = "cmake"
@@ -45,9 +50,4 @@ output = "lib/libc.a"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
-musl-glenda = [
-    "--target=riscv64-glenda",
-    "--prefix=build",
-    "--disable-shared",
-    "CFLAGS=-I../../lib/libglenda/include",
-]
+musl-glenda = ["--disable-shared"]

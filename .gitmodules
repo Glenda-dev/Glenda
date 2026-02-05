@@ -25,3 +25,6 @@
 [submodule "lib/libglenda"]
 	path = lib/libglenda
 	url = https://github.com/Glenda-dev/libglenda.git
+[submodule "lib/libape"]
+	path = lib/libape
+	url = https://github.com/Glenda-dev/libape.git
