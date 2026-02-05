@@ -59,6 +59,7 @@ pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
             "cmake" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
                 cmake::build(cfg, Path::new(&c.path), &args)?;
+                cmake::install(cfg, Path::new(&c.path), &args)?;
             }
             "make" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
