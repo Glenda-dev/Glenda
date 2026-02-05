@@ -37,12 +37,17 @@ name = "libglenda"
 path = "lib/libglenda"
 build = "cmake"
 output = "build/libglenda.a"
-[[services]]
-name = "hello"
-path = "examples/hello"
-build = "cargo"
-output = "build/hello.elf"
-kind = "service"
+[[libraries]]
+name = "musl-glenda"
+path = "lib/musl-glenda"
+build = "make"
+output = "lib/libc.a"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
+musl-glenda = [
+    "--target=riscv64-glenda",
+    "--prefix=build",
+    "--disable-shared",
+    "CFLAGS=-I../../lib/libglenda/include",
+]
