@@ -40,7 +40,6 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
         cmd.arg(format!("-j{}", n.get()));
     }
     run(&mut cmd)?;
-
     let mut cmd = Command::new("make");
     cmd.current_dir(&build_dir);
     cmd.arg("install");

@@ -29,6 +29,7 @@ output = "build/libglenda.a"
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
+output = ""
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
