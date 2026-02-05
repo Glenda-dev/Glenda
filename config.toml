@@ -45,4 +45,4 @@ output = "build/hello.elf"
 kind = "service"
 [features]
 kernel = []
-libglenda-rs = ["rt-bare", "ffi"]
+libglenda-rs = ["rt-bare"]
