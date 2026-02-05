@@ -18,6 +18,7 @@ pub struct Library {
     pub name: String,
     pub path: String,
     pub build: String,
+    pub output: String,
 }
 
 #[derive(Debug, Deserialize)]

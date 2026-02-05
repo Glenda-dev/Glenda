@@ -1,8 +1,12 @@
+mod cargo;
+mod cmake;
+mod make;
+
 use crate::config::{Config, Service};
 use crate::util::run;
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 pub fn build(cfg: &Config) -> anyhow::Result<()> {
@@ -42,75 +46,43 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Run cargo build for a component
-fn run_cargo_build(cfg: &Config, path: &Path, features: &str, flags: &str) -> anyhow::Result<()> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(path);
-    cmd.arg("build");
-    cmd.arg("--target").arg(cfg.system.arch.target_triple());
-    cmd.arg("--profile").arg(&cfg.system.profile);
-    if !features.is_empty() {
-        cmd.arg("--features").arg(features);
-    }
-    if !flags.is_empty() {
-        cmd.env("RUSTFLAGS", flags);
-    }
-    run(&mut cmd)
-}
-
 pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
     for c in cfg.libraries.iter() {
-        let features = cfg.features.get(&c.name).map(|arr| arr.join(",")).unwrap_or_default();
         eprintln!("[ INFO ] Building Library {} with: {}", c.name, c.build);
 
-        if c.build == "cargo" {
-            run_cargo_build(cfg, Path::new(&c.path), &features, "")?;
-        } else {
-            anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name);
+        match c.build.as_str() {
+            "cargo" => {
+                let features =
+                    cfg.features.get(&c.name).map(|arr| arr.join(",")).unwrap_or_default();
+                cargo::build(cfg, Path::new(&c.path), &features, "")?;
+            }
+            "cmake" => {
+                let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
+                cmake::build(cfg, Path::new(&c.path), &args)?;
+            }
+            "make" => {
+                let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
+                make::build(cfg, Path::new(&c.path), &args)?;
+            }
+            _ => anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name),
+        }
+
+        if !c.output.is_empty() {
+            let src = Path::new(&c.path).join(&c.output);
+
+            if src.exists() {
+                let dst_dir = Path::new("target/lib");
+                fs::create_dir_all(&dst_dir)?;
+                let filename =
+                    src.file_name().ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
+                fs::copy(&src, dst_dir.join(filename))?;
+            } else {
+                eprintln!("[ WARN ] Library artifact not found at: {}", src.display());
+            }
         }
     }
 
     Ok(())
-}
-
-/// Build a service with Cargo and return the path to the installed artifact
-fn build_cargo_service(cfg: &Config, service: &Service) -> anyhow::Result<PathBuf> {
-    let features = cfg.features.get(&service.name).map(|arr| arr.join(",")).unwrap_or_default();
-    eprintln!("[ INFO ] Building Service {} with: cargo", service.name);
-
-    let linker_script = {
-        // Drivers may need special linker script
-        let cwd = std::env::current_dir()?;
-        cwd.join("lib/libglenda-rs/src/arch").join(cfg.system.arch.as_str()).join("linker.ld")
-    };
-
-    // 1. Run Cargo Build
-    run_cargo_build(
-        cfg,
-        Path::new(&service.path),
-        &features,
-        format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display()).as_str(),
-    )?;
-    // 2. Identify Source Artifact
-    // Assumption: Binary name matches service name
-    // Artifact location: workspace_target_dir/target_triple/profile/name
-    // Note: We assume we are running from workspace root
-    let target_triple = cfg.system.arch.target_triple();
-    let profile = &cfg.system.profile;
-    let src_path = Path::new("target").join(target_triple).join(profile).join(&service.name);
-
-    if !src_path.exists() {
-        anyhow::bail!("Cargo build artifact not found at: {}", src_path.display());
-    }
-
-    // 3. Move/Copy to Output
-    let dst_path = Path::new(&service.path).join(&service.output);
-    if let Some(parent) = dst_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::copy(&src_path, &dst_path)?;
-
-    Ok(dst_path)
 }
 
 const ENTRY_SIZE: usize = 48; // as in design
@@ -125,7 +97,58 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
     // Helper to process a service and get its data
     let process_service = |c: &Service| -> anyhow::Result<(String, Vec<u8>)> {
         let artifact_path = match c.build.as_str() {
-            "cargo" => build_cargo_service(cfg, c)?,
+            "cargo" => {
+                let features =
+                    cfg.features.get(&c.name).map(|arr| arr.join(",")).unwrap_or_default();
+                eprintln!("[ INFO ] Building Service {} with: cargo", c.name);
+
+                let linker_script = {
+                    // Drivers may need special linker script
+                    let cwd = std::env::current_dir()?;
+                    cwd.join("lib/libglenda-rs/src/arch")
+                        .join(cfg.system.arch.as_str())
+                        .join("linker.ld")
+                };
+
+                // 1. Run Cargo Build
+                cargo::build(
+                    cfg,
+                    Path::new(&c.path),
+                    &features,
+                    format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display())
+                        .as_str(),
+                )?;
+                // 2. Identify Source Artifact
+                // Assumption: Binary name matches service name
+                // Artifact location: workspace_target_dir/target_triple/profile/name
+                // Note: We assume we are running from workspace root
+                let target_triple = cfg.system.arch.target_triple();
+                let profile = &cfg.system.profile;
+                let src_path = Path::new("target").join(target_triple).join(profile).join(&c.name);
+
+                if !src_path.exists() {
+                    anyhow::bail!("Cargo build artifact not found at: {}", src_path.display());
+                }
+
+                // 3. Move/Copy to Output
+                let dst_path = Path::new(&c.path).join(&c.output);
+                if let Some(parent) = dst_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&src_path, &dst_path)?;
+
+                dst_path
+            }
+            "cmake" => {
+                let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
+                cmake::build(cfg, Path::new(&c.path), &args)?;
+                Path::new(&c.path).join(&c.output)
+            }
+            "make" => {
+                let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
+                make::build(cfg, Path::new(&c.path), &args)?;
+                Path::new(&c.path).join(&c.output)
+            }
             "manifest" => Path::new(&c.path).join(&c.output),
             _ => anyhow::bail!("Unknown build method '{}' for service '{}'", c.build, c.name),
         };
@@ -232,14 +255,44 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn clean() -> anyhow::Result<()> {
-    // Remove target dir
+pub fn clean(cfg: &Config) -> anyhow::Result<()> {
     let target_path = Path::new("target");
+    eprintln!("[ INFO ] Cleaning build artifacts at {}", target_path.display());
     if target_path.exists() {
         fs::remove_dir_all(target_path)?;
     }
 
-    eprintln!("[ INFO ] Cleaned build artifacts");
+    // Clean libraries
+    for c in cfg.libraries.iter() {
+        if c.output.is_empty() {
+            continue;
+        }
+        let output_path = Path::new(&c.path).join(&c.output);
+        eprintln!("[ INFO ] Cleaning build artifacts for {} at {}", c.name, output_path.display());
+        if output_path.exists() {
+            fs::remove_file(output_path)?;
+        }
+    }
+
+    // Clean services
+    for s in cfg.services.iter() {
+        if s.build == "manifest" || s.output.is_empty() {
+            continue;
+        }
+
+        let output_path = Path::new(&s.path).join(&s.output);
+        eprintln!("[ INFO ] Cleaning build artifacts for {} at {}", s.name, output_path.display());
+        if output_path.exists() {
+            fs::remove_file(output_path)?;
+        }
+
+        if s.build == "cmake" {
+            let build_dir = Path::new(&s.path).join("build");
+            if build_dir.exists() {
+                fs::remove_dir_all(build_dir)?;
+            }
+        }
+    }
 
     Ok(())
 }

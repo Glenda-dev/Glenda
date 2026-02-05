@@ -2,7 +2,6 @@ use clap::{Parser, Subcommand};
 mod arch;
 mod build;
 mod config;
-mod fs;
 mod qemu;
 mod util;
 
@@ -34,8 +33,6 @@ enum Cmd {
     Objdump,
     /// Show section sizes
     Size,
-    /// Generate disk.img
-    Mkfs,
     /// Dump QEMU DTB to target/virt.dtb
     DumpDtb,
     Clean,
@@ -59,20 +56,15 @@ fn main() -> anyhow::Result<()> {
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
         Cmd::Run => {
-            build::build(&cfg)?;
-            fs::mkfs()?;
             qemu::qemu_run(&cfg)?;
         }
         Cmd::Gdb { port } => {
-            build::build(&cfg)?;
-            fs::mkfs()?;
             qemu::qemu_gdb(&cfg, port)?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,
-        Cmd::Mkfs => fs::mkfs()?,
         Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,
-        Cmd::Clean => build::clean()?,
+        Cmd::Clean => build::clean(&cfg)?,
     }
     Ok(())
 }

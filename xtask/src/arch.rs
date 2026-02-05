@@ -42,7 +42,7 @@ impl Arch {
 
     pub fn binutils_prefix(&self) -> &'static str {
         match self {
-            Arch::Riscv64 => "riscv64-elf-",
+            Arch::Riscv64 => "riscv64-unknown-elf-",
             Arch::X86_64 => "x86_64-elf-",
             Arch::Aarch64 => "aarch64-elf-",
             Arch::Loongarch64 => "loongarch64-elf-",
