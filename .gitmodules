@@ -28,3 +28,6 @@
 [submodule "lib/libape"]
 	path = lib/libape
 	url = https://github.com/Glenda-dev/libape.git
+[submodule "service/ape"]
+	path = service/ape
+	url = https://github.com/Glenda-dev/APE.git
