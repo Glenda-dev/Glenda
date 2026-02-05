@@ -19,3 +19,9 @@
 [submodule "examples/dosbox"]
 	path = examples/dosbox
 	url = https://github.com/Glenda-dev/dosbox-glenda.git
+[submodule "lib/musl-glenda"]
+	path = lib/musl-glenda
+	url = https://github.com/Glenda-dev/musl-glenda.git
+[submodule "lib/libglenda"]
+	path = lib/libglenda
+	url = https://github.com/Glenda-dev/libglenda.git

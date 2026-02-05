@@ -31,6 +31,12 @@ kind = "service"
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
+output = ""
+[[libraries]]
+name = "libglenda"
+path = "lib/libglenda"
+build = "cmake"
+output = "build/libglenda.a"
 [[services]]
 name = "hello"
 path = "examples/hello"
@@ -39,4 +45,4 @@ output = "build/hello.elf"
 kind = "service"
 [features]
 kernel = []
-libglenda-rs = ["rt-bare"]
+libglenda-rs = ["rt-bare", "ffi"]
