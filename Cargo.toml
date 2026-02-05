@@ -2,6 +2,7 @@
 members = [
     "kernel",
     "xtask",
+    "lib/libape",
     "lib/libglenda-rs",
     "service/nineball",
     "service/factotum",
@@ -14,9 +15,6 @@ members = [
     "drivers/fs/extfs",
     "drivers/virtio/net",
     "examples/hello",
-    "tests/ipc",
-    "tests/cap",
-    "tests/heap", "lib/libape",
 ]
 resolver = "2"
 

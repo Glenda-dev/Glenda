@@ -74,13 +74,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cap_test"
-version = "0.1.0"
-dependencies = [
- "libglenda-rs",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -236,13 +229,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 
 [[package]]
-name = "heap_test"
-version = "0.1.0"
-dependencies = [
- "libglenda-rs",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -272,13 +258,6 @@ checksum = "7714e70437a7dc3ac8eb7e6f8df75fd8eb422675fc7678aff7364301092b1017"
 dependencies = [
  "equivalent",
  "hashbrown",
-]
-
-[[package]]
-name = "ipc_test"
-version = "0.1.0"
-dependencies = [
- "libglenda-rs",
 ]
 
 [[package]]
