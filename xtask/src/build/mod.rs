@@ -64,6 +64,7 @@ pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
             "make" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
                 make::build(cfg, Path::new(&c.path), &args)?;
+                make::install(cfg, Path::new(&c.path), &args)?;
             }
             _ => anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name),
         }

@@ -39,3 +39,11 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     }
     run(&mut cmd)
 }
+
+pub fn install(_cfg: &Config, path: &Path, _args: &[String]) -> anyhow::Result<()> {
+    let mut cmd = Command::new("make");
+    cmd.current_dir(&path);
+    cmd.arg("install");
+    run(&mut cmd)?;
+    Ok(())
+}

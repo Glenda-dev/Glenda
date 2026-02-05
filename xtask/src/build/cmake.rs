@@ -26,7 +26,7 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     // Install locally within the build directory to avoid permission issues
     // and for easier packaging later
     let cwd = std::env::current_dir()?;
-    let install_prefix = cwd.join("target/lib");
+    let install_prefix = cwd.join("target");
     cmd.arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_prefix.display()));
 
     for arg in args {
@@ -44,7 +44,7 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn install(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
+pub fn install(_cfg: &Config, path: &Path, _args: &[String]) -> anyhow::Result<()> {
     let build_dir = path.join("build");
 
     let mut cmd = Command::new("make");

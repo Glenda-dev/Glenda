@@ -50,4 +50,4 @@ output = "lib/libc.a"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
-musl-glenda = ["--disable-shared"]
+musl-glenda = ["--disable-shared", "--prefix=../../target"]
