@@ -1,66 +1,68 @@
 # Glenda OS - AI Coding Instructions
 
-You are working on **Glenda**, a research microkernel operating system written in Rust for RISC-V (rv64gc). It combines **seL4** design principles (capabilities, strict microkernel) with **Plan 9** concepts.
+You are working on **Glenda**, a research microkernel operating system written in Rust for RISC-V (rv64gc). It follows **seL4\u0027s** strict capability model combined with **Plan 9\u0027s** service-oriented design.
 
-## 1. Project Architecture
+## 1. Top-Level Architecture
 
-The workspace strictly separates kernel and userspace components:
+The system is strictly divided into **Kernel Space** and **User Space**:
 
-- **Kernel** (`kernel/`): `no_std`. The core microkernel.
-  - **Capabilities**: `src/cap/`. All resources (memory, IRQ, endpoints) are capabilities accessed via mechanism-only lookups.
-  - **IPC**: `src/ipc/`. Synchronous IPC using **UTCB** (User Thread Control Block) for message passing (registers + buffer).
-  - **Traps**: `src/trap/`. Handles syscalls (`invoke.rs`), IRQs, and exceptions.
-- **Userspace Library** (`lib/libglenda-rs/`): The standard library for apps.
-  - **Runtime**: `crt0` entry, heap allocation, and syscall wrappers.
-  - **Components**: `src/ipc/utcb.rs` defines the shared memory structure for IPC.
-- **Services** (`service/`):
-  - **factotum**: The **Root Task** (init process) in default config. Manages service startup.
-  - **unicorn**: Device manager.
-  - **nineball**: System server (Plan 9-like functionality).
-- **Build System** (`xtask/`): Rust-based CLI for build/run automation.
+### A. Kernel (`kernel/`)
+- **Role**: Minimal logic. Only handles capability management, thread scheduling, and IPC message passing.
+- **Entry**: `src/trap/syscall.rs` handles the `sys_invoke` trap.
+- **Key Concepts**:
+  - `Cap`: Everything is a capability (memory, endpoints, IRQ).
+  - `CSpace`: Capability Space (per-thread table of capability slots).
+  - `UTCB` (User Thread Control Block): Fixed memory region for IPC message registers/buffers.
 
-## 2. Workflows & Commands
+### B. Userspace (`lib/`, `service/`)
+- **Runtime**: `libglenda-rs` is the standard library.
+  - `src/ipc/utcb.rs`: Defines the shared memory layout (`UTCB_VA`) for message passing.
+  - `src/manager/`: High-level wrappers for `CSpaceManager`, `VSpaceManager`, `ResourceManager`.
+- **Services**:
+  - **factotum** (`service/factotum`): The **Root Task** (init). It parses `BootInfo`, manages global resources, and spawns other services via `Initrd`. It acts as the "Monitor".
+  - **nineball**, **unicorn**: Feature services spawned by factotum.
 
-**DO NOT** use `cargo build` directly. Use `cargo xtask`.
+## 2. Development Workflow
 
-### Essential Commands
-- **Build**: `cargo xtask build` (Compiles kernel & services per `config.toml`).
-- **Run (QEMU)**: `cargo xtask run` (Builds, creates FS, boots).
-- **Debug**: `cargo xtask gdb` (Starts QEMU paused on port 1234).
-- **Filesystem**: `cargo xtask mkfs` (Generates `disk.img`).
+**DO NOT** use `cargo build` directly. The project uses `xtask` to manage the complex build chain.
 
-### Testing
-- Tests are defined as alternative system configurations.
-- **Run Tests**: `cargo xtask --config test.toml run`.
-  - This typically replaces the root task with a test binary (e.g., `examples/hello`).
-  - See `test.toml` for the definition of the test environment.
+### Commands
+| Action | Command | Description |
+|--------|---------|-------------|
+| **Build** | `cargo xtask build` | Compiles kernel & services defined in `config.toml`. |
+| **Run** | `cargo xtask run` | Builds, generates filesystem image, and boots in QEMU. |
+| **Test** | `cargo xtask --config test.toml run` | Runs specific test configuration. |
+| **Debug** | `cargo xtask gdb` | Starts QEMU paused on port 1234. |
+| **Clean** | `cargo xtask clean` | Cleans target artifacts. |
 
-## 3. Development Conventions
+### Configuration (`config.toml`)
+- Defines which services are packed into the `disk.img` or `initrd`.
+- To add a new service, you must add it to the `[services]` list in `config.toml`.
 
-### Systems Programming
-- **Kernel**: `no_std`, manual page table management. Uses `printk!` for logging.
-- **Services**: `no_std`, but link `extern crate alloc`. Uses `glenda::log!` or `println!` (via `libglenda-rs`).
-- **Panics**: Kernel panics halt the system (`panic_handler` in `main.rs`). Service panics abort the thread.
+## 3. Coding Conventions & Patterns
 
-### IPC & Syscalls
-- **Mechanism**: Syscalls dispatch via `sys_invoke`. Arguments are marshaled into the **UTCB**.
-  - **UTCB**: Located at fixed virtual address (`UTCB_VA`). Contains `MsgTag`, registers (`mrs_regs`), and a ring buffer (`ipc_buffer`).
-- **Pattern**:
-  1. Service creates an `Endpoint`.
-  2. Client `Call`s the endpoint, writing data/caps to UTCB.
-  3. Kernel transfers data from Sender UTCB to Receiver UTCB.
+### General
+- **No Std**: Both kernel and services are `no_std`. Services link internal `alloc`.
+- **Logging**:
+  - **Kernel**: Use `printk!`.
+  - **Services**: Use `glenda::println!` or the `log!` macro defined in `main.rs` (wraps `glenda::println!`).
 
-### Configuration
-- **Manifests**:
-  - `config.toml`: Defines the **build artifacts** (kernel, root task, services) for the system image.
-  - `config/manifest.json`: Runtime configuration (parsed by services like `factotum`) to identify available drivers/binaries in the FS.
+### IPC & System Calls
+The term "syscall" in Glenda usually refers to **Capability Invocation**:
+1. **Low-Level**: User calls `sys_invoke(cptr, method, ...)`.
+2. **Kernel**: Map `cptr` to a Capability -> `dispatch()` in `kernel/src/trap/syscall.rs`.
+3. **High-Level**: Standard OS calls (e.g., `sbrk`, `exit`) are implemented in `libglenda-rs/src/sys/` as **IPC messages** sent to `factotum` (via `MONITOR_CAP`).
 
-## 4. Integration Points
-- **Adding a Syscall**:
-  1. Define in `lib/libglenda-rs/include/glenda.h` (constants).
-  2. Implement in `kernel/src/trap/invoke.rs`.
-  3. Wrap in `lib/libglenda-rs/src/syscall.rs`.
-- **New Service**:
-  1. Create crate in `service/`.
-  2. Add to `config.toml` (to include in build/image).
-  3. Ensure it uses `libglenda-rs` for runtime support.
+### Defining a New Capability/Syscall
+1. **Kernel Side**: Implement `Dispatch` trait for the capability in `kernel/src/cap/`.
+2. **User Side**: Add method constants in `libglenda-rs/src/protocol/`.
+3. **Wrapper**: Implement the invocation wrapper in `libglenda-rs/src/cap/`.
+
+## 4. Key Data Structures
+- **UTCB**: Located at `UTCB_VA`. Contains `MsgTag` and `mrs_regs` (Message Registers) for fast IPC arguments.
+- **BootInfo**: Located at `BOOTINFO_VA`. Parsed by `factotum` to discover `initrd` location and free memory regions.
+
+## 5. Critical Files
+- `kernel/src/trap/syscall.rs`: The nexus of all system calls.
+- `lib/libglenda-rs/src/ipc/utcb.rs`: The contract between Kernel and User for data transfer.
+- `service/factotum/src/main.rs`: System initialization logic.
