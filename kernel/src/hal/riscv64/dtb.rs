@@ -26,13 +26,6 @@ impl DeviceTreeInfo {
         let dtb_size = fdt.total_size();
         let hart_count = parse_hart_count(fdt);
         let timebase_frequency = parse_timebase_frequency(fdt);
-        printk!(
-            "dtb: Parsed Device Tree - UART: {:?}, PLIC: {:?}, Hart Count: {}, Timebase Frequency: {} Hz\n",
-            uart,
-            plic,
-            hart_count,
-            timebase_frequency
-        );
         Self { uart, plic, dtb_paddr, dtb_size, hart_count, timebase_frequency }
     }
 
