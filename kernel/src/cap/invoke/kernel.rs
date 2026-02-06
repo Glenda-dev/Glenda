@@ -23,18 +23,16 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
             }
 
             let mut buf = [0u8; 128];
-            loop {
-                let n = utcb.read(&mut buf);
-                if n == 0 {
-                    break;
-                }
-                // 简单的 best-effort 处理：尝试作为 UTF-8 打印，失败则逐字节打印
-                if let Ok(s) = core::str::from_utf8(&buf[..n]) {
-                    printk!("{}", s);
-                } else {
-                    for &b in &buf[..n] {
-                        printk!("{}", b as char);
-                    }
+            let n = utcb.read(&mut buf);
+            if n == 0 {
+                return errcode::INVALID_OBJ_TYPE;
+            }
+            // 简单的 best-effort 处理：尝试作为 UTF-8 打印，失败则逐字节打印
+            if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+                printk!("{}", s);
+            } else {
+                for &b in &buf[..n] {
+                    printk!("{}", b as char);
                 }
             }
             errcode::SUCCESS
@@ -53,9 +51,6 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 log!("Kernel::ConsoleGetStr failed: permission denied");
                 return errcode::PERMISSION_DENIED;
             }
-            // 清空 UTCB 缓冲区以便写入
-            utcb.head = 0;
-            utcb.tail = 0;
 
             // Implementation: loop read char until \n or \r
             let mut count = 0;
