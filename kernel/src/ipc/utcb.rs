@@ -22,8 +22,7 @@ pub struct UTCB {
     /// Badge 标识
     pub badge: Badge,
     /// ipc缓冲区
-    pub head: usize,
-    pub tail: usize,
+    pub size: usize,
     pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }
 
@@ -36,59 +35,17 @@ impl UTCB {
         dest.mrs_regs = self.mrs_regs;
 
         if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
-            while let Some(b) = self.read_byte() {
-                dest.write_byte(b);
-            }
+            let len = core::cmp::min(self.size, BUFFER_MAX_SIZE);
+            dest.ipc_buffer[..len].copy_from_slice(&self.ipc_buffer[..len]);
+            dest.size = len;
         }
     }
 
     pub fn available_data(&self) -> usize {
-        if self.tail >= self.head {
-            self.tail - self.head
-        } else {
-            BUFFER_MAX_SIZE - self.head + self.tail
-        }
+        self.size
     }
 
     pub fn available_space(&self) -> usize {
-        BUFFER_MAX_SIZE - self.available_data() - 1
-    }
-
-    pub fn read_byte(&mut self) -> Option<u8> {
-        if self.available_data() > 0 {
-            let b = self.ipc_buffer[self.head];
-            self.head = (self.head + 1) % BUFFER_MAX_SIZE;
-            Some(b)
-        } else {
-            None
-        }
-    }
-
-    pub fn write_byte(&mut self, b: u8) -> bool {
-        if self.available_space() > 0 {
-            self.ipc_buffer[self.tail] = b;
-            self.tail = (self.tail + 1) % BUFFER_MAX_SIZE;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn read(&mut self, data: &mut [u8]) -> usize {
-        let len = core::cmp::min(data.len(), self.available_data());
-        for i in 0..len {
-            data[i] = self.ipc_buffer[self.head];
-            self.head = (self.head + 1) % BUFFER_MAX_SIZE;
-        }
-        len
-    }
-
-    pub fn write(&mut self, data: &[u8]) -> usize {
-        let len = core::cmp::min(data.len(), self.available_space());
-        for i in 0..len {
-            self.ipc_buffer[self.tail] = data[i];
-            self.tail = (self.tail + 1) % BUFFER_MAX_SIZE;
-        }
-        len
+        BUFFER_MAX_SIZE - self.available_data()
     }
 }
