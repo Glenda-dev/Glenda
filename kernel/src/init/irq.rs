@@ -1,13 +1,10 @@
-use crate::hal;
 use crate::irq;
 use spin::Once;
 
 static IRQ_INIT: Once<()> = Once::new();
 pub fn init() {
     IRQ_INIT.call_once(|| {
-        hal::irq::init();
+        irq::init();
     });
-    hal::irq::init_cpu();
-    hal::timer::init();
-    irq::timer::program_next_tick();
+    irq::init_cpu();
 }
