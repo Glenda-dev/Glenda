@@ -27,11 +27,32 @@ path = "service/unicorn"
 build = "cargo"
 output = "build/unicorn.elf"
 kind = "service"
+[[services]]
+name = "ape"
+path = "service/ape"
+build = "cargo"
+output = "build/ape.elf"
+kind = "service"
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
 output = ""
+[[libraries]]
+name = "libape"
+path = "lib/libape"
+build = "cargo"
+output = ""
+[[libraries]]
+name = "libglenda"
+path = "lib/libglenda"
+build = "cmake"
+output = "build/libglenda.a"
+[[libraries]]
+name = "musl-glenda"
+path = "lib/musl-glenda"
+build = "make"
+output = "lib/libc.a"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]

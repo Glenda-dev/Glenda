@@ -12,11 +12,10 @@ members = [
     "drivers/virtio/common",
     "drivers/virtio/block",
     "drivers/uart/ns16550a",
+    "drivers/virtio/net",
     "drivers/fs/fatfs",
     "drivers/fs/extfs",
-    "drivers/virtio/net",
     "examples/hello",
-    "service/ape",
 ]
 resolver = "2"
 

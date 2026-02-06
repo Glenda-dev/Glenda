@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "libape",
  "libglenda-rs",
+ "spin 0.10.0",
 ]
 
 [[package]]
@@ -294,6 +295,7 @@ name = "libape"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "spin 0.10.0",
 ]
 
 [[package]]
@@ -310,6 +312,7 @@ dependencies = [
  "buddy_system_allocator",
  "postcard",
  "serde",
+ "serde-big-array",
  "serde_json",
  "spin 0.9.8",
 ]
@@ -450,6 +453,15 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
