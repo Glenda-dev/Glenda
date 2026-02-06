@@ -9,6 +9,7 @@ pub mod mem;
 pub mod platform;
 pub mod proc;
 pub mod runtime;
+pub mod timer;
 pub mod trap;
 
 pub const ARCH: &'static str = "none";

@@ -89,6 +89,15 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
             crate::shell::run();
             errcode::SUCCESS
         }
+        kernelmethod::GET_TIME => {
+            if !cap.has_rights(Rights::READ) {
+                log!("Kernel::TimeNow failed: permission denied");
+                return errcode::PERMISSION_DENIED;
+            }
+            let now = hal::timer::get_time();
+            utcb.mrs_regs[0] = now;
+            errcode::SUCCESS
+        }
         _ => {
             log!("Kernel::invoke failed: invalid method {}", method);
             errcode::INVALID_METHOD

@@ -88,6 +88,15 @@ pub fn read_satp() -> usize {
 }
 
 #[inline(always)]
+pub fn read_tp() -> usize {
+    let mut tp: usize;
+    unsafe {
+        asm!("mv {}, tp", out(reg) id);
+    }
+    tp
+}
+
+#[inline(always)]
 pub unsafe fn write_sscratch(value: usize) {
     unsafe {
         asm!("csrw sscratch, {}", in(reg) value);
@@ -166,4 +175,22 @@ pub unsafe fn sip_clear(intr: usize) {
     unsafe {
         asm!("csrc sip, {}", in(reg) 1<<intr);
     }
+}
+
+#[inline(always)]
+pub unsafe fn rdcycle() -> usize {
+    let cycle: usize;
+    unsafe {
+        asm!("rdcycle {}", out(reg) cycle);
+    }
+    cycle
+}
+
+#[inline(always)]
+pub fn rdtime() -> usize {
+    let time: usize;
+    unsafe {
+        asm!("rdtime {}", out(reg) time);
+    }
+    time
 }

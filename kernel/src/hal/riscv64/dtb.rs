@@ -15,6 +15,7 @@ pub struct DeviceTreeInfo {
     pub dtb_paddr: usize,
     pub dtb_size: usize,
     pub hart_count: usize,
+    pub timebase_frequency: usize,
 }
 
 impl DeviceTreeInfo {
@@ -23,7 +24,8 @@ impl DeviceTreeInfo {
         let plic = parse_plic(fdt);
         let dtb_size = fdt.total_size();
         let hart_count = parse_hart_count(fdt);
-        Self { uart, plic, dtb_paddr, dtb_size, hart_count }
+        let timebase_frequency = parse_timebase_frequency(fdt);
+        Self { uart, plic, dtb_paddr, dtb_size, hart_count, timebase_frequency }
     }
 
     fn uart(&self) -> Option<UartConfig> {
@@ -58,6 +60,11 @@ pub fn dtb_addr() -> usize {
 pub fn hart_count() -> usize {
     let info = DEVICE_TREE_INFO.get().expect("Device Tree Not Initialzed");
     info.hart_count
+}
+
+pub fn timebase_frequency() -> usize {
+    let info = DEVICE_TREE_INFO.get().expect("Device Tree Not Initialzed");
+    info.timebase_frequency
 }
 
 fn parse_u64(data: &[u8]) -> u64 {
@@ -190,6 +197,7 @@ fn fill_platform_info(fdt: &Fdt, info: &mut PlatformInfo) {
     }
 
     info.cpu_count = parse_hart_count(fdt);
+    info.clock_freq = parse_timebase_frequency(fdt);
     let initrd = parse_initrd(fdt).expect("Initrd range not found");
     info.initrd =
         MemoryRegion { start: initrd.start, size: initrd.size, region_type: MemoryType::Ram };
@@ -263,6 +271,10 @@ fn walk_device_tree(node: &FdtNode, parent_idx: u32, info: &mut PlatformInfo) {
                                 desc.kind = DeviceKind::Intc;
                             } else if first.contains("virtio") {
                                 desc.kind = DeviceKind::Virtio;
+                            } else if first.contains("rtc") {
+                                desc.kind = DeviceKind::Timer;
+                            } else if first.contains("pci") {
+                                desc.kind = DeviceKind::PciHost;
                             }
                         }
                     }

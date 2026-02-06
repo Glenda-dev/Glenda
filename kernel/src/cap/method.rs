@@ -48,6 +48,7 @@ pub mod kernelmethod {
     pub const CONSOLE_GET_CHAR: usize = 2;
     pub const CONSOLE_GET_STR: usize = 3;
     pub const SHELL: usize = 4;
+    pub const GET_TIME: usize = 5;
 }
 
 pub mod vspacemethod {

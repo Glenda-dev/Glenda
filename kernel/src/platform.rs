@@ -31,6 +31,9 @@ pub struct PlatformInfo {
     /// CPU 核心数量
     pub cpu_count: usize,
 
+    /// 时钟频率
+    pub clock_freq: usize,
+
     /// 平台支持的最大 IRQ 数量
     pub irq_count: usize,
 
@@ -48,6 +51,7 @@ impl fmt::Debug for PlatformInfo {
         writeln!(f, "PlatformInfo {{")?;
         writeln!(f, "  model_name: {:?},", self.model())?;
         writeln!(f, "  cpu_count: {},", self.cpu_count)?;
+        writeln!(f, "  clock_freq: {},", self.clock_freq)?;
         writeln!(f, "  memory_regions: [")?;
         for i in 0..self.memory_region_count {
             writeln!(f, "    {:?},", self.memory_regions[i])?;
@@ -158,6 +162,7 @@ impl PlatformInfo {
         Self {
             model_name: [0; 64],
             cpu_count: 0,
+            clock_freq: 0,
             arch: [0; 16],
             bootargs: [0; 256],
             initrd: MemoryRegion {

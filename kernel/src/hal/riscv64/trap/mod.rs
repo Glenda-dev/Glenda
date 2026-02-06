@@ -65,3 +65,8 @@ pub fn get_status() -> usize {
 pub fn get_cause() -> usize {
     asm::read_scause()
 }
+
+/// 判断是否在用户态
+pub fn is_user_mode(status: usize) -> bool {
+    return (status & (1 << 8)) == 0;
+}

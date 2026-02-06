@@ -8,6 +8,7 @@ use crate::ipc::protocol;
 use crate::ipc::{MsgFlags, MsgTag};
 use crate::irq;
 use crate::irq::timer;
+use crate::irq::timer::TIME_SLICE_MS;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc::TCB;
@@ -210,22 +211,16 @@ fn external_handler() {
     }
 }
 
-fn timer_ssip(sstatus_bits: usize) {
-    if hal::cpu::cpu_id() == 0 {
-        timer::update();
-    }
+fn timer_ssip(status: usize) {
     hal::irq::clear_soft();
-    if (sstatus_bits & (1 << 8)) == 0 {
+    if hal::trap::is_user_mode(status) {
         scheduler::yield_proc();
     }
 }
 
-fn timer_stip(sstatus_bits: usize) {
-    if hal::cpu::cpu_id() == 0 {
-        timer::update();
-    }
-    timer::program_next_tick();
-    if (sstatus_bits & (1 << 8)) == 0 {
+fn timer_stip(status: usize) {
+    hal::timer::set_next_event(timer::msec_to_cycles(TIME_SLICE_MS));
+    if hal::trap::is_user_mode(status) {
         scheduler::yield_proc();
     }
 }

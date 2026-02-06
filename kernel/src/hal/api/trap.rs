@@ -134,3 +134,8 @@ pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
 pub fn trap_user_return() {
     unimplemented!()
 }
+
+/// 判断是否在用户态
+pub fn is_user_mode(status: usize) -> bool {
+    unimplemented!()
+}

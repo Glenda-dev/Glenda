@@ -10,6 +10,7 @@ mod plic;
 pub mod proc;
 pub mod runtime;
 mod sbi;
+pub mod timer;
 pub mod trap;
 
 pub const ARCH: &'static str = "riscv64";
