@@ -1,10 +1,8 @@
-mod sbi;
-mod uart;
+pub mod sbi;
+pub mod uart;
 
 use super::dtb;
 use core::fmt::Write;
-
-pub(crate) use uart::Config;
 
 pub fn init() {
     uart::init(dtb::uart_config().expect("Failed to get UART config from DTB"));

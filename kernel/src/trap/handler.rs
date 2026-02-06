@@ -7,8 +7,6 @@ use crate::ipc;
 use crate::ipc::protocol;
 use crate::ipc::{MsgFlags, MsgTag};
 use crate::irq;
-use crate::irq::timer;
-use crate::irq::timer::TIME_SLICE_MS;
 use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc::TCB;
@@ -219,7 +217,7 @@ fn timer_ssip(status: usize) {
 }
 
 fn timer_stip(status: usize) {
-    hal::timer::set_next_event(timer::msec_to_cycles(TIME_SLICE_MS));
+    irq::timer::program_next_tick();
     if hal::trap::is_user_mode(status) {
         scheduler::yield_proc();
     }

@@ -1,7 +1,8 @@
-use super::console::Config as UartConfig;
+use super::console::uart::Config as UartConfig;
 use crate::mem::MemoryRange;
 use crate::mem::PhysAddr;
 use crate::platform::{BusType, DeviceDesc, DeviceKind, MemoryRegion, MemoryType, PlatformInfo};
+use crate::printk;
 use fdt::Fdt;
 use fdt::node::FdtNode;
 use spin::Once;
@@ -25,6 +26,13 @@ impl DeviceTreeInfo {
         let dtb_size = fdt.total_size();
         let hart_count = parse_hart_count(fdt);
         let timebase_frequency = parse_timebase_frequency(fdt);
+        printk!(
+            "dtb: Parsed Device Tree - UART: {:?}, PLIC: {:?}, Hart Count: {}, Timebase Frequency: {} Hz\n",
+            uart,
+            plic,
+            hart_count,
+            timebase_frequency
+        );
         Self { uart, plic, dtb_paddr, dtb_size, hart_count, timebase_frequency }
     }
 
@@ -175,6 +183,18 @@ fn parse_mmio(fdt: &Fdt) -> ([MemoryRange; MAX_MMIO_REGIONS], usize) {
         }
     }
     (regions, count)
+}
+
+fn parse_timebase_frequency(fdt: &Fdt) -> usize {
+    if let Some(cpus) = fdt.find_node("/cpus") {
+        if let Some(prop) = cpus.property("timebase-frequency") {
+            return parse_u64(prop.value) as usize;
+        } else {
+            panic!("dtb: No timebase-frequency property found in /cpus node");
+        }
+    } else {
+        panic!("dtb: No /cpus node found in FDT");
+    }
 }
 
 pub fn get_platform_info() -> PlatformInfo {

@@ -91,7 +91,7 @@ pub fn read_satp() -> usize {
 pub fn read_tp() -> usize {
     let mut tp: usize;
     unsafe {
-        asm!("mv {}, tp", out(reg) id);
+        asm!("mv {}, tp", out(reg) tp);
     }
     tp
 }
@@ -178,7 +178,7 @@ pub unsafe fn sip_clear(intr: usize) {
 }
 
 #[inline(always)]
-pub unsafe fn rdcycle() -> usize {
+pub fn rdcycle() -> usize {
     let cycle: usize;
     unsafe {
         asm!("rdcycle {}", out(reg) cycle);

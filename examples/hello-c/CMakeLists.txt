@@ -10,7 +10,7 @@ set(LIBGLENDA_DIR "${GLENDA_ROOT}/lib/libglenda")
 
 # Include directories
 include_directories(
-    "${GLENDA_ROOT}/target/lib/include"
+    "${GLENDA_ROOT}/target/include"
 )
 
 # Search for libraries in these locations
