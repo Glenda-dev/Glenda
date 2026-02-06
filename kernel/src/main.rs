@@ -19,6 +19,7 @@ mod proc;
 #[cfg(feature = "shell")]
 mod shell;
 mod trap;
+mod version;
 
 use core::panic::PanicInfo;
 use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
@@ -39,7 +40,7 @@ pub fn glenda_main() -> ! {
     let cpuid = hal::cpu::cpu_id();
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     if cpuid == 0 {
-        printk!("{}", logo::LOGO);
+        print_banner();
         let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
         printk!("bootargs: {}\n", bootargs);
         if bootargs.contains("-v") {
@@ -68,4 +69,9 @@ pub fn panic(info: &PanicInfo) -> ! {
 fn run_shell() {
     #[cfg(feature = "shell")]
     shell::run();
+}
+
+fn print_banner() {
+    printk!("{}", logo::LOGO);
+    version::print();
 }

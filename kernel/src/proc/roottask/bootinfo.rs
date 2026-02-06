@@ -1,8 +1,5 @@
-/// Magic number to verify BootInfo validity: 'GLENDA_B'
-pub const BOOTINFO_MAGIC: u32 = 0x99999999;
-
 /// Maximum number of untyped memory regions we can describe
-pub const MAX_UNTYPED_REGIONS: usize = 8;
+pub const MAX_UNTYPED_REGIONS: usize = 4;
 pub const MAX_MMIO_REGIONS: usize = 64;
 
 use crate::hal::mem::PGSIZE;
@@ -14,12 +11,13 @@ pub const BOOTINFO_PAGES: usize = (BOOTINFO_SIZE + PGSIZE - 1) / PGSIZE;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BootInfo {
-    /// Magic number for verification
-    pub magic: u32,
-
     //// Initrd memory region
     pub initrd_start: usize,
     pub initrd_size: usize,
+
+    pub version: u32,
+    pub build: [u8; 64],
+    pub git_hash: [u8; 8],
 
     /// Number of valid entries in `untyped_list`
     pub untyped_count: usize,
@@ -42,7 +40,6 @@ pub struct BootInfo {
 impl BootInfo {
     pub fn new() -> Self {
         Self {
-            magic: BOOTINFO_MAGIC,
             untyped_count: 0,
             untyped_list: [UntypedRegion::empty(); MAX_UNTYPED_REGIONS],
             mmio_count: 0,
@@ -50,6 +47,9 @@ impl BootInfo {
             initrd_start: 0,
             initrd_size: 0,
             irq_count: 0,
+            version: 0,
+            build: [0; 64],
+            git_hash: [0; 8],
         }
     }
 }

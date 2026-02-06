@@ -13,7 +13,6 @@ use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::platform;
 use crate::platform::PLATFORM_PAGES;
 use crate::platform::PlatformInfo;
-use crate::proc::roottask::bootinfo::BOOTINFO_MAGIC;
 
 pub struct RootCaps {
     pub vspace: Capability,
@@ -112,13 +111,17 @@ pub fn init_vspace(
     hal::mem::pt_setup(vspace).expect("Failed to setup VSpace for root task");
 }
 pub fn init_bootinfo(bootinfo: &mut BootInfo) {
-    bootinfo.magic = BOOTINFO_MAGIC;
     // 设置 Initrd 信息
     let initrd = platform::get().initrd;
     let initrd_offset = initrd.start.as_usize() % PGSIZE;
     bootinfo.initrd_start = INITRD_VA + initrd_offset;
     bootinfo.initrd_size = initrd.size;
+
+    bootinfo.version = crate::version::get_version();
+    bootinfo.build = crate::version::get_build_time_bytes();
+    bootinfo.git_hash = crate::version::get_git_hash_bytes();
 }
+
 pub fn init_platform(platform: &mut PlatformInfo) {
     let info = platform::get();
     *platform = info.clone();
