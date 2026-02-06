@@ -447,6 +447,7 @@ name = "nineball"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "serde",
 ]
 
 [[package]]

@@ -1,4 +1,5 @@
 // 异常和故障
+pub const KERNEL_PROTO: usize = 0x0100;
 
 /// 系统调用 (Syscall)
 /// 触发条件：用户态调用了系统调用号
