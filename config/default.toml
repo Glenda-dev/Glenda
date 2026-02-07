@@ -10,10 +10,10 @@ drive = "disk.img"
 bootargs = "-v"
 
 [[services]]
-name = "factotum"
-path = "service/factotum"
+name = "warren"
+path = "service/warren"
 build = "cargo"
-output = "build/factotum.elf"
+output = "build/warren.elf"
 kind = "root_task"
 [[services]]
 name = "nineball"

@@ -31,7 +31,7 @@ Glenda 是一个基于 Rust 编写的跨架构的研究型微内核操作系统�
 - [kernel/](kernel/): 核心微内核，处理 Trap、调度、内存分配及 IPC。
 - [lib/libglenda-rs/](lib/libglenda-rs/): 针对微内核环境优化的标准运行时环境。
 - [service/](service/):
-  - **Factotum**: 系统根进程（Root Task），引导系统资源并协调初始化。
+  - **Warren**: 系统根进程（Root Task），引导系统资源并协调初始化。
   - **Unicorn**: 用户态驱动管理框架。
   - **Nineball**: 系统引导进程。
 - [drivers/](drivers/): 硬件驱动组件（如 VirtIO 磁盘与 UART）。
@@ -75,7 +75,7 @@ cargo xtask gdb
 - [ ] 硬件中断托管服务 (Async IRQ)
 
 ### 服务层
-- [x] Factotum 引导框架实现
+- [x] Warren 引导框架实现
 - [ ] 9Ball 系统引导任务
 - [ ] Unicorn 设备驱动管理器
 - [ ] Fossil 命名空间服务器

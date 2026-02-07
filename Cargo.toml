@@ -6,7 +6,7 @@ members = [
     "lib/libglenda-rs",
     "service/ape",
     "service/nineball",
-    "service/factotum",
+    "service/warren",
     "service/unicorn",
     "examples/dosbox",
     "drivers/virtio/common",

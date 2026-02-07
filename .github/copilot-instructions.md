@@ -19,8 +19,8 @@ The system is strictly divided into **Kernel Space** and **User Space**:
   - `src/ipc/utcb.rs`: Defines the shared memory layout (`UTCB_VA`) for message passing.
   - `src/manager/`: High-level wrappers for `CSpaceManager`, `VSpaceManager`, `ResourceManager`.
 - **Services**:
-  - **factotum** (`service/factotum`): The **Root Task** (init). It parses `BootInfo`, manages global resources, and spawns other services via `Initrd`. It acts as the "Monitor".
-  - **nineball**, **unicorn**: Feature services spawned by factotum.
+  - **warren** (`service/warren`): The **Root Task** (init). It parses `BootInfo`, manages global resources, and spawns other services via `Initrd`. It acts as the "Monitor".
+  - **nineball**, **unicorn**: Feature services spawned by warren.
 
 ## 2. Development Workflow
 
@@ -51,7 +51,7 @@ The system is strictly divided into **Kernel Space** and **User Space**:
 The term "syscall" in Glenda usually refers to **Capability Invocation**:
 1. **Low-Level**: User calls `sys_invoke(cptr, method, ...)`.
 2. **Kernel**: Map `cptr` to a Capability -> `dispatch()` in `kernel/src/trap/syscall.rs`.
-3. **High-Level**: Standard OS calls (e.g., `sbrk`, `exit`) are implemented in `libglenda-rs/src/sys/` as **IPC messages** sent to `factotum` (via `MONITOR_CAP`).
+3. **High-Level**: Standard OS calls (e.g., `sbrk`, `exit`) are implemented in `libglenda-rs/src/sys/` as **IPC messages** sent to `warren` (via `MONITOR_CAP`).
 
 ### Defining a New Capability/Syscall
 1. **Kernel Side**: Implement `Dispatch` trait for the capability in `kernel/src/cap/`.
@@ -60,9 +60,9 @@ The term "syscall" in Glenda usually refers to **Capability Invocation**:
 
 ## 4. Key Data Structures
 - **UTCB**: Located at `UTCB_VA`. Contains `MsgTag` and `mrs_regs` (Message Registers) for fast IPC arguments.
-- **BootInfo**: Located at `BOOTINFO_VA`. Parsed by `factotum` to discover `initrd` location and free memory regions.
+- **BootInfo**: Located at `BOOTINFO_VA`. Parsed by `warren` to discover `initrd` location and free memory regions.
 
 ## 5. Critical Files
 - `kernel/src/trap/syscall.rs`: The nexus of all system calls.
 - `lib/libglenda-rs/src/ipc/utcb.rs`: The contract between Kernel and User for data transfer.
-- `service/factotum/src/main.rs`: System initialization logic.
+- `service/warren/src/main.rs`: System initialization logic.
