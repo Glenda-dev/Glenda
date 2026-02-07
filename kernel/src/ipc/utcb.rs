@@ -21,7 +21,9 @@ pub struct UTCB {
     pub recv_window: CapPtr,
     /// Badge 标识
     pub badge: Badge,
-    /// ipc缓冲区
+    /// 缓冲区起始偏移 (用于消耗读取)
+    pub head: usize,
+    /// 缓冲区数据总长度
     pub size: usize,
     pub ipc_buffer: [u8; BUFFER_MAX_SIZE],
 }
@@ -33,6 +35,7 @@ impl UTCB {
         // 只复制消息相关的字段
         dest.msg_tag = self.msg_tag;
         dest.mrs_regs = self.mrs_regs;
+        dest.head = self.head;
 
         if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
             let len = core::cmp::min(self.size, BUFFER_MAX_SIZE);
@@ -42,17 +45,18 @@ impl UTCB {
     }
 
     pub fn available_data(&self) -> usize {
-        self.size
+        self.size - self.head
     }
 
     pub fn available_space(&self) -> usize {
-        BUFFER_MAX_SIZE - self.available_data()
+        BUFFER_MAX_SIZE - self.size
     }
 
     pub fn write(&mut self, data: &[u8]) -> usize {
         let to_write = core::cmp::min(BUFFER_MAX_SIZE, data.len());
         self.ipc_buffer[..to_write].copy_from_slice(&data[..to_write]);
         self.size = to_write;
+        self.head = 0;
         to_write
     }
 
@@ -64,10 +68,13 @@ impl UTCB {
         to_write
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> usize {
+    pub fn read(&mut self, buf: &mut [u8]) -> usize {
         let data_len = self.available_data();
         let to_read = core::cmp::min(data_len, buf.len());
-        buf[..to_read].copy_from_slice(&self.ipc_buffer[..to_read]);
+        if to_read > 0 {
+            buf[..to_read].copy_from_slice(&self.ipc_buffer[self.head..self.head + to_read]);
+            self.head += to_read;
+        }
         to_read
     }
 
