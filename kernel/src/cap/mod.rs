@@ -9,7 +9,7 @@ pub use badge::Badge;
 pub use capability::Capability;
 pub use captype::CapType;
 pub use cnode::CNODE_PAGES;
-pub use cnode::{CNode, CapPtr};
+pub use cnode::{CNode, CapPtr, Slot};
 
 use bitflags::bitflags;
 use core::fmt::Display;

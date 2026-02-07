@@ -37,7 +37,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
             }
 
             // 3. 执行分发 (invoke_untyped 会修改 cap 的 watermark)
-            let result = invoke::dispatch(&mut cap, method);
+            let result = invoke::dispatch(&mut cap, method, cptr.bits());
 
             // 4. 【关键】写回逻辑
             //    仅当操作成功，且 Capability 类型为 Untyped 时需要写回

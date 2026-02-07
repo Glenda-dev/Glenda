@@ -147,7 +147,7 @@ impl CNode {
         true
     }
 
-    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent: &Capability) -> bool {
+    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent_slot: *mut Slot) -> bool {
         let _ = CDT_LOCK.lock();
         if cptr.is_null() {
             return false;
@@ -166,18 +166,18 @@ impl CNode {
 
         // 2. 建立 CDT 关系
         let mut cdt = CDTNode::new();
-        cdt.parent = parent.obj_ptr();
-        if parent.obj_ptr() != VirtAddr::null() {
-            let parent_slot = parent.obj_ptr().as_mut::<Slot>();
-            let old_first_child = parent_slot.cdt.first_child;
+        cdt.parent = VirtAddr::from(parent_slot as usize);
 
-            cdt.next_sibling = old_first_child;
-            if old_first_child != VirtAddr::null() {
-                let next_sib_slot = old_first_child.as_mut::<Slot>();
-                next_sib_slot.cdt.prev_sibling = VirtAddr::from(slot as *mut Slot as usize);
-            }
-            parent_slot.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
+        let parent_slot_ref = unsafe { &mut *parent_slot };
+        let old_first_child = parent_slot_ref.cdt.first_child;
+
+        cdt.next_sibling = old_first_child;
+        if old_first_child != VirtAddr::null() {
+            let next_sib_slot = old_first_child.as_mut::<Slot>();
+            next_sib_slot.cdt.prev_sibling = VirtAddr::from(slot as *mut Slot as usize);
         }
+        parent_slot_ref.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
+
         slot.cdt = cdt;
         true
     }

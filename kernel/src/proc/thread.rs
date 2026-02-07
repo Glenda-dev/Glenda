@@ -1,5 +1,5 @@
 use super::asid;
-use crate::cap::{Badge, CNode, CapPtr, CapType, Capability};
+use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Slot};
 use crate::hal;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::hal::proc::ProcContext;
@@ -246,6 +246,16 @@ impl TCB {
             let cnode = root_cap.obj_ptr().as_mut::<CNode>();
             // 2. 在 CNode 中查找
             cnode.lookup(cptr)
+        } else {
+            None
+        }
+    }
+
+    pub fn lookup_slot(&self, cptr: CapPtr) -> Option<*mut Slot> {
+        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        if root_cap.cap_type() == CapType::CNode {
+            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
+            cnode.lookup_slot_ptr(cptr)
         } else {
             None
         }
