@@ -4,7 +4,7 @@ use crate::mem::UntypedRegion;
 use crate::proc::scheduler;
 use crate::trap::syscall::errcode;
 
-pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> usize {
     let mut untyped = match UntypedRegion::from_cap(cap) {
         Some(u) => u,
         None => {
@@ -47,7 +47,15 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize) -> usize {
                 }
                 match untyped.retype(CapType::from(obj_type), flags) {
                     Some(new_cap) => {
-                        if dest_cnode.insert_child(dest_slot, &new_cap, cap) {
+                        let slot_ptr = match tcb.lookup_slot(CapPtr::from(cptr)) {
+                            Some(s) => s,
+                            None => {
+                                log!("Untyped::invoke failed: parent slot not found");
+                                return errcode::INVALID_CAP;
+                            }
+                        };
+
+                        if dest_cnode.insert_child(dest_slot, &new_cap, slot_ptr) {
                             // 重要：将更新后的 watermark 写回原始 Untyped 能力
                             cap.set_data(untyped.pages | (untyped.watermark << 25));
                             errcode::SUCCESS
