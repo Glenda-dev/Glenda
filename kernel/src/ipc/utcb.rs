@@ -3,7 +3,6 @@ use crate::cap::CapPtr;
 use crate::ipc::MsgFlags;
 
 pub const MAX_MRS: usize = 8; // 最大消息寄存器数量
-
 pub type MsgArgs = [usize; MAX_MRS];
 
 /// 用户线程控制块 (UTCB)

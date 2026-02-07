@@ -50,6 +50,7 @@ boot_stack_top:
 pub mod multiboot2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
 pub enum BootLoaderType {
     OpenSBI,
     #[cfg(feature = "multiboot2")]
