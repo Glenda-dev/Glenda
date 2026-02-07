@@ -31,3 +31,12 @@
 [submodule "service/warren"]
 	path = service/warren
 	url = https://github.com/Glenda-dev/warren.git
+[submodule "service/fossil"]
+	path = service/fossil
+	url = https://github.com/Glenda-dev/fossil.git
+[submodule "service/gopher"]
+	path = service/gopher
+	url = https://github.com/Glenda-dev/gopher.git
+[submodule "service/factotum"]
+	path = service/factotum
+	url = https://github.com/Glenda-dev/factotum.git
