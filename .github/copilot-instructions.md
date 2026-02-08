@@ -17,7 +17,7 @@ The system is strictly divided into **Kernel Space** and **User Space**:
 ### B. Userspace (`lib/`, `service/`)
 - **Runtime**: `libglenda-rs` is the standard library.
   - `src/ipc/utcb.rs`: Defines the shared memory layout (`UTCB_VA`) for message passing.
-  - `src/manager/`: High-level wrappers for `CSpaceManager`, `VSpaceManager`, `ResourceManager`.
+  - `src/manager/`: High-level wrappers for `CSpaceManager`, `VSpaceManager`, `UntypedManager`.
 - **Services**:
   - **warren** (`service/warren`): The **Root Task** (init). It parses `BootInfo`, manages global resources, and spawns other services via `Initrd`. It acts as the "Monitor".
   - **nineball**, **unicorn**: Feature services spawned by warren.
