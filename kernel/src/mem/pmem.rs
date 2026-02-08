@@ -168,6 +168,7 @@ pub fn alloc_cnode_cap() -> Option<Capability> {
         let vaddr = hal::mem::phys_to_virt(paddr);
         let cnode = vaddr.as_mut::<CNode>();
         *cnode = CNode::new();
+        unsafe { cnode.set_lock_pointers() };
         Capability::create_cnode(cnode, Rights::ALL)
     })
 }

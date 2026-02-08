@@ -88,6 +88,13 @@ impl Slot {
     }
 }
 
+/// CNode 元数据，重用 Slot 0 的空间存储
+#[repr(C)]
+struct CNodeMetadata {
+    ref_count: AtomicUsize,
+    lock: SpinLock<()>,
+}
+
 /// 能力节点 (CNode)
 /// 本质上是一个存储在物理页中的 Slot 数组
 /// 每个 CNode 节点大小固定（通常为 1 页），包含固定数量的 Slot。
@@ -95,13 +102,20 @@ impl Slot {
 #[repr(C)]
 pub struct CNode {
     pub slots: [Slot; CNODE_SLOTS],
-    pub ref_count: AtomicUsize,
-    pub lock: SpinLock<()>,
 }
 
 impl CNode {
+    fn metadata(&self) -> &CNodeMetadata {
+        unsafe { &*(self.slots.as_ptr() as *const CNodeMetadata) }
+    }
+
+    /// 创建一个新的 CNode。
+    ///
+    /// # Safety
+    /// **必须**在将 CNode 写入内存位置后调用 `set_lock_pointers()`，
+    /// 以便初始化 Slot 中的自引用锁指针。
     pub fn new() -> Self {
-        Self {
+        let mut node = Self {
             slots: [const {
                 Slot {
                     cap: Capability::empty(),
@@ -110,15 +124,25 @@ impl CNode {
                     _padding: [0; 8],
                 }
             }; CNODE_SLOTS],
-            ref_count: AtomicUsize::new(1),
-            lock: SpinLock::new(()),
+        };
+
+        // 在 Slot 0 中初始化元数据
+        // 注意：这之后 Slot 0 不能作为常规 Slot 使用
+        let metadata = CNodeMetadata { ref_count: AtomicUsize::new(1), lock: SpinLock::new(()) };
+
+        unsafe {
+            let ptr = node.slots.as_mut_ptr() as *mut CNodeMetadata;
+            ptr.write(metadata);
         }
+
+        node
     }
 
     /// 初始化槽位的锁指针 (必须在对象固定在内存后调用)
     pub unsafe fn set_lock_pointers(&mut self) {
-        let lock_ptr = &self.lock as *const SpinLock<()> as usize;
-        for slot in self.slots.iter_mut() {
+        let lock_ptr = &self.metadata().lock as *const SpinLock<()> as usize;
+        // 跳过 Slot 0 (元数据)
+        for slot in self.slots[1..].iter_mut() {
             slot.cnode_lock = lock_ptr;
         }
     }
@@ -134,12 +158,17 @@ impl CNode {
         }
 
         // 1. Lock Current Node
-        let _guard = self.lock.lock();
+        let _guard = self.metadata().lock.lock();
 
         let index = cptr.index();
         let next_cptr = cptr.next();
 
         if index >= CNODE_SLOTS {
+            return None;
+        }
+
+        // Slot 0 被元数据占用，不可访问
+        if index == 0 {
             return None;
         }
 
@@ -186,6 +215,10 @@ impl CNode {
         let index = cptr.index();
         let next_cptr = cptr.next();
 
+        if index == 0 {
+            return None;
+        }
+
         // 获取 Slot 指针
         // 使用 raw pointer cast 避免 &T -> &mut T UB 检查
         let cnode_mut_ptr = self as *const CNode as *mut CNode;
@@ -219,12 +252,12 @@ impl CNode {
         }
 
         // 1. Lock Current Node
-        let _guard = self.lock.lock();
+        let _guard = self.metadata().lock.lock();
 
         let index = cptr.index();
         let next_cptr = cptr.next();
 
-        if index >= CNODE_SLOTS {
+        if index >= CNODE_SLOTS || index == 0 {
             return false;
         }
 
@@ -260,7 +293,7 @@ impl CNode {
 
     pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent_slot: *mut Slot) -> bool {
         // 1. Lock Self
-        let _self_lock_guard = self.lock.lock();
+        let _self_lock_guard = self.metadata().lock.lock();
 
         if cptr.is_null() {
             return false;
@@ -280,7 +313,7 @@ impl CNode {
 
         // 2. Lock Parent (if different from self)
         let parent_lock_ptr = parent_slot_ref.cnode_lock;
-        let self_lock_ptr = &self.lock as *const SpinLock<()> as usize;
+        let self_lock_ptr = &self.metadata().lock as *const SpinLock<()> as usize;
 
         let _parent_guard = if parent_lock_ptr != self_lock_ptr {
             unsafe { Some((*(parent_lock_ptr as *const SpinLock<()>)).lock()) }
@@ -317,7 +350,7 @@ impl CNode {
     }
 
     pub fn revoke(&mut self, cptr: CapPtr) -> bool {
-        let _guard = self.lock.lock();
+        let _guard = self.metadata().lock.lock();
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
@@ -327,7 +360,7 @@ impl CNode {
     }
 
     pub fn delete(&mut self, cptr: CapPtr) -> bool {
-        let _guard = self.lock.lock();
+        let _guard = self.metadata().lock.lock();
         if cptr.is_null() {
             return false;
         }
@@ -337,6 +370,10 @@ impl CNode {
         };
         delete_recursive(slot);
         true
+    }
+
+    pub fn ref_count(&self) -> &AtomicUsize {
+        &self.metadata().ref_count
     }
 
     pub fn debug_print(&self) {

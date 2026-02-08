@@ -72,7 +72,7 @@ impl UntypedRegion {
         let new_cap = match obj_type {
             CapType::CNode => {
                 let cnode_ptr = obj_vaddr.as_mut_ptr::<CNode>();
-                unsafe { 
+                unsafe {
                     cnode_ptr.write(CNode::new());
                     (*cnode_ptr).set_lock_pointers();
                 }

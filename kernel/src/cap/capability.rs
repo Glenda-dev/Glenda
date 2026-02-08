@@ -117,7 +117,7 @@ impl Capability {
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
                 let header = vaddr.as_ref::<CNode>();
-                header.ref_count.fetch_add(1, Ordering::Relaxed);
+                header.ref_count().fetch_add(1, Ordering::Relaxed);
             }
             // 其他类型暂不引用计数
             _ => {}
@@ -267,7 +267,7 @@ impl Capability {
     }
 
     pub fn create_cnode(cnode: &CNode, rights: Rights) -> Self {
-        cnode.ref_count.fetch_add(1, Ordering::Relaxed);
+        cnode.ref_count().fetch_add(1, Ordering::Relaxed);
         let cnode_ptr = VirtAddr::from(cnode as *const CNode as usize);
         let w0 = cnode_ptr.as_usize();
         let w1 = (CapType::CNode as usize) & TYPE_MASK
@@ -367,7 +367,7 @@ impl Drop for Capability {
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
                 let header = vaddr.as_ref::<CNode>();
-                if header.ref_count.fetch_sub(1, Ordering::Release) == 1 {
+                if header.ref_count().fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode
                     log!("Dropped CNode Cap at {}", vaddr);
