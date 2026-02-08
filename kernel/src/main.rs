@@ -37,6 +37,7 @@ use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
 
 */
 pub fn glenda_main() -> ! {
+    printk::set_verbose(true);
     init::init();
     let cpuid = hal::cpu::cpu_id();
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
@@ -44,8 +45,8 @@ pub fn glenda_main() -> ! {
         print_banner();
         let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
         printk!("bootargs: {}\n", bootargs);
-        if bootargs.contains("-v") {
-            printk::set_verbose(true);
+        if !bootargs.contains("-v") {
+            printk::set_verbose(false);
         }
         if bootargs.contains("-s") {
             run_shell();

@@ -42,7 +42,7 @@ pub fn init_kernel_vm() {
     let mem_size = mem.size;
     flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
     log!(
-        "vm: Map RAM [{:#x}, {:#x}) -> [{:#x}, {:#x}) {flags}\n",
+        "vm: Map RAM [{:#x}, {:#x}) -> [{:#x}, {:#x}) {flags}",
         mem_start_pa.as_usize(),
         (mem_start_pa + mem_size).as_usize(),
         mem_start_va.as_usize(),
@@ -58,7 +58,7 @@ pub fn init_kernel_vm() {
     let text_size = (text_end - text_start).as_usize();
     flags = Perms::READ | Perms::EXECUTE | Perms::ACCESSED | Perms::GLOBAL;
     log!(
-        "vm: Map .text [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+        "vm: Map .text [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
         text_start.as_usize(),
         text_end.as_usize(),
         text_va.as_usize(),
@@ -74,7 +74,7 @@ pub fn init_kernel_vm() {
     let rodata_size = (rodata_end - rodata_start).as_usize();
     flags = Perms::READ | Perms::ACCESSED | Perms::GLOBAL;
     log!(
-        "vm: Map .rodata [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+        "vm: Map .rodata [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
         rodata_start.as_usize(),
         rodata_end.as_usize(),
         rodata_va.as_usize(),
@@ -93,7 +93,7 @@ pub fn init_kernel_vm() {
     let initrd_pa = initrd_start.align_down(PGSIZE);
     let initrd_va = hal::mem::phys_to_virt(initrd_pa);
     log!(
-        "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+        "vm: Map initrd [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
         initrd_start.as_usize(),
         initrd_end.as_usize(),
         initrd_va.as_usize(),

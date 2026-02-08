@@ -16,7 +16,7 @@ pub fn setup_trampoline(kpt: &mut PageTable) {
     let tramp_va = VirtAddr::from(TRAMPOLINE_VA);
     let flags = Perms::READ | Perms::EXECUTE | Perms::ACCESSED | Perms::GLOBAL;
     log!(
-        "vm: Map TRAMPOLINE [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+        "vm: Map TRAMPOLINE [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
         tramp_pa.as_usize(),
         (tramp_pa + PGSIZE).as_usize(),
         tramp_va.as_usize(),
@@ -35,7 +35,7 @@ pub fn setup_mmio(kpt: &mut PageTable) {
             let uart_va = phys_to_virt(uart_pa);
             let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
             log!(
-                "vm: Map UART [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+                "vm: Map UART [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
                 uart_base.as_usize(),
                 (uart_base + PGSIZE).as_usize(),
                 uart_va.as_usize(),
@@ -59,7 +59,7 @@ pub fn setup_mmio(kpt: &mut PageTable) {
             let plic_size = plic_range.size;
             let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
             log!(
-                "vm: Map PLIC [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}\n",
+                "vm: Map PLIC [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
                 plic_pa.as_usize(),
                 (plic_pa + plic_size).as_usize(),
                 plic_va.as_usize(),
