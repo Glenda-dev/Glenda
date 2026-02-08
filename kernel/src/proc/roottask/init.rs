@@ -6,6 +6,7 @@ use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
+use crate::log;
 use crate::mem::pmem;
 use crate::mem::{MemoryRange, PageTable, PhysFrame};
 use crate::mem::{Perms, PhysAddr, VirtAddr};
@@ -127,6 +128,7 @@ pub fn init_platform(platform: &mut PlatformInfo) {
     *platform = info.clone();
 }
 pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
+    log!("proc: Setting up Root Task CSpace at {:p}", cspace);
     let info = platform::get();
     cspace.insert(CSPACE_CAP, &caps.cspace);
     cspace.insert(VSPACE_CAP, &caps.vspace);

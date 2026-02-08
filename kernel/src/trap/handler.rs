@@ -1,5 +1,6 @@
 use super::{TrapCause, TrapException, TrapInterrupt};
 use crate::cap::CapType;
+#[cfg(feature = "gdb")]
 use crate::debug::gdb;
 use crate::hal;
 use crate::hal::trap::TrapFrame;
@@ -44,6 +45,7 @@ fn exception_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
+    #[cfg(feature = "gdb")]
     if e == TrapException::Breakpoint {
         gdb::enter(ctx);
         ctx.advance_pc();
