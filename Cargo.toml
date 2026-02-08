@@ -19,8 +19,10 @@ members = [
 ]
 resolver = "2"
 
-[profile.dev]
+
+[profile.development]
 panic = "abort"
+inherits = "dev"
 
 [profile.relwithdebuginfo]
 panic = "abort"

@@ -167,8 +167,7 @@ pub fn alloc_cnode_cap() -> Option<Capability> {
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
         let vaddr = hal::mem::phys_to_virt(paddr);
         let cnode = vaddr.as_mut::<CNode>();
-        *cnode = CNode::new();
-        unsafe { cnode.set_lock_pointers() };
+        cnode.init();
         Capability::create_cnode(cnode, Rights::ALL)
     })
 }
