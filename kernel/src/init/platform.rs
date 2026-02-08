@@ -1,5 +1,5 @@
 use crate::platform;
-use spin::Once;
+use crate::sync::Once;
 
 static PLATFORM_INIT: Once<()> = Once::new();
 pub fn init() {

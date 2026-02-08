@@ -7,7 +7,7 @@ use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
 use crate::proc::roottask::STACK_VA;
-use spin::Once;
+use crate::sync::Once;
 
 /*
 Payload结构体

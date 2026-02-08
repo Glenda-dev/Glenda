@@ -255,7 +255,7 @@ impl TCB {
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         if root_cap.cap_type() == CapType::CNode {
             let cnode = root_cap.obj_ptr().as_mut::<CNode>();
-            cnode.lookup_slot_ptr(cptr)
+            unsafe { cnode.lookup_slot_ptr(cptr) }
         } else {
             None
         }

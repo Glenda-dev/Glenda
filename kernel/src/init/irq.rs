@@ -1,5 +1,5 @@
 use crate::irq;
-use spin::Once;
+use crate::sync::Once;
 
 static IRQ_INIT: Once<()> = Once::new();
 pub fn init() {

@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 bitflags = "2.10.0"
 fdt = "0.1.5"
-spin = "0.10.0"
 
 [build-dependencies]
 chrono = "0.4"

@@ -15,7 +15,6 @@ use crate::trap::syscall;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn trap_kernel_handler(ctx: &mut TrapFrame) {
-    irq::enter();
     let cause = hal::trap::get_cause();
     let pc = hal::trap::get_pc();
     let value = hal::trap::get_value();
@@ -34,7 +33,6 @@ pub extern "C" fn trap_kernel_handler(ctx: &mut TrapFrame) {
             );
         }
     }
-    irq::exit();
 }
 
 /// 处理异常情况

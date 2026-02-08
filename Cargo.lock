@@ -371,7 +371,6 @@ dependencies = [
  "bitflags",
  "chrono",
  "fdt",
- "spin 0.10.0",
 ]
 
 [[package]]
@@ -399,7 +398,6 @@ dependencies = [
  "serde",
  "serde-big-array",
  "serde_json",
- "spin 0.9.8",
 ]
 
 [[package]]

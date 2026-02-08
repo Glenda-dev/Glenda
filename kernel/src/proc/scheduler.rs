@@ -54,12 +54,6 @@ impl TcbQueue {
     }
 }
 
-// 全局调度队列：每个优先级一个队列
-// 注意：在 SMP 环境下，这应该是一个 Per-CPU 的结构，或者加全局锁
-// 这里为了简化，使用全局锁保护所有队列
-// static READY_QUEUES: Mutex<[TcbQueue; MAX_PRIORITY]> =
-//     Mutex::new([const { TcbQueue::new() }; MAX_PRIORITY]);
-
 static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
 
 fn kick_harts() {

@@ -1,15 +1,14 @@
 use crate::cap::Badge;
-use crate::hal;
 use crate::proc::thread::TCB;
+use crate::sync::SpinLock;
 use core::sync::atomic::AtomicUsize;
-use spin::Mutex;
 
 /// IPC 通信端点
 /// 用于线程间同步消息传递
 pub struct Endpoint {
     /// 引用计数
     pub ref_count: AtomicUsize,
-    inner: Mutex<EndpointInner>,
+    inner: SpinLock<EndpointInner>,
 }
 
 struct EndpointInner {
@@ -29,7 +28,7 @@ impl Endpoint {
     pub const fn new() -> Self {
         Self {
             ref_count: AtomicUsize::new(1), // 初始引用计数为 1 (创建者持有)
-            inner: Mutex::new(EndpointInner {
+            inner: SpinLock::new(EndpointInner {
                 send_queue_head: None,
                 send_queue_tail: None,
                 recv_queue_head: None,
@@ -40,10 +39,6 @@ impl Endpoint {
     }
 
     pub fn enqueue_send(&self, tcb: *mut TCB) {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
         let mut inner = self.inner.lock();
         unsafe {
             (*tcb).prev = inner.send_queue_tail;
@@ -55,50 +50,30 @@ impl Endpoint {
             }
             inner.send_queue_tail = Some(tcb);
         }
-        if sie {
-            unsafe {
-                hal::irq::enable();
-            }
-        }
+        // lock drop will pop_off
     }
 
     pub fn dequeue_send(&self) -> Option<*mut TCB> {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
-        let ret = {
-            let mut inner = self.inner.lock();
-            if let Some(head) = inner.send_queue_head {
-                unsafe {
-                    let next = (*head).next;
-                    if let Some(next_ptr) = next {
-                        (*next_ptr).prev = None;
-                    } else {
-                        inner.send_queue_tail = None;
-                    }
-                    inner.send_queue_head = next;
-                    (*head).next = None;
-                    (*head).prev = None;
-                }
-                Some(head)
-            } else {
-                None
-            }
-        };
-        if sie {
+        let mut inner = self.inner.lock();
+        if let Some(head) = inner.send_queue_head {
             unsafe {
-                hal::irq::enable();
+                let next = (*head).next;
+                if let Some(next_ptr) = next {
+                    (*next_ptr).prev = None;
+                } else {
+                    inner.send_queue_tail = None;
+                }
+                inner.send_queue_head = next;
+                (*head).next = None;
+                (*head).prev = None;
             }
+            Some(head)
+        } else {
+            None
         }
-        ret
     }
 
     pub fn enqueue_recv(&self, tcb: *mut TCB) {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
         let mut inner = self.inner.lock();
         unsafe {
             (*tcb).prev = inner.recv_queue_tail;
@@ -110,76 +85,37 @@ impl Endpoint {
             }
             inner.recv_queue_tail = Some(tcb);
         }
-
-        if sie {
-            unsafe {
-                hal::irq::enable();
-            }
-        }
     }
 
     pub fn dequeue_recv(&self) -> Option<*mut TCB> {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
-        let ret = {
-            let mut inner = self.inner.lock();
-            if let Some(head) = inner.recv_queue_head {
-                unsafe {
-                    let next = (*head).next;
-                    if let Some(next_ptr) = next {
-                        (*next_ptr).prev = None;
-                    } else {
-                        inner.recv_queue_tail = None;
-                    }
-                    inner.recv_queue_head = next;
-                    (*head).next = None;
-                    (*head).prev = None;
-                }
-                Some(head)
-            } else {
-                None
-            }
-        };
-        if sie {
+        let mut inner = self.inner.lock();
+        if let Some(head) = inner.recv_queue_head {
             unsafe {
-                hal::irq::enable();
+                let next = (*head).next;
+                if let Some(next_ptr) = next {
+                    (*next_ptr).prev = None;
+                } else {
+                    inner.recv_queue_tail = None;
+                }
+                inner.recv_queue_head = next;
+                (*head).next = None;
+                (*head).prev = None;
             }
+            Some(head)
+        } else {
+            None
         }
-        ret
     }
 
     pub fn notify(&self, badge: Badge) {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
         let mut inner = self.inner.lock();
         inner.notification_word |= badge.get();
-        if sie {
-            unsafe {
-                hal::irq::enable();
-            }
-        }
     }
 
     pub fn poll_notification(&self) -> Badge {
-        let sie = hal::irq::is_enabled();
-        unsafe {
-            hal::irq::disable();
-        }
-        let ret = {
-            let mut inner = self.inner.lock();
-            let word = inner.notification_word;
-            inner.notification_word = 0;
-            Badge::from(word)
-        };
-        if sie {
-            unsafe {
-                hal::irq::enable();
-            }
-        }
-        ret
+        let mut inner = self.inner.lock();
+        let word = inner.notification_word;
+        inner.notification_word = 0;
+        Badge::from(word)
     }
 }

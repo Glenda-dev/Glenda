@@ -18,6 +18,7 @@ mod platform;
 mod proc;
 #[cfg(feature = "shell")]
 mod shell;
+mod sync;
 mod trap;
 mod version;
 

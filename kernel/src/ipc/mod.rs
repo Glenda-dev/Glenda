@@ -47,7 +47,7 @@ unsafe fn copy_msg(
 
     if let Some(c) = final_cap {
         let recv_window = dst.recv_window;
-        if let Some(slot_ptr) = receiver.get_cspace().lookup_slot_ptr(recv_window) {
+        if let Some(slot_ptr) = unsafe { receiver.get_cspace().lookup_slot_ptr(recv_window) } {
             let slot = unsafe { &mut *slot_ptr };
             slot.cap = c;
         }

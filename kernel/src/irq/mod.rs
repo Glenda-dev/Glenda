@@ -2,12 +2,11 @@ pub mod timer;
 
 use crate::cap;
 use crate::cap::Capability;
-use crate::cpu;
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::ipc;
 
-use spin::Mutex;
+use crate::sync::RwLock;
 
 pub fn init() {
     // 初始化 IRQ 表与定时器
@@ -46,11 +45,11 @@ impl IRQ {
     }
 }
 
-static IRQ_TABLE: Mutex<[IrqSlot; MAX_IRQS]> = Mutex::new([const { IrqSlot::new() }; MAX_IRQS]);
+static IRQ_TABLE: RwLock<[IrqSlot; MAX_IRQS]> = RwLock::new([const { IrqSlot::new() }; MAX_IRQS]);
 
 /// 绑定通知对象到 IRQ（通常是 Endpoint Cap）
 pub fn bind_notification(irq: usize, cap: Capability) -> bool {
-    let mut tbl = IRQ_TABLE.lock();
+    let mut tbl = IRQ_TABLE.write();
     if irq >= MAX_IRQS {
         return false;
     }
@@ -60,7 +59,7 @@ pub fn bind_notification(irq: usize, cap: Capability) -> bool {
 }
 
 pub fn clear_notification(irq: usize) -> bool {
-    let mut tbl = IRQ_TABLE.lock();
+    let mut tbl = IRQ_TABLE.write();
     if irq >= MAX_IRQS {
         return false;
     }
@@ -73,7 +72,7 @@ pub fn clear_notification(irq: usize) -> bool {
 pub fn handle_claimed(cpuid: usize, id: usize) {
     // 先屏蔽该 IRQ，交给驱动通过 Ack 重新打开
     hal::irq::mask(id as u32, cpuid);
-    let tbl = IRQ_TABLE.lock();
+    let tbl = IRQ_TABLE.read();
     if id >= MAX_IRQS {
         // still complete the IRQ
         panic!("IRQ {} out of range of MAX_IRQS {}", id, MAX_IRQS);
@@ -102,17 +101,4 @@ pub fn ack_irq(cpuid: usize, irq: usize) {
     hal::irq::complete(irq as u32, cpuid);
     // 重新打开该 IRQ
     hal::irq::unmask(irq as u32, cpuid);
-}
-
-/// 进入中断上下文
-pub fn enter() {
-    let cpu = cpu::get();
-    cpu.nest_count += 1;
-}
-/// 退出中断上下文
-pub fn exit() {
-    let cpu = cpu::get();
-    if cpu.nest_count > 0 {
-        cpu.nest_count -= 1;
-    }
 }

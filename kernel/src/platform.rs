@@ -1,9 +1,9 @@
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::PhysAddr;
+use crate::sync::Once;
 use core::fmt;
 use core::mem::size_of;
-use spin::Once;
 
 static PLATFORM_INFO: Once<PlatformInfo> = Once::new();
 pub const PLATFORM_SIZE: usize = size_of::<PlatformInfo>();

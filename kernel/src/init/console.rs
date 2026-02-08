@@ -1,5 +1,5 @@
 use crate::hal;
-use spin::Once;
+use crate::sync::Once;
 
 static CONSOLE_INIT: Once<()> = Once::new();
 

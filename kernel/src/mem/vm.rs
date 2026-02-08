@@ -6,7 +6,7 @@ use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
 use crate::platform;
-use spin::Once;
+use crate::sync::Once;
 
 // TODO: HHDM support
 

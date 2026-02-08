@@ -2,9 +2,9 @@ use super::console::uart::Config as UartConfig;
 use crate::mem::MemoryRange;
 use crate::mem::PhysAddr;
 use crate::platform::{BusType, DeviceDesc, DeviceKind, MemoryRegion, MemoryType, PlatformInfo};
+use crate::sync::Once;
 use fdt::Fdt;
 use fdt::node::FdtNode;
-use spin::Once;
 
 const MAX_MMIO_REGIONS: usize = 64;
 

@@ -8,8 +8,8 @@ use crate::mem::UntypedRegion;
 use crate::printk;
 use crate::proc::TCB;
 use crate::proc::asid;
+use crate::sync::SpinLock;
 use crate::{hal, platform};
-use spin::Mutex;
 
 const MAX_PMEM_REGIONS: usize = 16;
 
@@ -133,7 +133,7 @@ impl PmemManager {
     }
 }
 
-static PMEM: Mutex<PmemManager> = Mutex::new(PmemManager::new());
+static PMEM: SpinLock<PmemManager> = SpinLock::new(PmemManager::new());
 
 pub fn debug_info() {
     PMEM.lock().print_debug();

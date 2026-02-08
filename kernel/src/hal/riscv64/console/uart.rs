@@ -1,10 +1,10 @@
 // A busy-wait 16550A-compatible UART Driver
 
+use crate::sync::Once;
 use core::cmp;
 use core::fmt::{self, Write};
 use core::ptr::{read_volatile, write_volatile};
 use fdt::node::FdtNode;
-use spin::Once;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Config {

@@ -2,9 +2,9 @@ use super::{CapType, Capability};
 use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
 use crate::printk;
+use crate::sync::{SpinLock, SpinLockGuard};
 use core::fmt::Display;
 use core::sync::atomic::AtomicUsize;
-use spin::Mutex;
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
@@ -12,8 +12,6 @@ pub const CNODE_BITS: usize = 8; // 256 slots per CNode
 pub const CNODE_SLOTS: usize = 1 << CNODE_BITS;
 pub const CNODE_MASK: usize = CNODE_SLOTS - 1;
 pub const CNODE_PAGES: usize = (CNODE_SIZE + PGSIZE - 1) / PGSIZE; // CNode 占用的页数
-
-static CDT_LOCK: Mutex<()> = Mutex::new(());
 
 /// 每8位作为一层的索引号
 #[repr(C)]
@@ -74,7 +72,20 @@ impl CDTNode {
 pub struct Slot {
     pub cap: Capability,
     pub cdt: CDTNode,
-    pub _padding: [u8; 16], // 16 (Cap) + 32 (CDT) + 16 = 64 字节
+    pub cnode_lock: usize, // Pointer to CNode::lock
+    pub _padding: [u8; 8], // 16 (Cap) + 32 (CDT) + 8 + 8 = 64 字节
+}
+
+impl Slot {
+    /// Lock the CNode containing this slot.
+    /// Unsafe because it dereferences a raw pointer stored in the slot.
+    /// Returns a guard that is completely detached from the Slot's lifetime
+    /// (by extending lifetime to 'static due to CNode immobility).
+    pub unsafe fn lock_cnode<'a>(&self) -> SpinLockGuard<'a, ()> {
+        let lock_ptr = self.cnode_lock as *const SpinLock<()>;
+        let lock_ref = unsafe { &*lock_ptr };
+        lock_ref.lock()
+    }
 }
 
 /// 能力节点 (CNode)
@@ -85,37 +96,100 @@ pub struct Slot {
 pub struct CNode {
     pub slots: [Slot; CNODE_SLOTS],
     pub ref_count: AtomicUsize,
+    pub lock: SpinLock<()>,
 }
 
 impl CNode {
     pub fn new() -> Self {
         Self {
-            slots: [const { Slot { cap: Capability::empty(), cdt: CDTNode::new(), _padding: [0; 16] } };
-                CNODE_SLOTS],
+            slots: [const {
+                Slot {
+                    cap: Capability::empty(),
+                    cdt: CDTNode::new(),
+                    cnode_lock: 0,
+                    _padding: [0; 8],
+                }
+            }; CNODE_SLOTS],
             ref_count: AtomicUsize::new(1),
+            lock: SpinLock::new(()),
+        }
+    }
+
+    /// 初始化槽位的锁指针 (必须在对象固定在内存后调用)
+    pub unsafe fn set_lock_pointers(&mut self) {
+        let lock_ptr = &self.lock as *const SpinLock<()> as usize;
+        for slot in self.slots.iter_mut() {
+            slot.cnode_lock = lock_ptr;
         }
     }
 
     /// 查找 Capability
     pub fn lookup(&self, cptr: CapPtr) -> Option<Capability> {
-        let slot_ptr = self.lookup_slot_ptr(cptr)?;
-        unsafe {
-            let cap = (*slot_ptr).cap.clone();
+        self.lookup_with_lock(cptr)
+    }
+
+    fn lookup_with_lock(&self, cptr: CapPtr) -> Option<Capability> {
+        if cptr.is_null() {
+            return None;
+        }
+
+        // 1. Lock Current Node
+        let _guard = self.lock.lock();
+
+        let index = cptr.index();
+        let next_cptr = cptr.next();
+
+        if index >= CNODE_SLOTS {
+            return None;
+        }
+
+        let slot = &self.slots[index];
+        let cap = slot.cap.clone();
+
+        if next_cptr.is_null() {
+            // Found leaf
             if cap.cap_type() == CapType::Empty { None } else { Some(cap) }
+        } else {
+            // Need to recurse
+            // Drop Lock before recursing to avoid hold-and-wait deadlock?
+            // Actually deadlock is only possible if we go back UP or cycle.
+            // CSpace is a directed graph (usually tree).
+            // But holding lock while recursing indefinitely is bad for latency.
+            // So we drop, then recurse.
+            drop(_guard);
+
+            if cap.cap_type() == CapType::CNode {
+                let next_cnode_addr = cap.obj_ptr();
+                if next_cnode_addr == VirtAddr::null() {
+                    return None;
+                }
+                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                // Recurse
+                next_cnode.lookup_with_lock(next_cptr)
+            } else {
+                None
+            }
         }
     }
 
     /// 内部查找逻辑：返回找到的 Slot 指针
-    pub fn lookup_slot_ptr(&self, cptr: CapPtr) -> Option<*mut Slot> {
+    /// 警告：返回的指针没有锁保护，仅供持有锁的上下文使用
+    pub unsafe fn lookup_slot_ptr(&self, cptr: CapPtr) -> Option<*mut Slot> {
         if cptr.is_null() {
             return None;
         }
+
+        // 注意：这个旧函数无法方便地加锁，保留可以但仅受限使用。
+        // 为了兼容旧代码（如 insert），我们可能暂时不加锁，
+        // 或者要求 insert 自己处理锁。
 
         let index = cptr.index();
         let next_cptr = cptr.next();
 
         // 获取 Slot 指针
-        let slot_ptr = unsafe { self.slots.as_ptr().add(index) as *mut Slot };
+        // 使用 raw pointer cast 避免 &T -> &mut T UB 检查
+        let cnode_mut_ptr = self as *const CNode as *mut CNode;
+        let slot_ptr = unsafe { (*cnode_mut_ptr).slots.as_mut_ptr().add(index) };
         let slot = unsafe { &*slot_ptr };
 
         if next_cptr.is_null() {
@@ -128,7 +202,7 @@ impl CNode {
                 }
                 let next_cnode = next_cnode_addr.as_ref::<CNode>();
                 // 递归调用
-                return next_cnode.lookup_slot_ptr(next_cptr);
+                return unsafe { next_cnode.lookup_slot_ptr(next_cptr) };
             } else {
                 return None;
             }
@@ -136,23 +210,63 @@ impl CNode {
     }
 
     pub fn insert(&mut self, cptr: CapPtr, cap: &Capability) -> bool {
-        let slot = match self.lookup_slot_ptr(cptr) {
-            None => return false,
-            Some(ptr) => unsafe { &mut *ptr },
-        };
-        if slot.cap.cap_type() != CapType::Empty {
-            return false;
-        }
-        slot.cap = cap.clone();
-        true
+        self.insert_with_lock(cptr, cap)
     }
 
-    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent_slot: *mut Slot) -> bool {
-        let _ = CDT_LOCK.lock();
+    fn insert_with_lock(&self, cptr: CapPtr, cap: &Capability) -> bool {
         if cptr.is_null() {
             return false;
         }
-        let slot = match self.lookup_slot_ptr(cptr) {
+
+        // 1. Lock Current Node
+        let _guard = self.lock.lock();
+
+        let index = cptr.index();
+        let next_cptr = cptr.next();
+
+        if index >= CNODE_SLOTS {
+            return false;
+        }
+
+        // 我们需要由 &self 转为 &mut Slot，这是一个 UnsafeCell 转换，
+        // 但由于我们持有 SpinLock，这是安全的。
+        let cnode_mut_ptr = self as *const CNode as *mut CNode;
+        let slot = unsafe { &mut (*cnode_mut_ptr).slots[index] };
+
+        if next_cptr.is_null() {
+            // Found leaf - check if empty
+            if slot.cap.cap_type() != CapType::Empty {
+                return false;
+            }
+            slot.cap = cap.clone();
+            true
+        } else {
+            // Recurse
+            let current_cap = slot.cap.clone();
+            drop(_guard); // Unlock before recursing
+
+            if current_cap.cap_type() == CapType::CNode {
+                let next_cnode_addr = current_cap.obj_ptr();
+                if next_cnode_addr == VirtAddr::null() {
+                    return false;
+                }
+                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                next_cnode.insert_with_lock(next_cptr, cap)
+            } else {
+                false
+            }
+        }
+    }
+
+    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent_slot: *mut Slot) -> bool {
+        // 1. Lock Self
+        let _self_lock_guard = self.lock.lock();
+
+        if cptr.is_null() {
+            return false;
+        }
+        // Unsafe lookup without lock is fine because we hold lock
+        let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
         };
@@ -162,18 +276,38 @@ impl CNode {
             return false;
         }
 
+        let parent_slot_ref = unsafe { &mut *parent_slot };
+
+        // 2. Lock Parent (if different from self)
+        let parent_lock_ptr = parent_slot_ref.cnode_lock;
+        let self_lock_ptr = &self.lock as *const SpinLock<()> as usize;
+
+        let _parent_guard = if parent_lock_ptr != self_lock_ptr {
+            unsafe { Some((*(parent_lock_ptr as *const SpinLock<()>)).lock()) }
+        } else {
+            None
+        };
+
         slot.cap = cap.clone();
 
-        // 2. 建立 CDT 关系
+        // 3. 建立 CDT 关系
         let mut cdt = CDTNode::new();
         cdt.parent = VirtAddr::from(parent_slot as usize);
 
-        let parent_slot_ref = unsafe { &mut *parent_slot };
         let old_first_child = parent_slot_ref.cdt.first_child;
 
         cdt.next_sibling = old_first_child;
         if old_first_child != VirtAddr::null() {
-            let next_sib_slot = old_first_child.as_mut::<Slot>();
+            let next_sib_slot = &mut *old_first_child.as_mut::<Slot>();
+
+            // Need to lock Next Sibling?
+            let sib_lock_ptr = next_sib_slot.cnode_lock;
+            let _sib_guard = if sib_lock_ptr != self_lock_ptr && sib_lock_ptr != parent_lock_ptr {
+                unsafe { Some((*(sib_lock_ptr as *const SpinLock<()>)).lock()) }
+            } else {
+                None
+            };
+
             next_sib_slot.cdt.prev_sibling = VirtAddr::from(slot as *mut Slot as usize);
         }
         parent_slot_ref.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
@@ -183,8 +317,8 @@ impl CNode {
     }
 
     pub fn revoke(&mut self, cptr: CapPtr) -> bool {
-        let _ = CDT_LOCK.lock();
-        let slot = match self.lookup_slot_ptr(cptr) {
+        let _guard = self.lock.lock();
+        let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
         };
@@ -193,11 +327,11 @@ impl CNode {
     }
 
     pub fn delete(&mut self, cptr: CapPtr) -> bool {
-        let _ = CDT_LOCK.lock();
+        let _guard = self.lock.lock();
         if cptr.is_null() {
             return false;
         }
-        let slot = match self.lookup_slot_ptr(cptr) {
+        let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return false,
             Some(ptr) => unsafe { &mut *ptr },
         };
@@ -267,13 +401,28 @@ impl CNode {
 
 fn revoke_recursive(slot: &mut Slot) {
     let mut child_addr = slot.cdt.first_child;
+    slot.cdt.first_child = VirtAddr::null();
+
     while child_addr != VirtAddr::null() {
         let child_slot = &mut *child_addr.as_mut::<Slot>();
+
         let next_sibling = child_slot.cdt.next_sibling;
-        delete_recursive(child_slot);
+
+        // Decouple lifetime for recursion
+        let lock_ptr = child_slot.cnode_lock as *const SpinLock<()>;
+        unsafe {
+            let lock = &*lock_ptr;
+            let _guard = lock.lock();
+
+            revoke_recursive(child_slot);
+
+            // Clear slot
+            child_slot.cdt = CDTNode::new();
+            child_slot.cap = Capability::empty();
+        }
+
         child_addr = next_sibling;
     }
-    slot.cdt.first_child = VirtAddr::null();
 }
 
 fn delete_recursive(slot: &mut Slot) {
@@ -285,14 +434,46 @@ fn delete_recursive(slot: &mut Slot) {
     let next = slot.cdt.next_sibling;
     let parent = slot.cdt.parent;
 
-    if prev != VirtAddr::null() {
-        prev.as_mut::<Slot>().cdt.next_sibling = next;
-    } else if parent != VirtAddr::null() {
-        parent.as_mut::<Slot>().cdt.first_child = next;
-    }
+    // Use raw pointer for lock comparison
+    let self_lock_ptr = slot.cnode_lock;
 
-    if next != VirtAddr::null() {
-        next.as_mut::<Slot>().cdt.prev_sibling = prev;
+    unsafe {
+        if prev != VirtAddr::null() {
+            let prev_slot = &mut *prev.as_mut::<Slot>();
+            // Lock Prev
+            let lock_ptr = prev_slot.cnode_lock;
+            let _guard = if lock_ptr != self_lock_ptr {
+                Some((*(lock_ptr as *const SpinLock<()>)).lock())
+            } else {
+                None
+            };
+
+            prev_slot.cdt.next_sibling = next;
+        } else if parent != VirtAddr::null() {
+            let parent_slot = &mut *parent.as_mut::<Slot>();
+            // Lock Parent
+            let lock_ptr = parent_slot.cnode_lock;
+            let _guard = if lock_ptr != self_lock_ptr {
+                Some((*(lock_ptr as *const SpinLock<()>)).lock())
+            } else {
+                None
+            };
+
+            parent_slot.cdt.first_child = next;
+        }
+
+        if next != VirtAddr::null() {
+            let next_slot = &mut *next.as_mut::<Slot>();
+            // Lock Next
+            let lock_ptr = next_slot.cnode_lock;
+            let _guard = if lock_ptr != self_lock_ptr {
+                Some((*(lock_ptr as *const SpinLock<()>)).lock())
+            } else {
+                None
+            };
+
+            next_slot.cdt.prev_sibling = prev;
+        }
     }
 
     // 3. 清空槽位 (触发 Capability::drop)

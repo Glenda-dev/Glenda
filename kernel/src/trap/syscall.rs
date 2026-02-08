@@ -20,7 +20,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
     // 获取当前线程
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let cspace = tcb.get_cspace();
-    match cspace.lookup_slot_ptr(cptr) {
+    match unsafe { cspace.lookup_slot_ptr(cptr) } {
         None => {
             log!("syscall: Invalid slot at cptr {:#x}", cptr.bits());
             errcode::INVALID_SLOT

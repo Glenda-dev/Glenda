@@ -1,10 +1,9 @@
-use crate::cpu;
 use crate::hal::console;
+use crate::sync::SpinLock;
 use core::fmt::Arguments;
 use core::sync::atomic::{AtomicBool, Ordering};
-use spin::Mutex;
 
-static PRINTK_LOCK: Mutex<()> = Mutex::new(());
+static PRINTK_LOCK: SpinLock<()> = SpinLock::new(());
 pub static VERBOSE: AtomicBool = AtomicBool::new(false);
 
 pub fn set_verbose(enable: bool) {
@@ -16,10 +15,6 @@ pub fn is_verbose() -> bool {
 }
 
 pub fn _printk(args: Arguments) {
-    if cpu::get().nest_count > 0 {
-        console::print(args);
-        return;
-    }
     let _guard = PRINTK_LOCK.lock();
     console::print(args);
 }

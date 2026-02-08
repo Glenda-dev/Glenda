@@ -1,5 +1,5 @@
 use crate::mem::vm;
-use spin::Once;
+use crate::sync::Once;
 
 static VM_INIT: Once<()> = Once::new();
 

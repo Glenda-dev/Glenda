@@ -1,5 +1,5 @@
 use crate::proc;
-use spin::Once;
+use crate::sync::Once;
 
 static PROC_INIT: Once<()> = Once::new();
 

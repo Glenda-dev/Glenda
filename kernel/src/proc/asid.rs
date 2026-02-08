@@ -1,6 +1,6 @@
 use crate::hal;
 use crate::hal::mem::MAX_ASID;
-use spin::Mutex;
+use crate::sync::SpinLock;
 
 /// ASID 令牌：这是 VSpace 应该持有的东西
 /// 包含具体的 ID 和它所属的代数
@@ -20,7 +20,7 @@ impl Asid {
 }
 
 /// ASID 管理器 (单例)
-static ASID_MANAGER: Mutex<AsidManager> = Mutex::new(AsidManager::new());
+static ASID_MANAGER: SpinLock<AsidManager> = SpinLock::new(AsidManager::new());
 
 struct AsidManager {
     /// 当前可分配的高水位线 (0..MAX_ASID)
