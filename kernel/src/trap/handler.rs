@@ -144,7 +144,7 @@ fn fault_handler(
             utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, label, MsgFlags::NONE);
         }
         let ep_ptr = handler_cap.obj_ptr();
-        let ep = ep_ptr.as_mut::<ipc::Endpoint>();
+        let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
         let badge = handler_cap.get_badge();
 
         // 3. 执行发送 (这会阻塞当前线程)

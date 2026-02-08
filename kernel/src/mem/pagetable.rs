@@ -19,7 +19,7 @@ impl PageTable {
     /// 从物理地址获取页表的可变引用
     pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
         let vaddr = hal::mem::phys_to_virt(paddr);
-        vaddr.as_mut::<PageTable>()
+        unsafe { vaddr.as_mut::<PageTable>() }
     }
 
     /// 查找虚拟地址对应的 PTE 指针
@@ -53,7 +53,7 @@ impl PageTable {
             // 进入下一级页表
             let next_pa = pte_val.pa();
             let next_va = hal::mem::phys_to_virt(next_pa);
-            table = next_va.as_mut::<PageTable>();
+            table = unsafe { next_va.as_mut::<PageTable>() };
         }
 
         // 返回 Level 0 的 PTE
@@ -159,7 +159,7 @@ impl PageTable {
             }
             let next_pa = pte_val.pa();
             let next_va = hal::mem::phys_to_virt(next_pa);
-            table = next_va.as_mut::<PageTable>();
+            table = unsafe { next_va.as_mut::<PageTable>() };
         }
 
         // 在目标层级写入 PTE，指向新的页表
@@ -205,7 +205,7 @@ impl PageTable {
                 let next_pa = entry.pa();
                 // 在恒等映射模式下，物理地址即为内核虚拟地址
                 let next_va = hal::mem::phys_to_virt(next_pa);
-                table = next_va.as_mut::<PageTable>();
+                table = unsafe { next_va.as_mut::<PageTable>() };
             }
 
             // 设置最后一级 PTE
@@ -248,7 +248,7 @@ impl PageTable {
             let pgtbl_1_va = hal::mem::phys_to_virt(pgtbl_1_pa);
             printk!(".. L1[{}] pa={:#x}\n", i, pgtbl_1_pa.as_usize());
 
-            let pgtbl_1 = pgtbl_1_va.as_ref::<PageTable>();
+            let pgtbl_1 = unsafe { pgtbl_1_va.as_ref::<PageTable>() };
             for j in 0..PGNUM {
                 let pte1 = pgtbl_1.entries[j];
                 if !pte1.is_valid() {
@@ -263,7 +263,7 @@ impl PageTable {
                 let pgtbl_0_va = hal::mem::phys_to_virt(pgtbl_0_pa);
                 printk!(".. .. L0[{}] pa={:#x}\n", j, pgtbl_0_pa.as_usize());
 
-                let pgtbl_0 = pgtbl_0_va.as_ref::<PageTable>();
+                let pgtbl_0 = unsafe { pgtbl_0_va.as_ref::<PageTable>() };
                 for k in 0..PGNUM {
                     let pte0 = pgtbl_0.entries[k];
                     if !pte0.is_valid() {

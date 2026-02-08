@@ -11,7 +11,7 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
         return errcode::INVALID_OBJ_TYPE;
     };
 
-    let cnode = vaddr.as_mut::<CNode>();
+    let cnode = unsafe { vaddr.as_mut::<CNode>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,

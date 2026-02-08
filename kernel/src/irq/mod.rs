@@ -83,7 +83,7 @@ pub fn handle_claimed(cpuid: usize, id: usize) {
         if cap.cap_type() == cap::CapType::Endpoint {
             let ep_ptr = cap.obj_ptr();
             let badge = cap.get_badge();
-            let ep = ep_ptr.as_mut::<ipc::Endpoint>();
+            let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
             ipc::notify(ep, badge);
         }
     } else {

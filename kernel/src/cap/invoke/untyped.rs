@@ -40,7 +40,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> usize
             };
 
             if dest_cnode_cap.cap_type() == CapType::CNode {
-                let dest_cnode = dest_cnode_cap.obj_ptr().as_mut::<CNode>();
+                let dest_cnode = unsafe { dest_cnode_cap.obj_ptr().as_mut::<CNode>() };
                 if !dest_cnode.check_cptr(dest_slot) {
                     log!("Untyped::Retype failed: invalid dest slot {:?}", dest_slot);
                     return errcode::INVALID_SLOT;

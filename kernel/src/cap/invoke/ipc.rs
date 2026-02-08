@@ -14,7 +14,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
         return errcode::INVALID_OBJ_TYPE;
     };
 
-    let ep = ep_ptr.as_mut::<ipc::Endpoint>();
+    let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let badge = cap.get_badge();
 
@@ -102,7 +102,7 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> usize {
         return errcode::INVALID_OBJ_TYPE;
     };
 
-    let target_tcb = tcb_ptr.as_mut::<TCB>();
+    let target_tcb = unsafe { tcb_ptr.as_mut::<TCB>() };
     let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     match method {
         replymethod::REPLY => {

@@ -19,7 +19,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
 
     // PageTable 需要物理地址转虚拟地址才能操作
     let pt_ptr = hal::mem::phys_to_virt(paddr);
-    let pt = pt_ptr.as_mut::<PageTable>();
+    let pt = unsafe { pt_ptr.as_mut::<PageTable>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
@@ -83,7 +83,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
 
     // PageTable 需要物理地址转虚拟地址才能操作
     let pt_ptr = hal::mem::phys_to_virt(paddr);
-    let pt = pt_ptr.as_mut::<PageTable>();
+    let pt = unsafe { pt_ptr.as_mut::<PageTable>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,

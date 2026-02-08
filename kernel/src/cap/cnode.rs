@@ -83,7 +83,7 @@ impl Slot {
     /// Returns a guard that is completely detached from the Slot's lifetime
     /// (by extending lifetime to 'static due to CNode immobility).
     pub unsafe fn lock_cnode<'a>(&self) -> SpinLockGuard<'a, ()> {
-        let lock_ref = self.cnode_lock.as_ref::<SpinLock<()>>();
+        let lock_ref = unsafe { self.cnode_lock.as_ref::<SpinLock<()>>() };
         lock_ref.lock()
     }
 }
@@ -180,7 +180,7 @@ impl CNode {
                 if next_cnode_addr == VirtAddr::null() {
                     return None;
                 }
-                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 // Recurse
                 next_cnode.lookup(next_cptr)
             } else {
@@ -215,7 +215,7 @@ impl CNode {
                 if next_cnode_addr == VirtAddr::null() {
                     return None;
                 }
-                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 // 递归调用
                 return unsafe { next_cnode.lookup_slot_ptr(next_cptr) };
             } else {
@@ -264,7 +264,7 @@ impl CNode {
                     log!("cnode: Insert failed, next CNode pointer is null at index {}", index);
                     return false;
                 }
-                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 next_cnode.insert(next_cptr, cap)
             } else {
                 log!(
@@ -302,7 +302,7 @@ impl CNode {
         let self_lock_ptr = VirtAddr::from(&self.metadata().lock as *const SpinLock<()> as usize);
 
         let _parent_guard = if parent_lock_ptr != self_lock_ptr {
-            Some(parent_lock_ptr.as_ref::<SpinLock<()>>().lock())
+            unsafe { Some(parent_lock_ptr.as_ref::<SpinLock<()>>().lock()) }
         } else {
             None
         };
@@ -317,12 +317,12 @@ impl CNode {
 
         cdt.next_sibling = old_first_child;
         if old_first_child != VirtAddr::null() {
-            let next_sib_slot = &mut *old_first_child.as_mut::<Slot>();
+            let next_sib_slot = unsafe { &mut *old_first_child.as_mut::<Slot>() };
 
             // Need to lock Next Sibling?
             let sib_lock_ptr = next_sib_slot.cnode_lock;
             let _sib_guard = if sib_lock_ptr != self_lock_ptr && sib_lock_ptr != parent_lock_ptr {
-                Some(sib_lock_ptr.as_ref::<SpinLock<()>>().lock())
+                unsafe { Some(sib_lock_ptr.as_ref::<SpinLock<()>>().lock()) }
             } else {
                 None
             };
@@ -392,7 +392,7 @@ impl CNode {
                 let self_ptr = VirtAddr::from(self as *const CNode as usize);
 
                 if child_ptr != VirtAddr::null() && child_ptr != self_ptr {
-                    child_ptr.as_ref::<CNode>().debug_print_recursive(depth + 1);
+                    unsafe { child_ptr.as_ref::<CNode>().debug_print_recursive(depth + 1) };
                 }
             }
         }
@@ -418,7 +418,7 @@ impl CNode {
                 if next_cnode_addr == VirtAddr::null() {
                     return false;
                 }
-                let next_cnode = next_cnode_addr.as_ref::<CNode>();
+                let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 // 递归调用
                 return next_cnode.check_cptr(next_cptr);
             } else {
@@ -433,12 +433,12 @@ fn revoke_recursive(slot: &mut Slot) {
     slot.cdt.first_child = VirtAddr::null();
 
     while child_addr != VirtAddr::null() {
-        let child_slot = &mut *child_addr.as_mut::<Slot>();
+        let child_slot = unsafe { &mut *child_addr.as_mut::<Slot>() };
 
         let next_sibling = child_slot.cdt.next_sibling;
 
         // Decouple lifetime for recursion
-        let lock_ref = child_slot.cnode_lock.as_ref::<SpinLock<()>>();
+        let lock_ref = unsafe { child_slot.cnode_lock.as_ref::<SpinLock<()>>() };
         let _guard = lock_ref.lock();
 
         revoke_recursive(child_slot);
@@ -463,22 +463,22 @@ fn delete_recursive(slot: &mut Slot) {
     let self_lock_ptr = slot.cnode_lock;
 
     if prev != VirtAddr::null() {
-        let prev_slot = &mut *prev.as_mut::<Slot>();
+        let prev_slot = unsafe { &mut *prev.as_mut::<Slot>() };
         // Lock Prev
         let lock_ptr = prev_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            Some((lock_ptr.as_mut::<SpinLock<()>>()).lock())
+            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
         } else {
             None
         };
 
         prev_slot.cdt.next_sibling = next;
     } else if parent != VirtAddr::null() {
-        let parent_slot = &mut *parent.as_mut::<Slot>();
+        let parent_slot = unsafe { &mut *parent.as_mut::<Slot>() };
         // Lock Parent
         let lock_ptr = parent_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            Some((lock_ptr.as_mut::<SpinLock<()>>()).lock())
+            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
         } else {
             None
         };
@@ -487,11 +487,11 @@ fn delete_recursive(slot: &mut Slot) {
     }
 
     if next != VirtAddr::null() {
-        let next_slot = &mut *next.as_mut::<Slot>();
+        let next_slot = unsafe { &mut *next.as_mut::<Slot>() };
         // Lock Next
         let lock_ptr = next_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            Some((lock_ptr.as_mut::<SpinLock<()>>()).lock())
+            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
         } else {
             None
         };

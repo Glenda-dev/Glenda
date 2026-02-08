@@ -23,10 +23,10 @@ impl PhysAddr {
     pub fn as_ptr<T>(&self) -> *const T {
         self.0 as *const T
     }
-    pub fn as_ref<T>(&self) -> &'static T {
+    pub unsafe fn as_ref<T>(&self) -> &'static T {
         unsafe { &*(self.as_ptr::<T>()) }
     }
-    pub fn as_mut<T>(&self) -> &'static mut T {
+    pub unsafe fn as_mut<T>(&self) -> &'static mut T {
         unsafe { &mut *(self.as_mut_ptr::<T>()) }
     }
     pub fn align_down(&self, align: usize) -> Self {
@@ -103,10 +103,10 @@ impl VirtAddr {
     pub fn as_ptr<T>(&self) -> *const T {
         self.0 as *const T
     }
-    pub fn as_ref<T>(&self) -> &'static T {
+    pub unsafe fn as_ref<T>(&self) -> &'static T {
         unsafe { &*(self.as_ptr::<T>()) }
     }
-    pub fn as_mut<T>(&self) -> &'static mut T {
+    pub unsafe fn as_mut<T>(&self) -> &'static mut T {
         unsafe { &mut *(self.as_mut_ptr::<T>()) }
     }
     pub const fn null() -> Self {

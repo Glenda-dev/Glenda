@@ -126,7 +126,7 @@ impl TCB {
 
     pub fn get_tf(&mut self) -> &mut TrapFrame {
         let tf_cap = self.trapframe.as_ref().expect("TrapFrame not configured");
-        tf_cap.obj_ptr().as_mut::<TrapFrame>()
+        unsafe { tf_cap.obj_ptr().as_mut::<TrapFrame>() }
     }
 
     pub fn get_tf_va(&self) -> VirtAddr {
@@ -136,12 +136,12 @@ impl TCB {
 
     pub fn get_pt(&self) -> &PageTable {
         let vspace_cap = self.vspace_root.as_ref().expect("VSpace root not configured");
-        vspace_cap.obj_ptr().as_ref::<PageTable>()
+        unsafe { vspace_cap.obj_ptr().as_ref::<PageTable>() }
     }
 
     pub fn get_cspace(&self) -> &CNode {
         let cspace_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
-        cspace_cap.obj_ptr().as_ref::<CNode>()
+        unsafe { cspace_cap.obj_ptr().as_ref::<CNode>() }
     }
 
     pub fn mmu_register(&self) -> usize {
@@ -233,7 +233,7 @@ impl TCB {
     pub fn get_utcb(&self) -> Option<&mut UTCB> {
         if let Some(utcb_cap) = &self.utcb_frame {
             let vaddr = utcb_cap.obj_ptr();
-            Some(vaddr.as_mut::<UTCB>())
+            Some(unsafe { vaddr.as_mut::<UTCB>() })
         } else {
             None
         }
@@ -243,7 +243,7 @@ impl TCB {
         // 1. 获取 Root CNode
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         if root_cap.cap_type() == CapType::CNode {
-            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
+            let cnode = unsafe { root_cap.obj_ptr().as_mut::<CNode>() };
             // 2. 在 CNode 中查找
             cnode.lookup(cptr)
         } else {
@@ -254,7 +254,7 @@ impl TCB {
     pub fn lookup_slot(&self, cptr: CapPtr) -> Option<*mut Slot> {
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         if root_cap.cap_type() == CapType::CNode {
-            let cnode = root_cap.obj_ptr().as_mut::<CNode>();
+            let cnode = unsafe { root_cap.obj_ptr().as_mut::<CNode>() };
             unsafe { cnode.lookup_slot_ptr(cptr) }
         } else {
             None

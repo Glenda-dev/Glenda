@@ -112,19 +112,19 @@ fn debug_struct(addr_str: &str, type_str: &str) {
 
     match type_str {
         "tcb" => {
-            let tcb = VirtAddr::from(addr).as_ref::<TCB>();
+            let tcb = unsafe { VirtAddr::from(addr).as_ref::<TCB>() };
             tcb.debug_print();
         }
         "pagetable" => {
-            let pt = VirtAddr::from(addr).as_ref::<PageTable>();
+            let pt = unsafe { VirtAddr::from(addr).as_ref::<PageTable>() };
             pt.debug_print();
         }
         "cnode" => {
-            let cnode = VirtAddr::from(addr).as_ref::<CNode>();
+            let cnode = unsafe { VirtAddr::from(addr).as_ref::<CNode>() };
             cnode.debug_print();
         }
         "capability" => {
-            let cap = VirtAddr::from(addr).as_ref::<Capability>();
+            let cap = unsafe { VirtAddr::from(addr).as_ref::<Capability>() };
             printk!("{}", cap)
         }
         _ => printk!("Unknown type: {}\n", type_str),

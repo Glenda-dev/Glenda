@@ -106,17 +106,17 @@ impl Capability {
         match self.cap_type() {
             CapType::TCB => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
-                let tcb = tcb_ptr.as_ref::<TCB>();
+                let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
                 tcb.ref_count.fetch_add(1, Ordering::Relaxed);
             }
             CapType::Endpoint => {
                 let ep_ptr = VirtAddr::from(self.words[0]);
-                let ep = ep_ptr.as_ref::<Endpoint>();
+                let ep = unsafe { ep_ptr.as_ref::<Endpoint>() };
                 ep.ref_count.fetch_add(1, Ordering::Relaxed);
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let header = vaddr.as_ref::<CNode>();
+                let header = unsafe { vaddr.as_ref::<CNode>() };
                 header.ref_count().fetch_add(1, Ordering::Relaxed);
             }
             // 其他类型暂不引用计数
@@ -344,7 +344,7 @@ impl Drop for Capability {
         match self.cap_type() {
             CapType::TCB => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
-                let tcb = tcb_ptr.as_ref::<TCB>();
+                let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
                 if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy TCB
@@ -357,7 +357,7 @@ impl Drop for Capability {
             }
             CapType::Endpoint => {
                 let ep_ptr = VirtAddr::from(self.words[0]);
-                let ep = ep_ptr.as_ref::<Endpoint>();
+                let ep = unsafe { ep_ptr.as_ref::<Endpoint>() };
                 if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy Endpoint
@@ -366,7 +366,7 @@ impl Drop for Capability {
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let header = vaddr.as_ref::<CNode>();
+                let header = unsafe { vaddr.as_ref::<CNode>() };
                 if header.ref_count().fetch_sub(1, Ordering::Release) == 1 {
                     core::sync::atomic::fence(Ordering::Acquire);
                     // TODO: Destroy CNode

@@ -49,7 +49,7 @@ fn spawn_payload(root_task: ProcPayload) {
     let caps = alloc_root_caps();
 
     // 2. Setup TCB basic fields
-    let tcb = caps.tcb.obj_ptr().as_mut::<TCB>();
+    let tcb = unsafe { caps.tcb.obj_ptr().as_mut::<TCB>() };
 
     // 3. Setup VSpace
     let pt_pa = caps.vspace.paddr();
@@ -58,15 +58,15 @@ fn spawn_payload(root_task: ProcPayload) {
     root_task.map(vspace);
 
     // 4. Setup bootinfo
-    let bootinfo = caps.bootinfo.obj_ptr().as_mut::<BootInfo>();
+    let bootinfo = unsafe { caps.bootinfo.obj_ptr().as_mut::<BootInfo>() };
     init_bootinfo(bootinfo);
 
     // 5. Setup platform info
-    let platform_info = caps.platform.obj_ptr().as_mut::<PlatformInfo>();
+    let platform_info = unsafe { caps.platform.obj_ptr().as_mut::<PlatformInfo>() };
     init_platform(platform_info);
 
     // 6. Setup CSpace
-    let cspace = caps.cspace.obj_ptr().as_mut::<CNode>();
+    let cspace = unsafe { caps.cspace.obj_ptr().as_mut::<CNode>() };
     init_cspace(cspace, &caps, bootinfo);
     // 7. Configure TCB resources
     TCB::register(tcb);

@@ -13,7 +13,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
         return errcode::INVALID_OBJ_TYPE;
     };
 
-    let tcb = tcb_ptr.as_mut::<TCB>();
+    let tcb = unsafe { tcb_ptr.as_mut::<TCB>() };
     let current_tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match current_tcb.get_utcb() {
         Some(u) => u,

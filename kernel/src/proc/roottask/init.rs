@@ -141,7 +141,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
 
     // === 1. MMIO Caps (Stored in MMIO CNode at slot 7) ===
     let mut slot = 1;
-    let mmio_cnode = caps.mmio_cspace.obj_ptr().as_mut::<CNode>();
+    let mmio_cnode = unsafe { caps.mmio_cspace.obj_ptr().as_mut::<CNode>() };
 
     for i in 0..info.memory_regions.len() {
         let region = &info.memory_regions[i];
@@ -164,7 +164,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
 
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let (untyped_regions, count) = pmem::get_untyped();
-    let untyped_cnode = caps.untyped_cspace.obj_ptr().as_mut::<CNode>();
+    let untyped_cnode = unsafe { caps.untyped_cspace.obj_ptr().as_mut::<CNode>() };
 
     let mut slot = 1;
     for i in 0..count {
@@ -182,7 +182,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
     // === 3. IRQ Caps (Stored in Root CNode L1 directly, starting slot 8) ===
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let mut slot = 1;
-    let irq_cnode = caps.irq_cspace.obj_ptr().as_mut::<CNode>();
+    let irq_cnode = unsafe { caps.irq_cspace.obj_ptr().as_mut::<CNode>() };
     for irq in 0..MAX_IRQS {
         let irq_obj = IRQ::new(irq);
         let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);

@@ -71,7 +71,7 @@ impl UntypedRegion {
 
         let new_cap = match obj_type {
             CapType::CNode => {
-                let cnode = obj_vaddr.as_mut::<CNode>();
+                let cnode = unsafe { obj_vaddr.as_mut::<CNode>() };
                 cnode.init();
                 Capability::create_cnode(cnode, Rights::ALL)
             }
