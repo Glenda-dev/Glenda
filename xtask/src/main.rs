@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod arch;
 mod build;
+mod check;
 mod config;
 mod qemu;
 mod util;
@@ -36,6 +37,11 @@ enum Cmd {
     /// Dump QEMU DTB to target/virt.dtb
     DumpDtb,
     Clean,
+    /// Run cargo check on all components
+    Check {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -65,6 +71,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Size => util::size(&cfg)?,
         Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,
         Cmd::Clean => build::clean(&cfg)?,
+        Cmd::Check { args } => check::check(&cfg, &args)?,
     }
     Ok(())
 }
