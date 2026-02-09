@@ -11,7 +11,6 @@ use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
 use core::fmt::Display;
-use core::mem::transmute;
 use core::sync::atomic::Ordering;
 
 /// Capability (Compressed to 16 bytes)
@@ -94,7 +93,7 @@ impl Capability {
     // Helper to extract type
     pub const fn cap_type(&self) -> CapType {
         let tag = self.words[1] & TYPE_MASK;
-        unsafe { transmute(tag) }
+        CapType::from_usize_const(tag)
     }
 
     // Helper to extract Rights
