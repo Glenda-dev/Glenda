@@ -147,8 +147,13 @@ fn fault_handler(
         let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
         let badge = handler_cap.get_badge();
 
-        // 3. 执行发送 (这会阻塞当前线程)
-        ipc::send(tcb, ep, badge, None);
+        // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
+        ipc::call(tcb, ep, badge, None);
+
+        // 4. 如果是Syscall，跳过epc
+        if e == TrapException::Syscall {
+            ctx.advance_pc();
+        }
     } else {
         unhandled_exception(e, cause, pc, value, status);
     }

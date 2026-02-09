@@ -42,14 +42,27 @@ unsafe fn copy_msg(
     dst.badge = badge;
 
     // 3. 传递 Capability (如果提供且接收者准备好了接收窗口)
-    // 优先传递用户指定的 cap，如果没有则传递内核生成的 reply_cap
-    let final_cap = cap.or(reply_cap);
 
-    if let Some(c) = final_cap {
+    if let Some(c) = cap {
         let recv_window = dst.recv_window;
-        if let Some(slot_ptr) = unsafe { receiver.get_cspace().lookup_slot_ptr(recv_window) } {
-            let slot = unsafe { &mut *slot_ptr };
-            slot.cap = c;
+        let cspace = receiver.get_cspace();
+        let res = cspace.insert(recv_window, &c);
+        if res == false {
+            log!("ipc: failed to transfer capability to receiver at {}", recv_window);
+        } else {
+            log!("ipc: transferred capability to receiver at {}", recv_window);
+        }
+    }
+
+    // 4. 如果是 Call，还需要传递 Reply Cap
+    if let Some(rc) = reply_cap {
+        let reply_window = dst.reply_window;
+        let cspace = receiver.get_cspace();
+        let res = cspace.insert(reply_window, &rc);
+        if res == false {
+            log!("ipc: failed to transfer reply capability to receiver at {}", reply_window);
+        } else {
+            log!("ipc: transferred reply capability to receiver at {}", reply_window);
         }
     }
 }

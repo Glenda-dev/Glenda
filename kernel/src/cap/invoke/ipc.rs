@@ -39,6 +39,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
             if tag.flags().contains(MsgFlags::HAS_CAP) {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
+                        log!("IPC::Send will transfer cap {:?}", utcb.cap_transfer);
                         cap_to_send = Some(cap);
                     } else {
                         log!("IPC::Send warning: cannot grant cap {:?}", utcb.cap_transfer);
@@ -68,6 +69,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
             if tag.flags().contains(MsgFlags::HAS_CAP) {
                 if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
                     if cap.has_rights(Rights::GRANT) {
+                        log!("IPC::Call will transfer cap {:?}", utcb.cap_transfer);
                         cap_to_send = Some(cap);
                     } else {
                         log!("IPC::Call warning: cannot grant cap {:?}", utcb.cap_transfer);

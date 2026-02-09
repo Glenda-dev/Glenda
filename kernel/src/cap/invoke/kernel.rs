@@ -22,17 +22,23 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 return errcode::PERMISSION_DENIED;
             }
 
-            let mut buf = [0u8; 128];
-            let n = utcb.read(&mut buf);
-            if n == 0 {
-                return errcode::INVALID_OBJ_TYPE;
-            }
-            // 简单的 best-effort 处理：尝试作为 UTF-8 打印，失败则逐字节打印
-            if let Ok(s) = core::str::from_utf8(&buf[..n]) {
-                printk!("{}", s);
-            } else {
-                for &b in &buf[..n] {
-                    printk!("{}", b as char);
+            // Try to print as UTF-8 string for better display
+            let len = utcb.available_data();
+            if len > 0 {
+                let start = utcb.head;
+                if let Some(slice) = utcb.ipc_buffer.get(start..start + len) {
+                    match core::str::from_utf8(slice) {
+                        Ok(s) => printk!("{}", s),
+                        Err(_) => {
+                            printk!(
+                                "Kernel::ConsolePutStr warning: invalid UTF-8, printing as bytes"
+                            );
+                            for &b in slice {
+                                printk!("{}", b as char);
+                            }
+                        }
+                    }
+                    utcb.head += len;
                 }
             }
             errcode::SUCCESS
@@ -59,7 +65,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 let b = c as u8;
 
                 // Echo back
-                crate::printk!("{}", c as char);
+                printk!("{}", c as char);
 
                 if b == b'\r' || b == b'\n' {
                     break;
