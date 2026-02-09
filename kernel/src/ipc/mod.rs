@@ -12,6 +12,28 @@ use crate::cap::{Badge, CapType, Capability, Rights};
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
 
+pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
+    let utcb = match get_utcb_ptr(tcb) {
+        Some(ptr) => unsafe { &*ptr },
+        None => return None,
+    };
+
+    let tag = utcb.msg_tag;
+    if tag.flags().contains(MsgFlags::HAS_CAP) {
+        if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+            if cap.has_rights(Rights::GRANT) {
+                log!("ipc: transfer cap {:?}", utcb.cap_transfer);
+                return Some(cap);
+            } else {
+                log!("ipc: warning: cannot grant cap {:?}", utcb.cap_transfer);
+            }
+        } else {
+            log!("ipc: warning: cap to transfer not found {:?}", utcb.cap_transfer);
+        }
+    }
+    None
+}
+
 fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
         if cap.cap_type() == CapType::Frame {
@@ -115,12 +137,18 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap)) };
 
+        // 当前线程进入 BlockedCall 状态，等待回复
+        // 必须在 wake_up 之前设置，否则如果 wake_up 导致抢占，当前线程会被错误地置为 Ready
+        current.state = ThreadState::BlockedCall;
+
         // 唤醒接收者
         scheduler::wake_up(receiver);
 
-        // 当前线程进入 BlockedCall 状态，等待回复
-        current.state = ThreadState::BlockedCall;
-        scheduler::block_current_thread();
+        // 如果 wake_up 没有导致抢占（或者抢占后又回来了），我们需要检查是否还需要阻塞
+        // 如果已经被 Reply 唤醒，状态会变成 Running，就不需要再阻塞了
+        if current.state == ThreadState::BlockedCall {
+            scheduler::block_current_thread();
+        }
     } else {
         log!("ipc: call blocking");
         // --- 慢速路径: 阻塞在发送队列 ---
@@ -135,13 +163,13 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
 
 /// Reply 操作
 /// 向指定的 TCB 发送回复消息
-pub fn reply(current: &mut TCB, target: &mut TCB) {
+pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) {
     log!("ipc: reply current={:p} target={:p}", current, target);
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
         log!("ipc: reply success");
         // Reply 不产生新的 Reply Cap
-        unsafe { copy_msg(current, target, Badge::null(), None, None) };
+        unsafe { copy_msg(current, target, Badge::null(), cap, None) };
 
         // 唤醒目标线程
         scheduler::wake_up(target);
