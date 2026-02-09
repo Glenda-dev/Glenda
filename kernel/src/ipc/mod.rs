@@ -187,11 +187,9 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
         if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
-            unsafe {
-                (*utcb_ptr).msg_tag =
-                    MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
-                (*utcb_ptr).badge = badge;
-            };
+            let utcb = unsafe { &mut *utcb_ptr };
+            utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
+            utcb.badge = badge;
         }
 
         scheduler::wake_up(receiver);
@@ -260,4 +258,26 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         // 让出 CPU，触发调度
         scheduler::block_current_thread();
     }
+}
+
+/// Proxy 操作
+/// 类似于 Call，但使用当前 UTCB 中的 Badge。
+/// 这允许服务在调用其他服务时保留原始调用者的身份（Badge）。
+///
+/// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
+pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) {
+    log!("ipc: proxy current={:p} ep={:p}", current, ep as *const _);
+
+    // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
+    let badge = if let Some(utcb_ptr) = get_utcb_ptr(current) {
+        unsafe { (*utcb_ptr).badge }
+    } else {
+        Badge::null()
+    };
+
+    log!("ipc: proxy spoofing badge {:?}", badge);
+
+    // 2. 复用 Call 逻辑
+    // 发送消息并设置状态为 BlockedCall，等待 Reply
+    call(current, ep, badge, cap);
 }

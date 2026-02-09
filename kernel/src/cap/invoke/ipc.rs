@@ -58,6 +58,15 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> usize {
             ipc::notify(ep, badge);
             errcode::SUCCESS
         }
+        ipcmethod::PROXY => {
+            if !cap.has_rights(Rights::CUSTOM) {
+                log!("IPC::Proxy failed: permission denied");
+                return errcode::PERMISSION_DENIED;
+            }
+            let cap_to_send = ipc::transfer_cap(tcb);
+            ipc::proxy(tcb, ep, cap_to_send);
+            errcode::SUCCESS
+        }
         _ => {
             log!("IPC::invoke failed: invalid method {}", method);
             errcode::INVALID_METHOD

@@ -3,6 +3,7 @@ pub mod ipcmethod {
     pub const RECV: usize = 2;
     pub const CALL: usize = 3;
     pub const NOTIFY: usize = 4;
+    pub const PROXY: usize = 5;
 }
 
 pub mod replymethod {
