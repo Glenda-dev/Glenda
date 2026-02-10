@@ -189,6 +189,21 @@ fn parse_timebase_frequency(fdt: &Fdt) -> usize {
     }
 }
 
+fn parse_irq_count(fdt: &Fdt) -> usize {
+    for node in fdt.all_nodes() {
+        let is_plic = node
+            .compatible()
+            .map(|c| c.all().any(|s| s.contains("riscv,plic0") || s.contains("sifive,plic-1")))
+            .unwrap_or(false);
+        if is_plic {
+            if let Some(prop) = node.property("riscv,ndev") {
+                return parse_u64(prop.value) as usize;
+            }
+        }
+    }
+    0
+}
+
 pub fn get_platform_info() -> PlatformInfo {
     let mut info = PlatformInfo::new();
     let dtb = dtb_addr() as *const u8;
@@ -210,6 +225,7 @@ fn fill_platform_info(fdt: &Fdt, info: &mut PlatformInfo) {
 
     info.cpu_count = parse_hart_count(fdt);
     info.clock_freq = parse_timebase_frequency(fdt);
+    info.irq_count = parse_irq_count(fdt);
     let initrd = parse_initrd(fdt).expect("Initrd range not found");
     info.initrd =
         MemoryRegion { start: initrd.start, size: initrd.size, region_type: MemoryType::Ram };
@@ -261,11 +277,18 @@ fn walk_device_tree(node: &FdtNode, parent_idx: u32, info: &mut PlatformInfo) {
         if !is_memory && !is_cpu {
             if let Some(mut regs) = child.reg() {
                 if let Some(region) = regs.next() {
+                    let mut irq: u32 = 0;
+                    if let Some(mut interrupts) = child.interrupts() {
+                        if let Some(i) = interrupts.next() {
+                            irq = i as u32;
+                        }
+                    }
+
                     let mut desc = DeviceDesc {
                         compatible: [0; 64],
                         base_addr: PhysAddr::from(region.starting_address as usize),
                         size: region.size.unwrap_or(0),
-                        irq: 0,
+                        irq,
                         kind: DeviceKind::Unknown,
                         parent_index: parent_idx,
                         bus_type: BusType::System,
@@ -277,7 +300,10 @@ fn walk_device_tree(node: &FdtNode, parent_idx: u32, info: &mut PlatformInfo) {
                             let len = core::cmp::min(bytes.len(), 63);
                             desc.compatible[..len].copy_from_slice(&bytes[..len]);
 
-                            if first.contains("uart") || first.contains("serial") {
+                            if first.contains("uart")
+                                || first.contains("serial")
+                                || first.contains("ns16550")
+                            {
                                 desc.kind = DeviceKind::Uart;
                             } else if first.contains("plic") {
                                 desc.kind = DeviceKind::Intc;
