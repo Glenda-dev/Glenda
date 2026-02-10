@@ -64,7 +64,7 @@ impl UntypedRegion {
 
         let page_idx = current_page_offset;
         let obj_paddr = PhysAddr::from(self.start.as_usize() + page_idx * PGSIZE);
-        log!("untyped: retyping paddr {:?} to {:?} (pages: {})", obj_paddr, obj_type, obj_pages);
+        log!("untyped: Retyping paddr {:?} to {:?} (pages: {})", obj_paddr, obj_type, obj_pages);
         let obj_vaddr = hal::mem::phys_to_virt(obj_paddr);
         let obj_size_bytes = obj_pages * PGSIZE;
         unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };

@@ -11,7 +11,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
     let cspace = tcb.get_cspace();
     match unsafe { cspace.lookup_slot_ptr(cptr) } {
         None => {
-            log!("syscall: Invalid slot at cptr {:#x}", cptr.bits());
+            error!("syscall: Invalid slot at cptr {:#x}", cptr.bits());
             Error::InvalidSlot as usize
         }
         // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）

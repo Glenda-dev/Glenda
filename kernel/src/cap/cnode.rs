@@ -5,7 +5,7 @@ use crate::mem::VirtAddr;
 use crate::printk;
 use crate::sync::{SpinLock, SpinLockGuard};
 use core::cell::UnsafeCell;
-use core::fmt::Display;
+use core::fmt::{Debug, Display};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
@@ -17,7 +17,7 @@ pub const CNODE_PAGES: usize = (CNODE_SIZE + PGSIZE - 1) / PGSIZE; // CNode 占�
 
 /// 每8位作为一层的索引号
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct CapPtr(usize);
 
 impl CapPtr {
@@ -42,6 +42,12 @@ impl CapPtr {
 }
 
 impl Display for CapPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
+impl Debug for CapPtr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{:#x}", self.0)
     }
@@ -227,7 +233,7 @@ impl CNode {
 
     pub fn insert(&self, cptr: CapPtr, cap: &Capability) -> Result<(), Error> {
         if cptr.is_null() {
-            log!("cnode: Insert failed, null CPtr");
+            error!("cnode: Insert failed, null CPtr");
             return Err(Error::InvalidSlot);
         }
 
@@ -238,7 +244,7 @@ impl CNode {
         let next_cptr = cptr.next();
 
         if index >= CNODE_SLOTS || index == 0 {
-            log!("cnode: Insert failed, invalid index {} in CPtr {}", index, cptr);
+            error!("cnode: Insert failed, invalid index {} in CPtr {}", index, cptr);
             return Err(Error::InvalidSlot);
         }
 
@@ -249,7 +255,7 @@ impl CNode {
         if next_cptr.is_null() {
             // Found leaf - check if empty
             if slot.cap.cap_type() != CapType::Empty {
-                log!("cnode: Insert failed, slot not empty at index {}", index);
+                error!("cnode: Insert failed, slot not empty at index {}", index);
                 return Err(Error::AlreadyExists);
             }
             slot.cap = cap.clone();
@@ -262,13 +268,13 @@ impl CNode {
             if current_cap.cap_type() == CapType::CNode {
                 let next_cnode_addr = current_cap.obj_ptr();
                 if next_cnode_addr == VirtAddr::null() {
-                    log!("cnode: Insert failed, next CNode pointer is null at index {}", index);
+                    error!("cnode: Insert failed, next CNode pointer is null at index {}", index);
                     return Err(Error::InvalidCapability);
                 }
                 let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 next_cnode.insert(next_cptr, cap)
             } else {
-                log!(
+                error!(
                     "cnode: Insert failed, expected CNode at index {}, found {:?}",
                     index,
                     current_cap.cap_type()

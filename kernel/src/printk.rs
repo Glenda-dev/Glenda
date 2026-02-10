@@ -37,12 +37,42 @@ macro_rules! printk_unsynced {
 macro_rules! log {
     ($fmt:expr) => {
         if crate::printk::is_verbose() {
-            crate::printk!("Glenda: {}\n", format_args!($fmt));
+            crate::printk!("{}\n", format_args!($fmt));
         }
     };
     ($fmt:expr, $($arg:tt)*) => {
         if crate::printk::is_verbose() {
-            crate::printk!("Glenda: {}\n", format_args!($fmt, $($arg)*));
+            crate::printk!("{}\n", format_args!($fmt, $($arg)*));
+        }
+    };
+}
+
+#[cfg(feature = "logging")]
+#[macro_export]
+macro_rules! error {
+    ($fmt:expr) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt), crate::printk::ANSI_RESET);
+        }
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
+        }
+    };
+}
+
+#[cfg(feature = "logging")]
+#[macro_export]
+macro_rules! warn {
+    ($fmt:expr) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt), crate::printk::ANSI_RESET);
+        }
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        if crate::printk::is_verbose() {
+            crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
         }
     };
 }
@@ -50,6 +80,20 @@ macro_rules! log {
 #[cfg(not(feature = "logging"))]
 #[macro_export]
 macro_rules! log {
+    ($fmt:expr) => {};
+    ($fmt:expr, $($arg:tt)*) => {};
+}
+
+#[cfg(not(feature = "logging"))]
+#[macro_export]
+macro_rules! error {
+    ($fmt:expr) => {};
+    ($fmt:expr, $($arg:tt)*) => {};
+}
+
+#[cfg(not(feature = "logging"))]
+#[macro_export]
+macro_rules! warn {
     ($fmt:expr) => {};
     ($fmt:expr, $($arg:tt)*) => {};
 }

@@ -38,6 +38,7 @@ impl UTCB {
         dest.msg_tag = self.msg_tag;
         dest.mrs_regs = self.mrs_regs;
         if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
+            log!("ipc: Copying buffer of size {} from sender to receiver", self.size);
             dest.head = self.head;
             let len = core::cmp::min(self.size, IPC_BUFFER_SIZE);
             dest.ipc_buffer[..len].copy_from_slice(&self.ipc_buffer[..len]);

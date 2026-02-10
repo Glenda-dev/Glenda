@@ -44,7 +44,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 && kstack_cap.is_none()
             {
                 log!(
-                    "TCB::Configure failed: missing caps {:?} {:?} {:?} {:?} {:?}",
+                    "TCB::Configure failed: missing caps {} {} {} {} {}",
                     cspace_cptr,
                     vspace_cptr,
                     utcb_cptr,

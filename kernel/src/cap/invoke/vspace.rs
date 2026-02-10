@@ -13,7 +13,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
     let paddr = if cap.cap_type() == CapType::PageTable {
         cap.paddr()
     } else {
-        log!("PageTable::invoke failed: invalid obj type {:?}", cap.cap_type());
+        log!("vspace: PageTable invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -24,7 +24,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("PageTable::invoke failed: no UTCB");
+            log!("vspace: PageTable invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -39,7 +39,10 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
             let table_cap = match tcb.cap_lookup(table_cptr) {
                 Some(c) => c,
                 None => {
-                    log!("PageTable::MapTable failed: table cap not found cptr={:?}", table_cptr);
+                    log!(
+                        "vspace: PageTable map_table failed: table cap not found cptr={}",
+                        table_cptr
+                    );
                     return Err(Error::InvalidCapability);
                 }
             };
@@ -56,7 +59,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
 
             pt.map_table(vaddr, table_paddr, level).map_err(|_| {
                 log!(
-                    "PageTable::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
+                    "PageTable::MapTable failed: pt.map_table failed vaddr={} level={}\n",
                     vaddr,
                     level
                 );
@@ -64,7 +67,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
             })
         }
         _ => {
-            log!("PageTable::invoke failed: invalid method {}", method);
+            log!("vspace: PageTable invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }
@@ -74,7 +77,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let paddr = if cap.cap_type() == CapType::VSpace {
         cap.paddr()
     } else {
-        log!("VSpace::invoke failed: invalid obj type {:?}", cap.cap_type());
+        log!("vspace: VSpace invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -85,7 +88,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("VSpace::invoke failed: no UTCB");
+            log!("vspace: VSpace invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -100,7 +103,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let frame_cap = match tcb.cap_lookup(frame_cptr) {
                 Some(c) => c,
                 None => {
-                    log!("VSpace::Map failed: frame cap not found cptr={:?}", frame_cptr);
+                    log!("vspace: VSpace map failed: frame cap not found cptr={}", frame_cptr);
                     return Err(Error::InvalidCapability);
                 }
             };
@@ -108,7 +111,10 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let frame_paddr = if frame_cap.cap_type() == CapType::Frame {
                 frame_cap.paddr()
             } else {
-                log!("VSpace::Map failed: invalid frame cap type {:?}", frame_cap.cap_type());
+                log!(
+                    "vspace: VSpace map failed: invalid frame cap type {:?}",
+                    frame_cap.cap_type()
+                );
                 return Err(Error::InvalidType);
             };
 
@@ -116,7 +122,11 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
             // 执行映射
             pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags).map_err(|_| {
-                log!("VSpace::Map failed: pt.map failed vaddr={:?} pages={}\n", vaddr, num_pages);
+                log!(
+                    "vspace: VSpace map failed: pt.map failed vaddr={} pages={}\n",
+                    vaddr,
+                    num_pages
+                );
                 Error::MappingFailed
             })
         }
@@ -129,7 +139,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let table_cap = match tcb.cap_lookup(table_cptr) {
                 Some(c) => c,
                 None => {
-                    log!("VSpace::MapTable failed: table cap not found cptr={:?}", table_cptr);
+                    log!("VSpace::MapTable failed: table cap not found cptr={}", table_cptr);
                     return Err(Error::InvalidCapability);
                 }
             };
@@ -148,7 +158,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
             pt.map_table(vaddr, table_paddr, level).map_err(|_| {
                 log!(
-                    "VSpace::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
+                    "VSpace::MapTable failed: pt.map_table failed vaddr={} level={}\n",
                     vaddr,
                     level
                 );
@@ -160,7 +170,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
             let size = utcb.mrs_regs[1];
             pt.unmap(vaddr, size).map_err(|_| {
-                log!("VSpace::Unmap failed: vaddr={:?} size={}", vaddr, size);
+                log!("VSpace::Unmap failed: vaddr={} size={}", vaddr, size);
                 Error::MappingFailed
             })
         }
@@ -173,7 +183,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         _ => {
-            log!("VSpace::invoke failed: invalid method {}", method);
+            log!("vspace: VSpace invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

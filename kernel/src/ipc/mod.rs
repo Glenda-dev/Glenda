@@ -21,13 +21,13 @@ pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
     if tag.flags().contains(MsgFlags::HAS_CAP) {
         if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
             if cap.has_rights(Rights::GRANT) {
-                log!("ipc: transfer cap {:?}", utcb.cap_transfer);
+                log!("ipc: Transfer cap {:?}", utcb.cap_transfer);
                 return Some(cap);
             } else {
-                log!("ipc: warning: cannot grant cap {:?}", utcb.cap_transfer);
+                warn!("ipc: Warning: cannot grant cap {:?}", utcb.cap_transfer);
             }
         } else {
-            log!("ipc: warning: cap to transfer not found {:?}", utcb.cap_transfer);
+            warn!("ipc: Warning: cap to transfer not found {:?}", utcb.cap_transfer);
         }
     }
     None
@@ -51,7 +51,7 @@ unsafe fn copy_msg(
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
 ) -> Result<(), Error> {
-    log!("ipc: copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
+    log!("ipc: Copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
     let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
     let src = unsafe { &mut *src_ptr };
@@ -69,11 +69,14 @@ unsafe fn copy_msg(
         let cspace = receiver.get_cspace();
         match cspace.insert(recv_window, &c) {
             Err(e) => {
-                log!("ipc: failed to transfer capability to receiver at {}: {:?}", recv_window, e);
+                error!(
+                    "ipc: Failed to transfer capability to receiver at {}: {:?}",
+                    recv_window, e
+                );
                 return Err(e);
             }
             Ok(_) => {
-                log!("ipc: transferred capability to receiver at {}", recv_window);
+                log!("ipc: Transferred capability to receiver at {}", recv_window);
             }
         }
     }
@@ -84,15 +87,14 @@ unsafe fn copy_msg(
         let cspace = receiver.get_cspace();
         match cspace.insert(reply_window, &rc) {
             Err(e) => {
-                log!(
-                    "ipc: failed to transfer reply capability to receiver at {}: {:?}",
-                    reply_window,
-                    e
+                error!(
+                    "ipc: Failed to transfer reply capability to receiver at {}: {:?}",
+                    reply_window, e
                 );
                 return Err(e);
             }
             Ok(_) => {
-                log!("ipc: transferred reply capability to receiver at {}", reply_window);
+                log!("ipc: Transferred reply capability to receiver at {}", reply_window);
             }
         }
     }
@@ -111,10 +113,10 @@ pub fn send(
     badge: Badge,
     cap: Option<Capability>,
 ) -> Result<(), Error> {
-    log!("ipc: send current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
+    log!("ipc: Send current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: send matched receiver={:p}", receiver_ptr);
+        log!("ipc: Send matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // --- 快速路径: 匹配成功 ---
@@ -123,7 +125,7 @@ pub fn send(
         // 唤醒接收者
         scheduler::wake_up(receiver);
     } else {
-        log!("ipc: send blocking");
+        log!("ipc: Send blocking");
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedSend;
         current.ipc_badge = badge;
@@ -146,10 +148,10 @@ pub fn call(
     badge: Badge,
     cap: Option<Capability>,
 ) -> Result<(), Error> {
-    log!("ipc: call current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
+    log!("ipc: Call current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: call matched receiver={:p}", receiver_ptr);
+        log!("ipc: Call matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
@@ -171,7 +173,7 @@ pub fn call(
             scheduler::block_current_thread();
         }
     } else {
-        log!("ipc: call blocking");
+        log!("ipc: Call blocking");
         // --- 慢速路径: 阻塞在发送队列 ---
         current.state = ThreadState::BlockedCall;
         current.ipc_badge = badge;
@@ -186,10 +188,10 @@ pub fn call(
 /// Reply 操作
 /// 向指定的 TCB 发送回复消息
 pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
-    log!("ipc: reply current={:p} target={:p}", current, target);
+    log!("ipc: Reply current={:p} target={:p}", current, target);
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
-        log!("ipc: reply success");
+        log!("ipc: Reply success");
         // Reply 不产生新的 Reply Cap
         unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
 
@@ -197,16 +199,16 @@ pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Re
         scheduler::wake_up(target);
         Ok(())
     } else {
-        log!("ipc: reply failed target state {:?}", target.state);
+        error!("ipc: Reply failed target state {:?}", target.state);
         Err(Error::InvalidCapability)
     }
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
 pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
-    log!("ipc: notify ep={:p} badge={:?}", ep as *const _, badge);
+    log!("ipc: Notify ep={:p} badge={:?}", ep as *const _, badge);
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: notify matched receiver={:p}", receiver_ptr);
+        log!("ipc: Notify matched receiver={:p}", receiver_ptr);
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
@@ -218,7 +220,7 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
 
         scheduler::wake_up(receiver);
     } else {
-        log!("ipc: notify pending");
+        log!("ipc: Notify pending");
         ep.notify(badge);
     }
     Ok(())
@@ -229,11 +231,11 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
-    log!("ipc: recv current={:p} ep={:p}", current, ep as *const _);
+    log!("ipc: Recv current={:p} ep={:p}", current, ep as *const _);
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     let pending = ep.poll_notification();
     if !pending.is_null() {
-        log!("ipc: recv matched notification");
+        log!("ipc: Recv matched notification");
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
@@ -247,7 +249,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 
     // 1. 检查是否有发送者在等待
     if let Some(sender_ptr) = ep.dequeue_send() {
-        log!("ipc: recv matched sender={:p}", sender_ptr);
+        log!("ipc: Recv matched sender={:p}", sender_ptr);
         let sender = unsafe { &mut *sender_ptr };
         let badge = sender.ipc_badge;
         let cap = sender.ipc_cap.take();
@@ -273,7 +275,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 
         // 接收者收到数据，继续运行 (不阻塞)
     } else {
-        log!("ipc: recv blocking");
+        log!("ipc: Recv blocking");
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedRecv;
 
@@ -292,7 +294,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 ///
 /// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
 pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Result<(), Error> {
-    log!("ipc: proxy current={:p} ep={:p}", current, ep as *const _);
+    log!("ipc: Proxy current={:p} ep={:p}", current, ep as *const _);
 
     // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
     let badge = if let Some(utcb_ptr) = get_utcb_ptr(current) {
@@ -301,7 +303,7 @@ pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Resul
         Badge::null()
     };
 
-    log!("ipc: proxy spoofing badge {:?}", badge);
+    log!("ipc: Proxy spoofing badge {:?}", badge);
 
     // 2. 复用 Call 逻辑
     // 发送消息并设置状态为 BlockedCall，等待 Reply

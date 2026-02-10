@@ -87,7 +87,7 @@ impl PageTable {
             let pte_ptr = if let Some(ptr) = self.walk(current_va) {
                 ptr
             } else {
-                log!("PageTable::map failed: intermediate missing for va={:?}", current_va);
+                error!("PageTable::map failed: intermediate missing for va={:?}", current_va);
                 return Err(Error::MappingFailed);
             };
 
@@ -95,7 +95,7 @@ impl PageTable {
                 let old_pte = *pte_ptr;
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
-                    log!(
+                    error!(
                         "PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}\n",
                         current_va,
                         old_pte.pa(),
@@ -152,7 +152,7 @@ impl PageTable {
         level: usize,
     ) -> Result<(), Error> {
         if level == 0 || level >= PT_LEVELS {
-            log!("PageTable::map_table failed: invalid level {}", level);
+            error!("PageTable::map_table failed: invalid level {}", level);
             return Err(Error::InvalidArgs); // 无效层级
         }
 
@@ -162,7 +162,7 @@ impl PageTable {
             let idx = hal::mem::get_vpn_index(va, l).as_usize();
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
-                log!(
+                error!(
                     "PageTable::map_table failed: parent missing/huge at level {} va={:?}\n",
                     l,
                     va
@@ -179,7 +179,7 @@ impl PageTable {
         let pte_ptr = &mut table.entries[idx];
 
         if pte_ptr.is_valid() {
-            log!("PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
+            error!("PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
             return Err(Error::AlreadyExists); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
