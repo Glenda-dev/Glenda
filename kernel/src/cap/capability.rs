@@ -12,6 +12,7 @@ use crate::proc::TCB;
 use crate::proc::asid::Asid;
 use core::fmt::Display;
 use core::sync::atomic::Ordering;
+use num_enum::FromPrimitive;
 
 /// Capability (Compressed to 16 bytes)
 /// Word 0: Object Pointer / Data
@@ -91,9 +92,9 @@ const ASID_BITS: usize = 16;
 
 impl Capability {
     // Helper to extract type
-    pub const fn cap_type(&self) -> CapType {
+    pub fn cap_type(&self) -> CapType {
         let tag = self.words[1] & TYPE_MASK;
-        CapType::from_usize_const(tag)
+        CapType::from_primitive(tag)
     }
 
     // Helper to extract Rights
@@ -155,7 +156,7 @@ impl Capability {
     }
 
     #[inline(always)]
-    pub const fn obj_ptr(&self) -> VirtAddr {
+    pub fn obj_ptr(&self) -> VirtAddr {
         match self.cap_type() {
             CapType::TCB => VirtAddr::from(self.words[0]),
             CapType::Endpoint => VirtAddr::from(self.words[0]),
@@ -170,7 +171,7 @@ impl Capability {
     }
 
     #[inline(always)]
-    pub const fn paddr(&self) -> PhysAddr {
+    pub fn paddr(&self) -> PhysAddr {
         match self.cap_type() {
             CapType::Untyped => PhysAddr::from(self.words[0]),
             CapType::Frame => PhysAddr::from(self.words[0]),

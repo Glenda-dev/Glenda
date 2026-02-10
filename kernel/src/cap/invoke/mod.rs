@@ -23,7 +23,7 @@ pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), 
         CapType::Reply => ipc::invoke_reply(cap, method),
         CapType::Kernel => kernel::invoke_kernel(cap, method),
         _ => {
-            log!("Invoke: Invalid capability: {:?}", cap);
+            log!("Invoke: Invalid capability: {}", cap);
             Err(Error::InvalidType)
         }
     }

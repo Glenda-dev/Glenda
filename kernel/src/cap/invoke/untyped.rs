@@ -1,3 +1,5 @@
+use num_enum::FromPrimitive;
+
 use super::super::method::*;
 use crate::cap::{CNode, CapPtr, CapType, Capability};
 use crate::error::Error;
@@ -24,9 +26,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
 
     match method {
         untypedmethod::RETYPE => {
-            // Retype: (type, flags,  dest_cnode, dest_slot_offset, dirty)
-            let obj_type = utcb.mrs_regs[0];
-
+            let obj_type = CapType::from_primitive(utcb.mrs_regs[0]);
             let flags = utcb.mrs_regs[1];
             let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[2]);
             let dest_slot = CapPtr::from(utcb.mrs_regs[3]);
@@ -45,7 +45,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
                     log!("Untyped::Retype failed: invalid dest slot {:?}", dest_slot);
                     return Err(Error::InvalidSlot);
                 }
-                match untyped.retype(CapType::from(obj_type), flags) {
+                match untyped.retype(obj_type, flags) {
                     Some(new_cap) => {
                         let slot_ptr = match tcb.lookup_slot(CapPtr::from(cptr)) {
                             Some(s) => s,
