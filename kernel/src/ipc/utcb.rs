@@ -61,14 +61,6 @@ impl UTCB {
         to_write
     }
 
-    pub fn append(&mut self, data: &[u8]) -> usize {
-        let space = self.available_space();
-        let to_write = core::cmp::min(space, data.len());
-        self.ipc_buffer[self.size..self.size + to_write].copy_from_slice(&data[..to_write]);
-        self.size += to_write;
-        to_write
-    }
-
     pub fn read(&mut self, buf: &mut [u8]) -> usize {
         let data_len = self.available_data();
         let to_read = core::cmp::min(data_len, buf.len());
@@ -77,26 +69,6 @@ impl UTCB {
             self.head += to_read;
         }
         to_read
-    }
-
-    pub fn write_byte(&mut self, byte: u8) -> bool {
-        if self.available_space() > 0 {
-            self.ipc_buffer[self.size] = byte;
-            self.size += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn read_byte(&mut self) -> Option<u8> {
-        if self.available_data() > 0 {
-            let b = self.ipc_buffer[self.head];
-            self.head += 1;
-            Some(b)
-        } else {
-            None
-        }
     }
 }
 

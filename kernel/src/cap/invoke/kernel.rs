@@ -59,6 +59,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
             }
 
             // Implementation: loop read char until \n or \r
+            let mut buf = [0u8; 256];
             let mut count = 0;
             loop {
                 let c = hal::console::read();
@@ -67,17 +68,15 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                 // Echo back
                 printk!("{}", c as char);
 
-                if b == b'\r' || b == b'\n' {
+                if b == b'\r' || b == b'\n' || count >= buf.len() {
                     break;
                 }
 
-                // Write to UTCB buffer
-                if !utcb.write_byte(b) {
-                    break; // Buffer full
-                }
+                buf[count] = b;
                 count += 1;
             }
 
+            utcb.write(&buf[..count]);
             utcb.mrs_regs[0] = count;
             errcode::SUCCESS
         }
