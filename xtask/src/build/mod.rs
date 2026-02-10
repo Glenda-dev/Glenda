@@ -3,7 +3,7 @@ mod cmake;
 mod make;
 
 use crate::config::{Config, Service};
-use crate::util::run;
+use crate::util::{run, strip};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
@@ -159,7 +159,17 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
             anyhow::bail!("Service artifact not found at: {}", artifact_path.display());
         }
 
-        let data = fs::read(&artifact_path)?;
+        let mut data = fs::read(&artifact_path)?;
+
+        // If it's an ELF file, strip it for the initrd
+        if data.starts_with(b"\x7fELF") {
+            let tmp_path = Path::new("target").join(format!("{}.stripped", c.name));
+            fs::copy(&artifact_path, &tmp_path)?;
+            strip(cfg, &tmp_path)?;
+            data = fs::read(&tmp_path)?;
+            let _ = fs::remove_file(&tmp_path);
+        }
+
         Ok((c.name.clone(), data))
     };
 
