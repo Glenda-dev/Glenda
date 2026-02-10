@@ -7,7 +7,7 @@ cpus = 1
 mem = "2G"
 display = "nographic"
 drive = "disk.img"
-bootargs = "-v"
+bootargs = "-v -s"
 
 [[services]]
 name = "warren"
@@ -27,6 +27,49 @@ path = "service/unicorn"
 build = "cargo"
 output = "build/unicorn.elf"
 kind = "service"
+[[services]]
+name = "gopher"
+path = "service/gopher"
+build = "cargo"
+output = "build/gopher.elf"
+kind = "service"
+[[services]]
+name = "goldfish-rtc"
+path = "drivers/timer/goldfish-rtc"
+build = "cargo"
+output = "build/goldfish-rtc.elf"
+kind = "service"
+[[services]]
+name = "ns16550a"
+path = "drivers/uart/ns16550a"
+build = "cargo"
+output = "build/ns16550a.elf"
+kind = "service"
+[[services]]
+name = "virtio-blk"
+path = "drivers/virtio/block"
+build = "cargo"
+output = "build/virtio-blk.elf"
+kind = "service"
+[[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
+kind = "service"
+[[services]]
+name = "extfs"
+path = "drivers/fs/extfs"
+build = "cargo"
+output = "build/extfs.elf"
+kind = "service"
+[[services]]
+name = "fatfs"
+path = "drivers/fs/fatfs"
+build = "cargo"
+output = "build/fatfs.elf"
+kind = "service"
+
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
@@ -35,7 +78,13 @@ output = ""
 
 [[files]]
 name = "init.json"
-path = "config/init.json"
+path = "platform/qemu/init.json"
+[[files]]
+name = "drivers.json"
+path = "platform/qemu/drivers.json"
+[[files]]
+name = "fs.json"
+path = "platform/qemu/fs.json"
 
 [features]
 kernel = []

@@ -1,10 +1,4 @@
 {
-    "services": [
-        {
-            "name": "unicorn",
-            "binary": "unicorn"
-        }
-    ],
     "drivers": [
         {
             "name": "ns16550a",
@@ -21,6 +15,5 @@
                 "virtio,mmio"
             ]
         }
-    ],
-    "tests": []
+    ]
 }

@@ -1,0 +1,22 @@
+{
+    "filesystems": [
+        {
+            "name": "extfs",
+            "binary": "extfs",
+            "compatible": [
+                "ext4",
+                "ext4",
+                "ext2"
+            ]
+        },
+        {
+            "name": "fatfs",
+            "binary": "fatfs",
+            "compatible": [
+                "vfat",
+                "exfat",
+                "msdos"
+            ]
+        }
+    ]
+}

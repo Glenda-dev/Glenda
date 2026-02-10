@@ -14,9 +14,11 @@ members = [
     "drivers/virtio/block",
     "drivers/uart/ns16550a",
     "drivers/virtio/net",
+    "drivers/timer/goldfish-rtc",
     "drivers/fs/fatfs",
     "drivers/fs/extfs",
     "examples/hello",
+    "service/gopher",
 ]
 resolver = "2"
 
