@@ -148,7 +148,16 @@ fn fault_handler(
         let badge = handler_cap.get_badge();
 
         // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
-        ipc::call(tcb, ep, badge, None);
+        ipc::call(tcb, ep, badge, None).unwrap_or_else(|err| {
+            log!(
+                "Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}",
+                err,
+                e,
+                cause,
+                pc
+            );
+            scheduler::block_current_thread();
+        });
 
         // 4. 如果是Syscall，跳过epc
         if e == TrapException::Syscall {

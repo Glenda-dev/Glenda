@@ -17,6 +17,8 @@ use layout::*;
 
 use initrd::ProcPayload;
 
+use crate::error::Error;
+
 /// 初始化进程子系统
 pub fn init() {
     initrd::init();
@@ -25,7 +27,7 @@ pub fn init() {
 /// 创建 Root Task
 pub fn spawn(name: &str) {
     if let Some(task) = initrd::find(name) {
-        spawn_payload(task);
+        spawn_payload(task).expect("Failed to spawn root task payload");
     } else {
         panic!("proc: Root task '{}' not found", name);
     }
@@ -36,17 +38,17 @@ pub fn spawn_first() {
         let len = task.metadata.name.iter().position(|&c| c == 0).unwrap_or(32);
         let name = core::str::from_utf8(&task.metadata.name[..len]).unwrap_or("unknown");
         log!("proc: Spawning default root task '{}'", name);
-        spawn_payload(task);
+        spawn_payload(task).expect("Failed to spawn default root task payload");
     } else {
         panic!("proc: No root task found in initrd");
     }
 }
 
-fn spawn_payload(root_task: ProcPayload) {
+fn spawn_payload(root_task: ProcPayload) -> Result<(), Error> {
     let (entry_point, stack_top) = root_task.info();
 
     // 1. Allocate Capabilities
-    let caps = alloc_root_caps();
+    let caps = alloc_root_caps()?;
 
     // 2. Setup TCB basic fields
     let tcb = unsafe { caps.tcb.obj_ptr().as_mut::<TCB>() };
@@ -54,12 +56,12 @@ fn spawn_payload(root_task: ProcPayload) {
     // 3. Setup VSpace
     let pt_pa = caps.vspace.paddr();
     let vspace = PageTable::from_addr(pt_pa);
-    init_vspace(vspace, caps.tf.paddr(), caps.utcb.paddr(), caps.bootinfo.paddr());
+    init_vspace(vspace, caps.tf.paddr(), caps.utcb.paddr(), caps.bootinfo.paddr())?;
     root_task.map(vspace);
 
     // 4. Setup bootinfo
     let bootinfo = unsafe { caps.bootinfo.obj_ptr().as_mut::<BootInfo>() };
-    init_bootinfo(bootinfo);
+    init_bootinfo(bootinfo)?;
 
     // 5. Setup platform info
     let platform_info = unsafe { caps.platform.obj_ptr().as_mut::<PlatformInfo>() };
@@ -67,7 +69,7 @@ fn spawn_payload(root_task: ProcPayload) {
 
     // 6. Setup CSpace
     let cspace = unsafe { caps.cspace.obj_ptr().as_mut::<CNode>() };
-    init_cspace(cspace, &caps, bootinfo);
+    init_cspace(cspace, &caps, bootinfo)?;
     // 7. Configure TCB resources
     TCB::register(tcb);
     tcb.configure(&caps.cspace, &caps.vspace, &caps.utcb, &caps.tf, &caps.kstack);
@@ -79,6 +81,7 @@ fn spawn_payload(root_task: ProcPayload) {
 
     //cspace.debug_print();
     //vspace.debug_print();
+    Ok(())
 }
 /*
 用户地址空间布局：

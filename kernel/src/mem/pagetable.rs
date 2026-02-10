@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::Pte;
 use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
@@ -69,7 +70,13 @@ impl PageTable {
     ///
     /// 注意：此函数假设中间页表已经存在。如果不存在，会返回失败。
     /// 用户必须先调用 map_table 来建立中间层级。
-    pub fn map(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) -> Result<(), ()> {
+    pub fn map(
+        &mut self,
+        va: VirtAddr,
+        pa: PhysAddr,
+        size: usize,
+        flags: Perms,
+    ) -> Result<(), Error> {
         assert!(va.is_aligned(PGSIZE));
         assert!(pa.is_aligned(PGSIZE));
 
@@ -81,7 +88,7 @@ impl PageTable {
                 ptr
             } else {
                 log!("PageTable::map failed: intermediate missing for va={:?}", current_va);
-                return Err(());
+                return Err(Error::MappingFailed);
             };
 
             unsafe {
@@ -94,7 +101,7 @@ impl PageTable {
                         old_pte.pa(),
                         current_pa
                     );
-                    return Err(());
+                    return Err(Error::AlreadyExists);
                 }
 
                 // 写入新的 PTE
@@ -114,7 +121,7 @@ impl PageTable {
     /// * `size`: 大小
     ///
     /// 注意：不负责释放物理内存。物理内存由 Capability 系统管理。
-    pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), ()> {
+    pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), Error> {
         let start_va = va.align_down(PGSIZE);
         let end_va = (va + size).align_up(PGSIZE);
         let mut current_va = start_va;
@@ -137,11 +144,16 @@ impl PageTable {
     ///
     /// * `va`: 目标虚拟地址范围的起始
     /// * `table_pa`: 中间页表的物理地址
-    /// * `level`: 目标层级 (例如 1 代表映射一个 2MB 范围的页目录)
-    pub fn map_table(&mut self, va: VirtAddr, table_pa: PhysAddr, level: usize) -> Result<(), ()> {
+    /// * `level`: 目标层级 (例如 1 代表映射一个 2 MB 范围的页目录)
+    pub fn map_table(
+        &mut self,
+        va: VirtAddr,
+        table_pa: PhysAddr,
+        level: usize,
+    ) -> Result<(), Error> {
         if level == 0 || level >= PT_LEVELS {
             log!("PageTable::map_table failed: invalid level {}", level);
-            return Err(()); // 无效层级
+            return Err(Error::InvalidArgs); // 无效层级
         }
 
         // 遍历到目标层级的上一级
@@ -155,7 +167,7 @@ impl PageTable {
                     l,
                     va
                 );
-                return Err(()); // 父级页表不存在或已被大页占用
+                return Err(Error::MappingFailed); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
             let next_va = hal::mem::phys_to_virt(next_pa);
@@ -168,7 +180,7 @@ impl PageTable {
 
         if pte_ptr.is_valid() {
             log!("PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
-            return Err(()); // 槽位已被占用
+            return Err(Error::AlreadyExists); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
         *pte_ptr = Pte::from(table_pa, Perms::VALID);

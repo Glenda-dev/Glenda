@@ -3,18 +3,18 @@ use crate::cap::{CapPtr, CapType, Capability};
 use crate::hal;
 use crate::hal::mem::PGSIZE;
 
+use crate::error::Error;
 use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
 use crate::proc::scheduler;
-use crate::trap::syscall::errcode;
 
-pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let paddr = if cap.cap_type() == CapType::PageTable {
         cap.paddr()
     } else {
         log!("PageTable::invoke failed: invalid obj type {:?}", cap.cap_type());
-        return errcode::INVALID_OBJ_TYPE;
+        return Err(Error::InvalidType);
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
@@ -25,7 +25,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
         Some(u) => u,
         None => {
             log!("PageTable::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -40,7 +40,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
                 Some(c) => c,
                 None => {
                     log!("PageTable::MapTable failed: table cap not found cptr={:?}", table_cptr);
-                    return errcode::INVALID_CAP;
+                    return Err(Error::InvalidCapability);
                 }
             };
 
@@ -51,34 +51,31 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> usize {
                     "PageTable::MapTable failed: invalid table cap type {:?}\n",
                     table_cap.cap_type()
                 );
-                return errcode::INVALID_OBJ_TYPE;
+                return Err(Error::InvalidType);
             };
 
-            match pt.map_table(vaddr, table_paddr, level) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => {
-                    log!(
-                        "PageTable::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
-                        vaddr,
-                        level
-                    );
-                    errcode::MAPPING_FAILED
-                }
-            }
+            pt.map_table(vaddr, table_paddr, level).map_err(|_| {
+                log!(
+                    "PageTable::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
+                    vaddr,
+                    level
+                );
+                Error::MappingFailed
+            })
         }
         _ => {
             log!("PageTable::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }
 
-pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let paddr = if cap.cap_type() == CapType::VSpace {
         cap.paddr()
     } else {
         log!("VSpace::invoke failed: invalid obj type {:?}", cap.cap_type());
-        return errcode::INVALID_OBJ_TYPE;
+        return Err(Error::InvalidType);
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
@@ -89,7 +86,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
         Some(u) => u,
         None => {
             log!("VSpace::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -104,7 +101,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 Some(c) => c,
                 None => {
                     log!("VSpace::Map failed: frame cap not found cptr={:?}", frame_cptr);
-                    return errcode::INVALID_CAP;
+                    return Err(Error::InvalidCapability);
                 }
             };
 
@@ -112,23 +109,16 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 frame_cap.paddr()
             } else {
                 log!("VSpace::Map failed: invalid frame cap type {:?}", frame_cap.cap_type());
-                return errcode::INVALID_OBJ_TYPE;
+                return Err(Error::InvalidType);
             };
 
             let num_pages = frame_cap.get_data();
 
             // 执行映射
-            match pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => {
-                    log!(
-                        "VSpace::Map failed: pt.map failed vaddr={:?} pages={}\n",
-                        vaddr,
-                        num_pages
-                    );
-                    errcode::MAPPING_FAILED
-                }
-            }
+            pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags).map_err(|_| {
+                log!("VSpace::Map failed: pt.map failed vaddr={:?} pages={}\n", vaddr, num_pages);
+                Error::MappingFailed
+            })
         }
         vspacemethod::MAP_TABLE => {
             // MapTable: (table_cap, vaddr, level)
@@ -140,7 +130,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                 Some(c) => c,
                 None => {
                     log!("VSpace::MapTable failed: table cap not found cptr={:?}", table_cptr);
-                    return errcode::INVALID_CAP;
+                    return Err(Error::InvalidCapability);
                 }
             };
 
@@ -153,47 +143,38 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> usize {
                     "VSpace::MapTable failed: invalid table cap type {:?}\n",
                     table_cap.cap_type()
                 );
-                return errcode::INVALID_OBJ_TYPE;
+                return Err(Error::InvalidType);
             };
 
-            match pt.map_table(vaddr, table_paddr, level) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => {
-                    log!(
-                        "VSpace::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
-                        vaddr,
-                        level
-                    );
-                    errcode::MAPPING_FAILED
-                }
-            }
+            pt.map_table(vaddr, table_paddr, level).map_err(|_| {
+                log!(
+                    "VSpace::MapTable failed: pt.map_table failed vaddr={:?} level={}\n",
+                    vaddr,
+                    level
+                );
+                Error::MappingFailed
+            })
         }
         vspacemethod::UNMAP => {
             // Unmap: (vaddr, size)
             let vaddr = VirtAddr::from(utcb.mrs_regs[0]);
             let size = utcb.mrs_regs[1];
-            match pt.unmap(vaddr, size) {
-                Ok(()) => errcode::SUCCESS,
-                Err(_) => {
-                    log!("VSpace::Unmap failed: vaddr={:?} size={}", vaddr, size);
-                    errcode::MAPPING_FAILED
-                }
-            }
+            pt.unmap(vaddr, size).map_err(|_| {
+                log!("VSpace::Unmap failed: vaddr={:?} size={}", vaddr, size);
+                Error::MappingFailed
+            })
         }
-        vspacemethod::SETUP => match hal::mem::pt_setup(pt) {
-            Ok(()) => errcode::SUCCESS,
-            Err(_) => {
-                log!("VSpace::Setup failed");
-                errcode::MAPPING_FAILED
-            }
-        },
+        vspacemethod::SETUP => hal::mem::pt_setup(pt).map_err(|_| {
+            log!("VSpace::Setup failed");
+            Error::MappingFailed
+        }),
         vspacemethod::DEBUG_PRINT => {
             pt.debug_print();
-            errcode::SUCCESS
+            Ok(())
         }
         _ => {
             log!("VSpace::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }

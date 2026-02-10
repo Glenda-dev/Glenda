@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::mem::{PPN, PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 /// 页大小
@@ -63,7 +64,7 @@ pub fn kpt_setup(kpt: &mut PageTable) {
 }
 
 /// 设置页表
-pub fn pt_setup(pt: &mut PageTable) -> Result<(), ()> {
+pub fn pt_setup(pt: &mut PageTable) -> Result<(), Error> {
     unimplemented!()
 }
 

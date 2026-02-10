@@ -9,6 +9,7 @@ mod cap;
 mod cpu;
 #[cfg(feature = "gdb")]
 mod debug;
+mod error;
 mod hal;
 mod init;
 mod ipc;

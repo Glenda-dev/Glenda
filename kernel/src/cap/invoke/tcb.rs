@@ -1,16 +1,16 @@
 use super::super::method::*;
 use crate::cap::{CapPtr, CapType, Capability, Rights};
+use crate::error::Error;
 use crate::hal;
 use crate::proc::TCB;
 use crate::proc::scheduler;
-use crate::trap::syscall::errcode;
 
-pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb_ptr = if cap.cap_type() == CapType::TCB {
         cap.obj_ptr()
     } else {
         log!("TCB::invoke failed: invalid obj type {:?}", cap.cap_type());
-        return errcode::INVALID_OBJ_TYPE;
+        return Err(Error::InvalidType);
     };
 
     let tcb = unsafe { tcb_ptr.as_mut::<TCB>() };
@@ -19,7 +19,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
         Some(u) => u,
         None => {
             log!("TCB::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -51,7 +51,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
                     tf_cptr,
                     kstack_cptr
                 );
-                return errcode::INVALID_CAP;
+                return Err(Error::InvalidCapability);
             }
 
             // 简化的配置逻辑
@@ -62,7 +62,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
                 &tf_cap.unwrap(),
                 &kstack_cap.unwrap(),
             );
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::SET_PRIORITY => {
             // SetPriority: (prio)
@@ -70,7 +70,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             tcb.set_priority(prio);
             // 如果修改了优先级，可能需要触发重新调度
             scheduler::reschedule();
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::SET_ENTRYPOINT => {
             // SetRegisters: (entry, sp)
@@ -78,7 +78,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             let sp = utcb.mrs_regs[1];
             let tp = utcb.mrs_regs[2];
             tcb.set_entrypoint(entry, sp, tp);
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::SET_FAULT_HANDLER => {
             // SetFaultHandler: (ep_cptr)
@@ -88,31 +88,31 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
                     tcb.set_fault_handler(ep_cap, native);
-                    errcode::SUCCESS
+                    Ok(())
                 } else {
                     log!("TCB::SetFaultHandler failed: invalid obj type {:?}", ep_cap.cap_type());
-                    errcode::INVALID_OBJ_TYPE
+                    Err(Error::InvalidType)
                 }
             } else {
                 log!("TCB::SetFaultHandler failed: cap not found {:?}", ep_cptr);
-                errcode::INVALID_CAP
+                Err(Error::InvalidCapability)
             }
         }
         tcbmethod::SET_AFFINITY => {
             // SetAffinity: (cpu_id)
             let cpu_id = utcb.mrs_regs[0];
             tcb.set_affinity(cpu_id);
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::SET_REGISTERS => {
             // SetRegisters: (a0, a1, a2, a3, a4, a5, a6)
             tcb.set_registers(&utcb.mrs_regs);
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::RESUME => {
             if !cap.has_rights(Rights::EXECUTE) {
                 log!("TCB::Resume failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
             // Resume
             tcb.resume();
@@ -136,7 +136,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
                     scheduler::reschedule();
                 }
             }
-            errcode::SUCCESS
+            Ok(())
         }
         tcbmethod::SUSPEND => {
             // Suspend
@@ -144,11 +144,11 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> usize {
             if tcb as *const TCB == current_tcb as *const TCB {
                 scheduler::block_current_thread();
             }
-            errcode::SUCCESS
+            Ok(())
         }
         _ => {
             log!("TCB::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }

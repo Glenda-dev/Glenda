@@ -1,14 +1,14 @@
 use super::super::method::*;
 use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights};
+use crate::error::Error;
 use crate::proc::scheduler;
-use crate::trap::syscall::errcode;
 
-pub fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let vaddr = if cap.cap_type() == CapType::CNode {
         cap.obj_ptr()
     } else {
         log!("CNode::invoke failed: invalid obj type {:?}", cap.cap_type());
-        return errcode::INVALID_OBJ_TYPE;
+        return Err(Error::InvalidType);
     };
 
     let cnode = unsafe { vaddr.as_mut::<CNode>() };
@@ -17,7 +17,7 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
         Some(u) => u,
         None => {
             log!("CNode::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -39,21 +39,23 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
                 let src_badge = src_cap.get_badge();
                 if !src_badge.is_null() && !new_badge.is_null() {
                     log!("CNode::Mint failed: rebadge attempt");
-                    return errcode::INVALID_CAP;
+                    return Err(Error::InvalidCapability);
                 }
                 let final_badge = if !src_badge.is_null() { src_badge } else { new_badge };
 
                 let new_cap = src_cap.mint(final_badge, final_rights);
 
-                if cnode.insert_child(dest_cptr, &new_cap, src_slot) {
-                    errcode::SUCCESS
-                } else {
-                    log!("CNode::Mint failed: insert_child failed dest={:?}", dest_cptr);
-                    errcode::INVALID_SLOT
-                }
+                cnode.insert_child(dest_cptr, &new_cap, src_slot).map_err(|e| {
+                    log!(
+                        "CNode::Mint failed: insert_child failed dest={:?} error={:?}",
+                        dest_cptr,
+                        e
+                    );
+                    e
+                })
             } else {
                 log!("CNode::Mint failed: src not found cptr={:?}", src_cptr);
-                errcode::INVALID_CAP
+                Err(Error::InvalidCapability)
             }
         }
         cnodemethod::COPY => {
@@ -66,44 +68,42 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> usize {
                 let src_cap = unsafe { &(*src_slot).cap };
                 let new_cap = src_cap.mint(Badge::null(), Rights::from_bits_truncate(rights));
 
-                if cnode.insert_child(dest_cptr, &new_cap, src_slot) {
-                    errcode::SUCCESS
-                } else {
-                    log!("CNode::Copy failed: insert_child failed dest={:?}", dest_cptr);
-                    errcode::INVALID_SLOT
-                }
+                cnode.insert_child(dest_cptr, &new_cap, src_slot).map_err(|e| {
+                    log!(
+                        "CNode::Copy failed: insert_child failed dest={:?} error={:?}",
+                        dest_cptr,
+                        e
+                    );
+                    e
+                })
             } else {
                 log!("CNode::Copy failed: src not found cptr={:?}", src_cptr);
-                errcode::INVALID_CAP
+                Err(Error::InvalidCapability)
             }
         }
         cnodemethod::DELETE => {
             // Delete: (slot)
             let cptr = CapPtr::from(utcb.mrs_regs[0]);
-            if cnode.delete(cptr) {
-                errcode::SUCCESS
-            } else {
-                log!("CNode::Delete failed: cptr={:?}", cptr);
-                errcode::INVALID_SLOT
-            }
+            cnode.delete(cptr).map_err(|e| {
+                log!("CNode::Delete failed: cptr={:?} error={:?}", cptr, e);
+                e
+            })
         }
         cnodemethod::REVOKE => {
             // Revoke: (slot)
             let cptr = CapPtr::from(utcb.mrs_regs[0]);
-            if cnode.revoke(cptr) {
-                errcode::SUCCESS
-            } else {
-                log!("CNode::Revoke failed: cptr={:?}", cptr);
-                errcode::INVALID_SLOT
-            }
+            cnode.revoke(cptr).map_err(|e| {
+                log!("CNode::Revoke failed: cptr={:?} error={:?}", cptr, e);
+                e
+            })
         }
         cnodemethod::DEBUG_PRINT => {
             cnode.debug_print();
-            errcode::SUCCESS
+            Ok(())
         }
         _ => {
             log!("CNode::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }

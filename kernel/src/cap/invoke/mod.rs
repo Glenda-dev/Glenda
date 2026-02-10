@@ -7,10 +7,10 @@ mod untyped;
 mod vspace;
 
 use crate::cap::{CapType, Capability};
+use crate::error::Error;
 use crate::log;
-use crate::trap::syscall::errcode;
 
-pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> usize {
+pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), Error> {
     // 4. 根据对象类型分发
     match cap.cap_type() {
         CapType::Endpoint => ipc::invoke_ipc(cap, method),
@@ -23,8 +23,8 @@ pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> usize {
         CapType::Reply => ipc::invoke_reply(cap, method),
         CapType::Kernel => kernel::invoke_kernel(cap, method),
         _ => {
-            log!("Invoke: Invalid capability: {:?}\n", cap);
-            errcode::INVALID_OBJ_TYPE
+            log!("Invoke: Invalid capability: {:?}", cap);
+            Err(Error::InvalidType)
         }
     }
 }

@@ -1,4 +1,5 @@
 use super::{CapType, Capability};
+use crate::error::Error;
 use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
 use crate::printk;
@@ -224,10 +225,10 @@ impl CNode {
         }
     }
 
-    pub fn insert(&self, cptr: CapPtr, cap: &Capability) -> bool {
+    pub fn insert(&self, cptr: CapPtr, cap: &Capability) -> Result<(), Error> {
         if cptr.is_null() {
             log!("cnode: Insert failed, null CPtr");
-            return false;
+            return Err(Error::InvalidSlot);
         }
 
         // 1. Lock Current Node
@@ -238,7 +239,7 @@ impl CNode {
 
         if index >= CNODE_SLOTS || index == 0 {
             log!("cnode: Insert failed, invalid index {} in CPtr {}", index, cptr);
-            return false;
+            return Err(Error::InvalidSlot);
         }
 
         // 获取 Slot 指针 (通过 UnsafeCell 合法获取可变引用)
@@ -249,10 +250,10 @@ impl CNode {
             // Found leaf - check if empty
             if slot.cap.cap_type() != CapType::Empty {
                 log!("cnode: Insert failed, slot not empty at index {}", index);
-                return false;
+                return Err(Error::AlreadyExists);
             }
             slot.cap = cap.clone();
-            true
+            Ok(())
         } else {
             // Recurse
             let current_cap = slot.cap.clone();
@@ -262,7 +263,7 @@ impl CNode {
                 let next_cnode_addr = current_cap.obj_ptr();
                 if next_cnode_addr == VirtAddr::null() {
                     log!("cnode: Insert failed, next CNode pointer is null at index {}", index);
-                    return false;
+                    return Err(Error::InvalidCapability);
                 }
                 let next_cnode = unsafe { next_cnode_addr.as_ref::<CNode>() };
                 next_cnode.insert(next_cptr, cap)
@@ -272,27 +273,32 @@ impl CNode {
                     index,
                     current_cap.cap_type()
                 );
-                false
+                Err(Error::InvalidType)
             }
         }
     }
 
-    pub fn insert_child(&mut self, cptr: CapPtr, cap: &Capability, parent_slot: *mut Slot) -> bool {
+    pub fn insert_child(
+        &mut self,
+        cptr: CapPtr,
+        cap: &Capability,
+        parent_slot: *mut Slot,
+    ) -> Result<(), Error> {
         // 1. Lock Self
         let _self_lock_guard = self.metadata().lock.lock();
 
         if cptr.is_null() {
-            return false;
+            return Err(Error::InvalidSlot);
         }
         // Unsafe lookup without lock is fine because we hold lock
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
-            None => return false,
+            None => return Err(Error::InvalidSlot),
             Some(ptr) => unsafe { &mut *ptr },
         };
 
         // 必须确保目标槽位为空，否则会破坏 CDT
         if slot.cap.cap_type() != CapType::Empty {
-            return false;
+            return Err(Error::AlreadyExists);
         }
 
         let parent_slot_ref = unsafe { &mut *parent_slot };
@@ -332,30 +338,30 @@ impl CNode {
         parent_slot_ref.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
 
         slot.cdt = cdt;
-        true
+        Ok(())
     }
 
-    pub fn revoke(&mut self, cptr: CapPtr) -> bool {
+    pub fn revoke(&mut self, cptr: CapPtr) -> Result<(), Error> {
         let _guard = self.metadata().lock.lock();
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
-            None => return false,
+            None => return Err(Error::InvalidSlot),
             Some(ptr) => unsafe { &mut *ptr },
         };
         revoke_recursive(slot);
-        true
+        Ok(())
     }
 
-    pub fn delete(&mut self, cptr: CapPtr) -> bool {
+    pub fn delete(&mut self, cptr: CapPtr) -> Result<(), Error> {
         let _guard = self.metadata().lock.lock();
         if cptr.is_null() {
-            return false;
+            return Err(Error::InvalidSlot);
         }
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
-            None => return false,
+            None => return Err(Error::InvalidSlot),
             Some(ptr) => unsafe { &mut *ptr },
         };
         delete_recursive(slot);
-        true
+        Ok(())
     }
 
     pub fn ref_count(&self) -> &AtomicUsize {

@@ -2,6 +2,7 @@ use super::bootinfo::BOOTINFO_PAGES;
 use super::bootinfo::BootInfo;
 use super::layout::*;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
+use crate::error::Error;
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
@@ -30,22 +31,21 @@ pub struct RootCaps {
     pub platform: Capability,
 }
 
-pub fn alloc_root_caps() -> RootCaps {
-    RootCaps {
-        vspace: pmem::alloc_vspace_cap().expect("Failed to alloc root VSpace"),
-        cspace: pmem::alloc_cnode_cap().expect("Failed to alloc root CSpace"),
-        tcb: pmem::alloc_tcb_cap().expect("Failed to alloc root TCB"),
-        utcb: pmem::alloc_frame_cap(1).expect("Failed to alloc root UTCB"),
-        tf: pmem::alloc_frame_cap(1).expect("Failed to alloc root TrapFrame"),
-        kstack: pmem::alloc_frame_cap(KSTACK_PAGES).expect("Failed to alloc root Kernel Stack"),
-        platform: pmem::alloc_frame_cap(PLATFORM_PAGES)
-            .expect("Failed to alloc root Platform Info"),
-        bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).expect("Failed to alloc root BootInfo"),
+pub fn alloc_root_caps() -> Result<RootCaps, Error> {
+    Ok(RootCaps {
+        vspace: pmem::alloc_vspace_cap().ok_or(Error::OutOfMemory)?,
+        cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        tcb: pmem::alloc_tcb_cap().ok_or(Error::OutOfMemory)?,
+        utcb: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
+        tf: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
+        kstack: pmem::alloc_frame_cap(KSTACK_PAGES).ok_or(Error::OutOfMemory)?,
+        platform: pmem::alloc_frame_cap(PLATFORM_PAGES).ok_or(Error::OutOfMemory)?,
+        bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).ok_or(Error::OutOfMemory)?,
         kernel: Capability::create_kernel(Rights::ALL),
-        untyped_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc Untyped CNode"),
-        mmio_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc MMIO CNode"),
-        irq_cspace: pmem::alloc_cnode_cap().expect("Failed to alloc IRQ CNode"),
-    }
+        untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        mmio_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        irq_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+    })
 }
 
 pub fn init_vspace(
@@ -53,7 +53,7 @@ pub fn init_vspace(
     tf_paddr: PhysAddr,
     utcb_paddr: PhysAddr,
     bootinfo_paddr: PhysAddr,
-) {
+) -> Result<(), Error> {
     log!("proc: Setting up Root Task VSpace at {:#x}", vspace as *const _ as usize);
     // 2. 映射 TrapFrame (Trampoline 下方)
     // TrapFrame 仅由 S 态的 user_vector/user_return 访问
@@ -93,7 +93,7 @@ pub fn init_vspace(
     let stack_va_start = STACK_VA;
     let stack_pages = STACK_PAGES;
     for i in 1..=stack_pages {
-        let frame_pa = pmem::alloc_page().expect("Failed to alloc user stack");
+        let frame_pa = pmem::alloc_page().ok_or(Error::OutOfMemory)?;
         let va = VirtAddr::from(stack_va_start - i * PGSIZE);
         vspace.map_with_alloc(va, frame_pa, PGSIZE, Perms::USER | Perms::READ | Perms::WRITE);
     }
@@ -103,15 +103,16 @@ pub fn init_vspace(
     let heap_va_start = HEAP_VA;
     let heap_pages = HEAP_PAGES;
     for i in 0..heap_pages {
-        let frame_pa = pmem::alloc_page().expect("Failed to alloc user heap");
+        let frame_pa = pmem::alloc_page().ok_or(Error::OutOfMemory)?;
         let va = VirtAddr::from(heap_va_start + i * PGSIZE);
         vspace.map_with_alloc(va, frame_pa, PGSIZE, Perms::USER | Perms::READ | Perms::WRITE);
     }
 
     // 设置 Trampoline 映射
-    hal::mem::pt_setup(vspace).expect("Failed to setup VSpace for root task");
+    hal::mem::pt_setup(vspace)?;
+    Ok(())
 }
-pub fn init_bootinfo(bootinfo: &mut BootInfo) {
+pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
     // 设置 Initrd 信息
     let initrd = platform::get().initrd;
     let initrd_offset = initrd.start.as_usize() % PGSIZE;
@@ -121,23 +122,28 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) {
     bootinfo.version = crate::version::get_version();
     bootinfo.build = crate::version::get_build_time_bytes();
     bootinfo.git_hash = crate::version::get_git_hash_bytes();
+    Ok(())
 }
 
 pub fn init_platform(platform: &mut PlatformInfo) {
     let info = platform::get();
     *platform = info.clone();
 }
-pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo) {
+pub fn init_cspace(
+    cspace: &mut CNode,
+    caps: &RootCaps,
+    bootinfo: &mut BootInfo,
+) -> Result<(), Error> {
     log!("proc: Setting up Root Task CSpace at {:p}", cspace);
     let info = platform::get();
-    cspace.insert(CSPACE_CAP, &caps.cspace);
-    cspace.insert(VSPACE_CAP, &caps.vspace);
-    cspace.insert(TCB_CAP, &caps.tcb);
-    cspace.insert(KERNEL_CAP, &caps.kernel);
-    cspace.insert(PLATFORM_CAP, &caps.platform);
-    cspace.insert(UNTYPED_CAP, &caps.untyped_cspace);
-    cspace.insert(MMIO_CAP, &caps.mmio_cspace);
-    cspace.insert(IRQ_CAP, &caps.irq_cspace);
+    cspace.insert(CSPACE_CAP, &caps.cspace)?;
+    cspace.insert(VSPACE_CAP, &caps.vspace)?;
+    cspace.insert(TCB_CAP, &caps.tcb)?;
+    cspace.insert(KERNEL_CAP, &caps.kernel)?;
+    cspace.insert(PLATFORM_CAP, &caps.platform)?;
+    cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
+    cspace.insert(MMIO_CAP, &caps.mmio_cspace)?;
+    cspace.insert(IRQ_CAP, &caps.irq_cspace)?;
 
     // === 1. MMIO Caps (Stored in MMIO CNode at slot 7) ===
     let mut slot = 1;
@@ -151,7 +157,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
                 Rights::ALL,
             );
             // 插入到 MMIO 子 CNode
-            mmio_cnode.insert(CapPtr::from(slot), &cap);
+            mmio_cnode.insert(CapPtr::from(slot), &cap)?;
 
             if bootinfo.mmio_count < bootinfo.mmio_list.len() {
                 bootinfo.mmio_list[bootinfo.mmio_count] =
@@ -170,7 +176,7 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
     for i in 0..count {
         let region = untyped_regions[i];
         let cap = Capability::create_untyped(&region, Rights::ALL);
-        untyped_cnode.insert(CapPtr::from(slot), &cap);
+        untyped_cnode.insert(CapPtr::from(slot), &cap)?;
         slot += 1;
 
         if bootinfo.untyped_count < bootinfo.untyped_list.len() {
@@ -187,8 +193,9 @@ pub fn init_cspace(cspace: &mut CNode, caps: &RootCaps, bootinfo: &mut BootInfo)
         let irq_obj = IRQ::new(irq);
         let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);
         // 插入到 IRQ 子 CNode
-        irq_cnode.insert(CapPtr::from(slot), &cap);
+        irq_cnode.insert(CapPtr::from(slot), &cap)?;
         slot += 1;
     }
     bootinfo.irq_count = MAX_IRQS;
+    Ok(())
 }

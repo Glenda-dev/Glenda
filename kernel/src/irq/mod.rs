@@ -84,7 +84,9 @@ pub fn handle_claimed(cpuid: usize, id: usize) {
             let ep_ptr = cap.obj_ptr();
             let badge = cap.get_badge();
             let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
-            ipc::notify(ep, badge);
+            if let Err(e) = ipc::notify(ep, badge) {
+                log!("irq: notify failed for irq {}: {:?}", id, e);
+            }
         }
     } else {
         // 未绑定通知对象，直接完成

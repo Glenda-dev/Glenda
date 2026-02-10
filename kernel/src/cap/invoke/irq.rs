@@ -1,16 +1,16 @@
 use super::super::method::*;
 use crate::cap::{CapPtr, CapType, Capability};
+use crate::error::Error;
 use crate::hal;
 use crate::irq;
 use crate::proc::scheduler;
-use crate::trap::syscall::errcode;
 
-pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let irq = if cap.cap_type() == CapType::IrqHandler {
         cap.value()
     } else {
         log!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
-        return errcode::INVALID_OBJ_TYPE;
+        return Err(Error::InvalidType);
     };
 
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
@@ -18,7 +18,7 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
         Some(u) => u,
         None => {
             log!("IRQ::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -31,39 +31,39 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> usize {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
                     irq::bind_notification(irq, ep_cap.clone());
-                    errcode::SUCCESS
+                    Ok(())
                 } else {
                     log!(
                         "IRQ::SetNotification failed: invalid target cap type {:?}",
                         ep_cap.cap_type()
                     );
-                    errcode::INVALID_OBJ_TYPE
+                    Err(Error::InvalidType)
                 }
             } else {
                 log!("IRQ::SetNotification failed: cap not found {:?}", ep_cptr);
-                errcode::INVALID_CAP
+                Err(Error::InvalidCapability)
             }
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
             let cpuid = hal::cpu::cpu_id();
             irq::ack_irq(cpuid, irq);
-            errcode::SUCCESS
+            Ok(())
         }
         irqmethod::CLEAR_NOTIFICATION => {
             // Clear binding
             irq::clear_notification(irq);
-            errcode::SUCCESS
+            Ok(())
         }
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority
             let priority = utcb.mrs_regs[0];
             hal::irq::set_priority(irq as u32, priority as u8);
-            errcode::SUCCESS
+            Ok(())
         }
         _ => {
             log!("IRQ::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }

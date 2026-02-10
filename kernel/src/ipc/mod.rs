@@ -3,14 +3,13 @@ pub mod msg;
 pub mod protocol;
 pub mod utcb;
 
+use crate::cap::{Badge, CapType, Capability, Rights};
+use crate::error::Error;
+use crate::proc::scheduler;
+use crate::proc::thread::{TCB, ThreadState};
 pub use endpoint::Endpoint;
 pub use msg::{MsgFlags, MsgTag};
 pub use utcb::{MsgArgs, UTCB};
-
-use crate::cap::{Badge, CapType, Capability, Rights};
-
-use crate::proc::scheduler;
-use crate::proc::thread::{TCB, ThreadState};
 
 pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
     let utcb = match get_utcb_ptr(tcb) {
@@ -51,7 +50,7 @@ unsafe fn copy_msg(
     badge: Badge,
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
-) {
+) -> Result<(), Error> {
     log!("ipc: copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
     let src_ptr = get_utcb_ptr(sender).expect("ipc: Sender has no UTCB");
     let dst_ptr = get_utcb_ptr(receiver).expect("ipc: Receiver has no UTCB");
@@ -68,11 +67,14 @@ unsafe fn copy_msg(
     if let Some(c) = cap {
         let recv_window = dst.recv_window;
         let cspace = receiver.get_cspace();
-        let res = cspace.insert(recv_window, &c);
-        if res == false {
-            log!("ipc: failed to transfer capability to receiver at {}", recv_window);
-        } else {
-            log!("ipc: transferred capability to receiver at {}", recv_window);
+        match cspace.insert(recv_window, &c) {
+            Err(e) => {
+                log!("ipc: failed to transfer capability to receiver at {}: {:?}", recv_window, e);
+                return Err(e);
+            }
+            Ok(_) => {
+                log!("ipc: transferred capability to receiver at {}", recv_window);
+            }
         }
     }
 
@@ -80,13 +82,21 @@ unsafe fn copy_msg(
     if let Some(rc) = reply_cap {
         let reply_window = dst.reply_window;
         let cspace = receiver.get_cspace();
-        let res = cspace.insert(reply_window, &rc);
-        if res == false {
-            log!("ipc: failed to transfer reply capability to receiver at {}", reply_window);
-        } else {
-            log!("ipc: transferred reply capability to receiver at {}", reply_window);
+        match cspace.insert(reply_window, &rc) {
+            Err(e) => {
+                log!(
+                    "ipc: failed to transfer reply capability to receiver at {}: {:?}",
+                    reply_window,
+                    e
+                );
+                return Err(e);
+            }
+            Ok(_) => {
+                log!("ipc: transferred reply capability to receiver at {}", reply_window);
+            }
         }
     }
+    Ok(())
 }
 
 /// 发送操作
@@ -95,7 +105,12 @@ unsafe fn copy_msg(
 /// * `ep`: 目标 Endpoint 对象
 /// * `badge`: 发送 Capability 携带的身份标识
 /// * `cap`: 可选的要传递的能力
-pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
+pub fn send(
+    current: &mut TCB,
+    ep: &Endpoint,
+    badge: Badge,
+    cap: Option<Capability>,
+) -> Result<(), Error> {
     log!("ipc: send current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
@@ -103,7 +118,7 @@ pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         let receiver = unsafe { &mut *receiver_ptr };
 
         // --- 快速路径: 匹配成功 ---
-        unsafe { copy_msg(current, receiver, badge, cap, None) };
+        unsafe { copy_msg(current, receiver, badge, cap, None)? };
 
         // 唤醒接收者
         scheduler::wake_up(receiver);
@@ -120,11 +135,17 @@ pub fn send(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         // 让出 CPU，触发调度
         scheduler::block_current_thread();
     }
+    Ok(())
 }
 
 /// Call 操作 (sys_call)
 /// 发送消息并等待回复，是原子的 Send + Recv
-pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capability>) {
+pub fn call(
+    current: &mut TCB,
+    ep: &Endpoint,
+    badge: Badge,
+    cap: Option<Capability>,
+) -> Result<(), Error> {
     log!("ipc: call current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
@@ -135,7 +156,7 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         let reply_cap = Capability::create_reply(current, Rights::ALL);
 
         // --- 快速路径: 匹配成功 ---
-        unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap)) };
+        unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap))? };
 
         // 当前线程进入 BlockedCall 状态，等待回复
         // 必须在 wake_up 之前设置，否则如果 wake_up 导致抢占，当前线程会被错误地置为 Ready
@@ -159,27 +180,30 @@ pub fn call(current: &mut TCB, ep: &Endpoint, badge: Badge, cap: Option<Capabili
         ep.enqueue_send(current as *mut _);
         scheduler::block_current_thread();
     }
+    Ok(())
 }
 
 /// Reply 操作
 /// 向指定的 TCB 发送回复消息
-pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) {
+pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
     log!("ipc: reply current={:p} target={:p}", current, target);
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
         log!("ipc: reply success");
         // Reply 不产生新的 Reply Cap
-        unsafe { copy_msg(current, target, Badge::null(), cap, None) };
+        unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
 
         // 唤醒目标线程
         scheduler::wake_up(target);
+        Ok(())
     } else {
         log!("ipc: reply failed target state {:?}", target.state);
+        Err(Error::InvalidCapability)
     }
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
-pub fn notify(ep: &Endpoint, badge: Badge) {
+pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
     log!("ipc: notify ep={:p} badge={:?}", ep as *const _, badge);
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         log!("ipc: notify matched receiver={:p}", receiver_ptr);
@@ -197,13 +221,14 @@ pub fn notify(ep: &Endpoint, badge: Badge) {
         log!("ipc: notify pending");
         ep.notify(badge);
     }
+    Ok(())
 }
 
 /// 接收操作 (sys_recv)
 ///
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
-pub fn recv(current: &mut TCB, ep: &Endpoint) {
+pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
     log!("ipc: recv current={:p} ep={:p}", current, ep as *const _);
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     let pending = ep.poll_notification();
@@ -217,7 +242,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
                 (*utcb_ptr).badge = pending;
             };
         }
-        return;
+        return Ok(());
     }
 
     // 1. 检查是否有发送者在等待
@@ -236,7 +261,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 
         // --- 快速路径: 匹配成功 ---
         // 从等待的发送者那里拷贝数据
-        unsafe { copy_msg(sender, current, badge, cap, reply_cap) };
+        unsafe { copy_msg(sender, current, badge, cap, reply_cap)? };
 
         // 唤醒发送者
         // 如果是 Call，发送者已经处于 BlockedCall，不需要在这里唤醒？
@@ -258,6 +283,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
         // 让出 CPU，触发调度
         scheduler::block_current_thread();
     }
+    Ok(())
 }
 
 /// Proxy 操作
@@ -265,7 +291,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) {
 /// 这允许服务在调用其他服务时保留原始调用者的身份（Badge）。
 ///
 /// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
-pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) {
+pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Result<(), Error> {
     log!("ipc: proxy current={:p} ep={:p}", current, ep as *const _);
 
     // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
@@ -279,5 +305,5 @@ pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) {
 
     // 2. 复用 Call 逻辑
     // 发送消息并设置状态为 BlockedCall，等待 Reply
-    call(current, ep, badge, cap);
+    call(current, ep, badge, cap)
 }

@@ -1,17 +1,17 @@
 use super::super::method::*;
 use crate::cap::{Capability, Rights};
+use crate::error::Error;
 use crate::hal;
 use crate::printk;
 use crate::proc::scheduler;
-use crate::trap::syscall::errcode;
 
-pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
+pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
             log!("Kernel::invoke failed: no UTCB");
-            return errcode::MAPPING_FAILED;
+            return Err(Error::MappingFailed);
         }
     };
 
@@ -19,7 +19,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
         kernelmethod::CONSOLE_PUT_STR => {
             if cap.has_rights(Rights::WRITE) == false {
                 log!("Kernel::ConsolePutStr failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
 
             // Try to print as UTF-8 string for better display
@@ -41,21 +41,21 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
                     utcb.head += len;
                 }
             }
-            errcode::SUCCESS
+            Ok(())
         }
         kernelmethod::CONSOLE_GET_CHAR => {
             if cap.has_rights(Rights::READ) == false {
                 log!("Kernel::ConsoleGetChar failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
             let c = hal::console::read() as usize;
             utcb.mrs_regs[0] = c;
-            errcode::SUCCESS
+            Ok(())
         }
         kernelmethod::CONSOLE_GET_STR => {
             if cap.has_rights(Rights::READ) == false {
                 log!("Kernel::ConsoleGetStr failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
 
             // Implementation: loop read char until \n or \r
@@ -78,29 +78,29 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> usize {
 
             utcb.write(&buf[..count]);
             utcb.mrs_regs[0] = count;
-            errcode::SUCCESS
+            Ok(())
         }
         kernelmethod::SHELL => {
             if !cap.has_rights(Rights::EXECUTE) {
                 log!("Kernel::Shell failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
             #[cfg(feature = "shell")]
             crate::shell::run();
-            errcode::SUCCESS
+            Ok(())
         }
         kernelmethod::GET_TIME => {
             if !cap.has_rights(Rights::READ) {
                 log!("Kernel::TimeNow failed: permission denied");
-                return errcode::PERMISSION_DENIED;
+                return Err(Error::PermissionDenied);
             }
             let now = hal::timer::get_time();
             utcb.mrs_regs[0] = now;
-            errcode::SUCCESS
+            Ok(())
         }
         _ => {
             log!("Kernel::invoke failed: invalid method {}", method);
-            errcode::INVALID_METHOD
+            Err(Error::InvalidMethod)
         }
     }
 }
