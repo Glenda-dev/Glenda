@@ -16,13 +16,13 @@ build = "cargo"
 output = "build/dosbox"
 kind = "root_task"
 
-# Floppy Image
-[[services]]
+[[files]]
+name = "init.json"
+path = "config/init.json"
+
+[[files]]
 name = "pcdos330.img"
-path = "examples/dosbox/images"
-output = "PCDOS330.img"
-build = "manifest"
-kind = "file"
+path = "examples/dosbox/images/PCDOS330.img"
 
 [[libraries]]
 name = "libglenda-rs"

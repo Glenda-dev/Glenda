@@ -1,0 +1,10 @@
+{
+    "services": [
+        {
+            "name": "unicorn",
+            "path": "unicorn",
+            "auto_start": true,
+            "dependencies": []
+        }
+    ]
+}

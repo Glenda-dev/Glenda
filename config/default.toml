@@ -1,6 +1,6 @@
 [system]
 arch = "riscv64"
-profile = "relwithdebuginfo"
+profile = "release"
 
 [qemu]
 cpus = 1
@@ -53,6 +53,11 @@ name = "musl-glenda"
 path = "lib/musl-glenda"
 build = "make"
 output = "lib/libc.a"
+
+[[files]]
+name = "init.json"
+path = "config/init.json"
+
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]

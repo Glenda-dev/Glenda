@@ -32,6 +32,11 @@ name = "libglenda-rs"
 path = "lib/libglenda-rs"
 build = "cargo"
 output = ""
+
+[[files]]
+name = "init.json"
+path = "config/init.json"
+
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]

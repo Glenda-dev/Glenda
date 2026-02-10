@@ -68,9 +68,17 @@ impl Default for QemuConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct File {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub services: Vec<Service>,
+    #[serde(default)]
+    pub files: Vec<File>,
     #[serde(default)]
     pub libraries: Vec<Library>,
     #[serde(default)]

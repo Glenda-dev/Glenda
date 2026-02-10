@@ -151,7 +151,6 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
                 make::build(cfg, Path::new(&c.path), &args)?;
                 Path::new(&c.path).join(&c.output)
             }
-            "manifest" => Path::new(&c.path).join(&c.output),
             _ => anyhow::bail!("Unknown build method '{}' for service '{}'", c.build, c.name),
         };
 
@@ -201,6 +200,12 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
             _ => 4,
         };
         entries.push((t, name, data));
+    }
+
+    // 3. Process files
+    for m in cfg.files.iter() {
+        let data = fs::read(&m.path)?;
+        entries.push((4, m.name.clone(), data));
     }
 
     // build modules.bin in target/modules.bin
@@ -288,7 +293,7 @@ pub fn clean(cfg: &Config) -> anyhow::Result<()> {
 
     // Clean services
     for s in cfg.services.iter() {
-        if s.build == "manifest" || s.output.is_empty() {
+        if s.output.is_empty() {
             continue;
         }
 
