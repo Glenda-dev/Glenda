@@ -8,6 +8,7 @@ members = [
     "service/nineball",
     "service/warren",
     "service/unicorn",
+    "service/fossil",
     "examples/dosbox",
     "drivers/virtio/common",
     "drivers/virtio/block",
