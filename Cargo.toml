@@ -15,8 +15,8 @@ members = [
     "drivers/uart/ns16550a",
     "drivers/virtio/net",
     "drivers/timer/goldfish-rtc",
-    "drivers/fs/fatfs",
-    "drivers/fs/extfs",
+    "fs/fatfs",
+    "fs/extfs",
     "examples/hello",
     "service/gopher",
 ]

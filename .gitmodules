@@ -40,3 +40,6 @@
 [submodule "service/factotum"]
 	path = service/factotum
 	url = https://github.com/Glenda-dev/factotum.git
+[submodule "fs"]
+	path = fs
+	url = https://github.com/Glenda-dev/Glenda-filesystem.git
