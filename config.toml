@@ -33,6 +33,12 @@ path = "drivers/uart/ns16550a"
 build = "cargo"
 output = "build/ns16550a.elf"
 kind = "service"
+[[services]]
+name = "virtio-blk"
+path = "drivers/virtio/block"
+build = "cargo"
+output = "build/virtio-blk.elf"
+kind = "service"
 
 [[libraries]]
 name = "libglenda-rs"

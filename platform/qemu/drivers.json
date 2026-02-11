@@ -7,6 +7,13 @@
                 "ns16550a",
                 "snps,dw-apb-uart"
             ]
+        },
+        {
+            "name": "virtio-blk",
+            "binary": "virtio-blk",
+            "compatible": [
+                "virtio,mmio,block"
+            ]
         }
     ]
 }

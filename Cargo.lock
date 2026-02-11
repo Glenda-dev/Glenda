@@ -1048,6 +1048,7 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
+ "virtio-common",
 ]
 
 [[package]]

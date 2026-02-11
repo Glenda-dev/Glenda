@@ -8,8 +8,8 @@ use core::mem::size_of;
 static PLATFORM_INFO: Once<PlatformInfo> = Once::new();
 pub const PLATFORM_SIZE: usize = size_of::<PlatformInfo>();
 pub const PLATFORM_PAGES: usize = (PLATFORM_SIZE + PGSIZE - 1) / PGSIZE;
-pub const MAX_MEMORY_REGIONS: usize = 16;
-pub const MAX_DEVICES: usize = 64;
+pub const MAX_MEMORY_REGIONS: usize = 128;
+pub const MAX_DEVICES: usize = 128;
 
 /// 平台硬件信息摘要
 /// 这个结构体设计为架构无关，可以从 DTB (RISC-V/ARM) 或 ACPI (x86) 转换而来
