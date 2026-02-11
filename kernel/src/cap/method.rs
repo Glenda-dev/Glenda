@@ -30,7 +30,8 @@ pub mod cnodemethod {
     pub const COPY: usize = 2;
     pub const DELETE: usize = 3;
     pub const REVOKE: usize = 4;
-    pub const DEBUG_PRINT: usize = 5;
+    pub const MOVE: usize = 5;
+    pub const DEBUG_PRINT: usize = 6;
 }
 
 pub mod untypedmethod {

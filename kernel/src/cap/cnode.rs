@@ -284,6 +284,94 @@ impl CNode {
         }
     }
 
+    pub fn move_cap(
+        &self,
+        src_cptr: CapPtr,
+        dest_cnode: &CNode,
+        dest_cptr: CapPtr,
+    ) -> Result<(), Error> {
+        if src_cptr.is_null() || dest_cptr.is_null() {
+            return Err(Error::InvalidSlot);
+        }
+
+        // 1. 获取 Source Slot 和 Dest Slot 指针
+        let src_slot_ptr = unsafe { self.lookup_slot_ptr(src_cptr).ok_or(Error::InvalidSlot)? };
+        let dest_slot_ptr =
+            unsafe { dest_cnode.lookup_slot_ptr(dest_cptr).ok_or(Error::InvalidSlot)? };
+
+        if src_slot_ptr == dest_slot_ptr {
+            return Ok(());
+        }
+
+        // 2. 加锁 (按位顺序以避免死锁)
+        let src_slot = unsafe { &mut *src_slot_ptr };
+        let dest_slot = unsafe { &mut *dest_slot_ptr };
+
+        let src_lock_ptr = src_slot.cnode_lock;
+        let dest_lock_ptr = dest_slot.cnode_lock;
+
+        let _guards = if src_lock_ptr.as_usize() < dest_lock_ptr.as_usize() {
+            let g1 = unsafe { src_lock_ptr.as_ref::<SpinLock<()>>().lock() };
+            let g2 = unsafe { dest_lock_ptr.as_ref::<SpinLock<()>>().lock() };
+            (Some(g1), Some(g2))
+        } else if src_lock_ptr.as_usize() > dest_lock_ptr.as_usize() {
+            let g1 = unsafe { dest_lock_ptr.as_ref::<SpinLock<()>>().lock() };
+            let g2 = unsafe { src_lock_ptr.as_ref::<SpinLock<()>>().lock() };
+            (Some(g1), Some(g2))
+        } else {
+            let g = unsafe { src_lock_ptr.as_ref::<SpinLock<()>>().lock() };
+            (Some(g), None)
+        };
+
+        // 3. 检查状态
+        if src_slot.cap.cap_type() == CapType::Empty {
+            return Err(Error::InvalidCapability);
+        }
+        if dest_slot.cap.cap_type() != CapType::Empty {
+            return Err(Error::AlreadyExists);
+        }
+
+        // 4. 执行移动
+        // 直接位拷贝，不触发 Clone/Drop, 从而保持引用计数不变
+        unsafe {
+            core::ptr::copy_nonoverlapping(&src_slot.cap, &mut dest_slot.cap, 1);
+            core::ptr::copy_nonoverlapping(&src_slot.cdt, &mut dest_slot.cdt, 1);
+
+            // 清理原槽位 (手动构造，不触发旧值的 Drop)
+            core::ptr::write(&mut src_slot.cap, Capability::empty());
+            core::ptr::write(&mut src_slot.cdt, CDTNode::new());
+        }
+
+        // 5. 更新 CDT 树关系
+        let dest_ptr_val = dest_slot_ptr as usize;
+        let cdt = &dest_slot.cdt;
+
+        // 更新父节点的 first_child 或前一个兄弟的 next_sibling
+        if cdt.prev_sibling != VirtAddr::null() {
+            let prev_slot = unsafe { &mut *cdt.prev_sibling.as_mut::<Slot>() };
+            prev_slot.cdt.next_sibling = VirtAddr::from(dest_ptr_val);
+        } else if cdt.parent != VirtAddr::null() {
+            let parent_slot = unsafe { &mut *cdt.parent.as_mut::<Slot>() };
+            parent_slot.cdt.first_child = VirtAddr::from(dest_ptr_val);
+        }
+
+        // 更新下一个兄弟的 prev_sibling
+        if cdt.next_sibling != VirtAddr::null() {
+            let next_slot = unsafe { &mut *cdt.next_sibling.as_mut::<Slot>() };
+            next_slot.cdt.prev_sibling = VirtAddr::from(dest_ptr_val);
+        }
+
+        // 更新所有子节点的 parent
+        let mut child_addr = cdt.first_child;
+        while child_addr != VirtAddr::null() {
+            let child_slot = unsafe { &mut *child_addr.as_mut::<Slot>() };
+            child_slot.cdt.parent = VirtAddr::from(dest_ptr_val);
+            child_addr = child_slot.cdt.next_sibling;
+        }
+
+        Ok(())
+    }
+
     pub fn insert_child(
         &mut self,
         cptr: CapPtr,

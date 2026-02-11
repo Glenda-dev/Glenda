@@ -24,6 +24,7 @@ pub fn read() -> u8 {
             }
         } else {
             if let Some(c) = super::sbi::get_char() {
+                super::sbi::put_char(c); // 回显
                 return c;
             }
         }
