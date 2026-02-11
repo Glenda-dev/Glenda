@@ -30,30 +30,27 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
             if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
-                    irq::bind_notification(irq, ep_cap.clone());
-                    Ok(())
+                    irq::bind_notification(irq, &ep_cap)
                 } else {
-                    log!(
+                    error!(
                         "IRQ::SetNotification failed: invalid target cap type {:?}",
                         ep_cap.cap_type()
                     );
                     Err(Error::InvalidType)
                 }
             } else {
-                log!("IRQ::SetNotification failed: cap not found {:?}", ep_cptr);
+                error!("IRQ::SetNotification failed: cap not found {:?}", ep_cptr);
                 Err(Error::InvalidCapability)
             }
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
             let cpuid = hal::cpu::cpu_id();
-            irq::ack_irq(cpuid, irq);
-            Ok(())
+            irq::ack_irq(cpuid, irq)
         }
         irqmethod::CLEAR_NOTIFICATION => {
             // Clear binding
-            irq::clear_notification(irq);
-            Ok(())
+            irq::clear_notification(irq)
         }
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority

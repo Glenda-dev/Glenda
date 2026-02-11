@@ -11,6 +11,10 @@ use crate::error::Error;
 use crate::log;
 
 pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), Error> {
+    if method == 0 {
+        printk!("{}\n", cap);
+        return Ok(());
+    }
     // 4. 根据对象类型分发
     match cap.cap_type() {
         CapType::Endpoint => ipc::invoke_ipc(cap, method),

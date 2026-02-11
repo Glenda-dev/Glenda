@@ -10,7 +10,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
     let mut untyped = match UntypedRegion::from_cap(cap) {
         Some(u) => u,
         None => {
-            log!("Untyped::invoke failed: invalid obj type {:?}", cap.cap_type());
+            error!("Untyped::invoke failed: invalid obj type {:?}", cap.cap_type());
             return Err(Error::InvalidType);
         }
     };
@@ -19,7 +19,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("Untyped::invoke failed: no UTCB");
+            error!("Untyped::invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -34,7 +34,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
             let dest_cnode_cap = match tcb.cap_lookup(dest_cnode_cptr) {
                 Some(c) => c,
                 None => {
-                    log!("Untyped::Retype failed: dest CNode not found {:?}", dest_cnode_cptr);
+                    error!("Untyped::Retype failed: dest CNode not found {:?}", dest_cnode_cptr);
                     return Err(Error::InvalidCapability);
                 }
             };
@@ -42,7 +42,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
             if dest_cnode_cap.cap_type() == CapType::CNode {
                 let dest_cnode = unsafe { dest_cnode_cap.obj_ptr().as_mut::<CNode>() };
                 if !dest_cnode.check_cptr(dest_slot) {
-                    log!("Untyped::Retype failed: invalid dest slot {:?}", dest_slot);
+                    error!("Untyped::Retype failed: invalid dest slot {:?}", dest_slot);
                     return Err(Error::InvalidSlot);
                 }
                 match untyped.retype(obj_type, flags) {
@@ -50,7 +50,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
                         let slot_ptr = match tcb.lookup_slot(CapPtr::from(cptr)) {
                             Some(s) => s,
                             None => {
-                                log!("Untyped::invoke failed: parent slot not found");
+                                error!("Untyped::invoke failed: parent slot not found");
                                 return Err(Error::InvalidCapability);
                             }
                         };
@@ -85,7 +85,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
             }
         }
         _ => {
-            log!("Untyped::invoke failed: invalid method {}", method);
+            error!("Untyped::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

@@ -40,8 +40,8 @@ pub mod untypedmethod {
 
 pub mod irqmethod {
     pub const SET_NOTIFICATION: usize = 1;
-    pub const ACK: usize = 2;
-    pub const CLEAR_NOTIFICATION: usize = 3;
+    pub const CLEAR_NOTIFICATION: usize = 2;
+    pub const ACK: usize = 3;
     pub const SET_PRIORITY: usize = 4;
 }
 

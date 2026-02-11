@@ -2,10 +2,10 @@ pub mod timer;
 
 use crate::cap;
 use crate::cap::Capability;
+use crate::error::Error;
 use crate::hal;
 use crate::hal::irq::MAX_IRQS;
 use crate::ipc;
-
 use crate::sync::RwLock;
 
 pub fn init() {
@@ -48,59 +48,69 @@ impl IRQ {
 static IRQ_TABLE: RwLock<[IrqSlot; MAX_IRQS]> = RwLock::new([const { IrqSlot::new() }; MAX_IRQS]);
 
 /// 绑定通知对象到 IRQ（通常是 Endpoint Cap）
-pub fn bind_notification(irq: usize, cap: Capability) -> bool {
+pub fn bind_notification(irq: usize, cap: &Capability) -> Result<(), Error> {
+    log!("irq: Binding irq: {} to cap: {:p}", irq, cap);
     let mut tbl = IRQ_TABLE.write();
     if irq >= MAX_IRQS {
-        return false;
+        return Err(Error::InvalidAddress);
     }
-    tbl[irq].notification = Some(cap);
+    tbl[irq].notification = Some(cap.clone());
     tbl[irq].enabled = true;
-    true
+
+    // Enable IRQ in PLIC
+    let cpuid = hal::cpu::cpu_id();
+    // Priority must be > threshold (0)
+    hal::irq::set_priority(irq as u32, 1);
+    hal::irq::unmask(irq as u32, cpuid);
+
+    Ok(())
 }
 
-pub fn clear_notification(irq: usize) -> bool {
+pub fn clear_notification(irq: usize) -> Result<(), Error> {
+    log!("irq: Clearing irq: {}", irq);
     let mut tbl = IRQ_TABLE.write();
     if irq >= MAX_IRQS {
-        return false;
+        return Err(Error::InvalidAddress);
     }
     tbl[irq].notification = None;
     tbl[irq].enabled = false;
-    true
+    Ok(())
 }
 
 /// 内核在 trap 中调用：处理 claim 到的 IRQ（mask + notify + complete）
-pub fn handle_claimed(cpuid: usize, id: usize) {
-    // 先屏蔽该 IRQ，交给驱动通过 Ack 重新打开
+pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
+    log!("irq: Handling claimed irq: {} on cpu: {}", id, cpuid);
+    // 1. Mask interrupt
     hal::irq::mask(id as u32, cpuid);
+    // 2. Complete immediately to unblock PLIC priority threshold.
+    hal::irq::complete(id as u32, cpuid);
+
     let tbl = IRQ_TABLE.read();
     if id >= MAX_IRQS {
-        // still complete the IRQ
-        panic!("IRQ {} out of range of MAX_IRQS {}", id, MAX_IRQS);
+        return Err(Error::InvalidAddress);
     }
 
     if let Some(cap) = &tbl[id].notification {
-        // 如果绑定了 Endpoint，直接通知（使用 badge，如果没有则 0）
         if cap.cap_type() == cap::CapType::Endpoint {
             let ep_ptr = cap.obj_ptr();
             let badge = cap.get_badge();
             let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
             if let Err(e) = ipc::notify(ep, badge) {
                 error!("irq: Notify failed for irq {}: {:?}", id, e);
+                return Err(e);
             }
+            return Ok(());
         }
+        Err(Error::InvalidCapability)
     } else {
-        // 未绑定通知对象，直接完成
-        log!("irq: IRQ {} has no bound notification, completing directly", id);
-        // 对 PLIC 做 Complete（claim/complete 寄存器写入）
-        hal::irq::complete(id as u32, cpuid);
-        // 重新打开该 IRQ
+        warn!("irq: IRQ {} has no bound notification, completing directly", id);
         hal::irq::unmask(id as u32, cpuid);
+        Ok(())
     }
 }
 
-pub fn ack_irq(cpuid: usize, irq: usize) {
-    // 对 PLIC 做 Complete（claim/complete 寄存器写入）
-    hal::irq::complete(irq as u32, cpuid);
-    // 重新打开该 IRQ
+pub fn ack_irq(cpuid: usize, irq: usize) -> Result<(), Error> {
+    // Only unmask. Completion was done in handle_claimed.
     hal::irq::unmask(irq as u32, cpuid);
+    Ok(())
 }

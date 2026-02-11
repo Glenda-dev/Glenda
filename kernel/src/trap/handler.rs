@@ -217,9 +217,8 @@ fn external_handler() {
     let id = hal::irq::claim(cpuid);
     match id {
         None => return,
-        Some(id) => {
-            irq::handle_claimed(cpuid, id as usize);
-        }
+        Some(id) => irq::handle_claimed(cpuid, id as usize)
+            .unwrap_or_else(|e| printk!("trap: Failed to handle external interrupt: {:?}\n", e)),
     }
 }
 

@@ -140,6 +140,7 @@ pub fn init_cspace(
     cspace.insert(VSPACE_CAP, &caps.vspace)?;
     cspace.insert(TCB_CAP, &caps.tcb)?;
     cspace.insert(KERNEL_CAP, &caps.kernel)?;
+    cspace.insert(BOOTINFO_CAP, &caps.bootinfo)?;
     cspace.insert(PLATFORM_CAP, &caps.platform)?;
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
     cspace.insert(MMIO_CAP, &caps.mmio_cspace)?;
