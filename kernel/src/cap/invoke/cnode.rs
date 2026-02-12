@@ -100,7 +100,7 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
             let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
 
-            cnode.move_cap(src_cptr, cnode, dest_cptr).map_err(|e| {
+            cnode.move_cap(src_cptr, dest_cptr).map_err(|e| {
                 error!("CNode::Move failed: src={:?} dest={:?} error={:?}", src_cptr, dest_cptr, e);
                 e
             })

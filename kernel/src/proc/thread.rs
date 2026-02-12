@@ -239,6 +239,15 @@ impl TCB {
         }
     }
 
+    pub fn get_cspace_mut(&self) -> Option<&mut CNode> {
+        let root_cap = self.cspace_root.as_ref()?;
+        if root_cap.cap_type() == CapType::CNode {
+            unsafe { Some(root_cap.obj_ptr().as_mut::<CNode>()) }
+        } else {
+            None
+        }
+    }
+
     pub fn cap_lookup(&self, cptr: CapPtr) -> Option<Capability> {
         // 1. 获取 Root CNode
         let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");

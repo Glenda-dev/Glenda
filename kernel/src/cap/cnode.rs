@@ -39,6 +39,34 @@ impl CapPtr {
     pub const fn is_null(&self) -> bool {
         self.0 & CNODE_MASK == 0
     }
+
+    pub fn len(&self) -> usize {
+        if self.0 >> CNODE_BITS == 0 {
+            1
+        } else if self.0 >> (CNODE_BITS * 2) == 0 {
+            2
+        } else if self.0 >> (CNODE_BITS * 3) == 0 {
+            3
+        } else if self.0 >> (CNODE_BITS * 4) == 0 {
+            4
+        } else if self.0 >> (CNODE_BITS * 5) == 0 {
+            5
+        } else if self.0 >> (CNODE_BITS * 6) == 0 {
+            6
+        } else if self.0 >> (CNODE_BITS * 7) == 0 {
+            7
+        } else {
+            8
+        }
+    }
+
+    pub fn concat(root: CapPtr, ptr: CapPtr) -> CapPtr {
+        if root.is_null() {
+            return ptr;
+        }
+        let root_len = root.len();
+        CapPtr(root.0 | ptr.0 << (root_len * CNODE_BITS))
+    }
 }
 
 impl Display for CapPtr {
@@ -284,20 +312,14 @@ impl CNode {
         }
     }
 
-    pub fn move_cap(
-        &self,
-        src_cptr: CapPtr,
-        dest_cnode: &CNode,
-        dest_cptr: CapPtr,
-    ) -> Result<(), Error> {
+    pub fn move_cap(&self, src_cptr: CapPtr, dest_cptr: CapPtr) -> Result<(), Error> {
         if src_cptr.is_null() || dest_cptr.is_null() {
             return Err(Error::InvalidSlot);
         }
 
         // 1. 获取 Source Slot 和 Dest Slot 指针
         let src_slot_ptr = unsafe { self.lookup_slot_ptr(src_cptr).ok_or(Error::InvalidSlot)? };
-        let dest_slot_ptr =
-            unsafe { dest_cnode.lookup_slot_ptr(dest_cptr).ok_or(Error::InvalidSlot)? };
+        let dest_slot_ptr = unsafe { self.lookup_slot_ptr(dest_cptr).ok_or(Error::InvalidSlot)? };
 
         if src_slot_ptr == dest_slot_ptr {
             return Ok(());
