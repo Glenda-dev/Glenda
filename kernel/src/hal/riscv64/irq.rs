@@ -35,21 +35,26 @@ pub fn claim(cpuid: usize) -> Option<u32> {
     let id = plic::claim(cpuid);
     if id == 0 { None } else { Some(id as u32) }
 }
-pub fn complete(irq: u32, cpuid: usize) {
-    plic::complete(cpuid, irq as usize);
+pub fn complete(irq: usize, cpuid: usize) {
+    plic::complete(cpuid, irq);
 }
-pub fn mask(irq: u32, cpuid: usize) {
-    plic::set_enable(cpuid, irq as usize, false);
+pub fn mask(irq: usize, cpuid: usize) {
+    plic::set_enable(cpuid, irq, false);
 }
-pub fn unmask(irq: u32, cpuid: usize) {
-    plic::set_enable(cpuid, irq as usize, true);
+pub fn unmask(irq: usize, cpuid: usize) {
+    plic::set_enable(cpuid, irq, true);
 }
-pub fn set_affinity(_irq: u32, _cpuid: usize) {
+pub fn set_affinity(_irq: usize, _cpuid: usize) {
     // RISC-V PLIC does not support per-CPU IRQ routing
 }
-pub fn set_priority(irq: u32, priority: u8) {
-    plic::set_priority(irq as usize, priority as usize);
+pub fn set_priority(irq: usize, priority: usize) {
+    plic::set_priority(irq, priority);
 }
+
+pub fn set_threshold(threshold: usize, cpuid: usize) {
+    plic::set_threshold(cpuid, threshold)
+}
+
 pub fn clear_soft() {
     unsafe {
         asm::sip_clear(1);

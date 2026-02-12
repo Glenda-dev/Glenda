@@ -10,7 +10,7 @@ drive = "disk.img"
 net = true
 mac = "52:54:00:11:22:33"
 hostfwd = ["tcp::8080-:80"]
-bootargs = "-s"
+bootargs = "-v"
 
 [[services]]
 name = "warren"

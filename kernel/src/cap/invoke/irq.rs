@@ -55,7 +55,7 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
         irqmethod::SET_PRIORITY => {
             // SetPriority: args[0] = priority
             let priority = utcb.mrs_regs[0];
-            hal::irq::set_priority(irq as u32, priority as u8);
+            hal::irq::set_priority(irq, priority);
             Ok(())
         }
         _ => {

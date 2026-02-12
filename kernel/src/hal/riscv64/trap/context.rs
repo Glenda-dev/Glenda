@@ -106,6 +106,9 @@ impl TrapFrame {
     pub const fn get_epc(&self) -> usize {
         self.kernel_epc
     }
+    pub fn set_cpuid(&mut self, id: usize) {
+        self.kernel_hartid = id;
+    }
     pub fn set_return_value(&mut self, value: usize) {
         self.a0 = value;
     }

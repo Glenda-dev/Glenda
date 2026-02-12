@@ -190,7 +190,7 @@ pub fn init_cspace(
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let mut slot = 1;
     let irq_cnode = unsafe { caps.irq_cspace.obj_ptr().as_mut::<CNode>() };
-    for irq in 0..MAX_IRQS {
+    for irq in 1..MAX_IRQS {
         let irq_obj = IRQ::new(irq);
         let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);
         // 插入到 IRQ 子 CNode

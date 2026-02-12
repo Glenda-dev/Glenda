@@ -22,7 +22,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
 
             if cap.is_null() {
                 log!(
-                    "syscall: Invalid capability at {:p}, cptr: {:#x}, method: {}",
+                    "syscall: Null capability at {:p}, cptr: {:#x}, method: {}",
                     slot_ptr,
                     cptr.bits(),
                     method

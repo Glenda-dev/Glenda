@@ -18,7 +18,8 @@ pub fn init_cpu() {
     hal::irq::init_cpu();
     hal::timer::init();
     timer::program_next_tick();
-    // log!("irq: Initialized for cpu {}", hal::cpu::cpu_id());
+    let cpuid = hal::cpu::cpu_id();
+    log!("irq: Initialized for cpu {}", cpuid);
 }
 
 #[derive(Clone)]
@@ -59,9 +60,7 @@ pub fn bind_notification(irq: usize, cap: &Capability) -> Result<(), Error> {
 
     // Enable IRQ in PLIC
     let cpuid = hal::cpu::cpu_id();
-    // Priority must be > threshold (0)
-    hal::irq::set_priority(irq as u32, 1);
-    hal::irq::unmask(irq as u32, cpuid);
+    hal::irq::unmask(irq, cpuid);
 
     Ok(())
 }
@@ -80,9 +79,8 @@ pub fn clear_notification(irq: usize) -> Result<(), Error> {
 /// 内核在 trap 中调用：处理 claim 到的 IRQ（mask + notify + complete）
 pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
     // 1. Mask interrupt
-    hal::irq::mask(id as u32, cpuid);
-    // 2. Complete immediately to unblock PLIC priority threshold.
-    hal::irq::complete(id as u32, cpuid);
+    hal::irq::mask(id, cpuid);
+    // hal::irq::complete(id, cpuid);
 
     let tbl = IRQ_TABLE.read();
     if id >= MAX_IRQS {
@@ -103,13 +101,15 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
         Err(Error::InvalidCapability)
     } else {
         warn!("irq: IRQ {} has no bound notification, completing directly", id);
-        hal::irq::unmask(id as u32, cpuid);
+        hal::irq::unmask(id, cpuid);
         Ok(())
     }
 }
 
 pub fn ack_irq(cpuid: usize, irq: usize) -> Result<(), Error> {
+    // TODO: Move to handle_claimed
+    hal::irq::complete(irq, cpuid);
     // Only unmask. Completion was done in handle_claimed.
-    hal::irq::unmask(irq as u32, cpuid);
+    hal::irq::unmask(irq, cpuid);
     Ok(())
 }
