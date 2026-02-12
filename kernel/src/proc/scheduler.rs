@@ -127,6 +127,11 @@ pub fn scheduler() -> ! {
         if let Some(tcb_ptr) = next_thread {
             let tcb = unsafe { &mut *tcb_ptr };
 
+            // Update kernel_hartid in TrapFrame to ensure correct CPU ID upon trap/syscall
+            // This is critical for SMP!
+            let cpuid = cpu::get().id;
+            tcb.get_tf().kernel_hartid = cpuid;
+
             // 更新状态
             tcb.state = ThreadState::Running;
 

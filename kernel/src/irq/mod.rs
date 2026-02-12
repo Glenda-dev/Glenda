@@ -18,7 +18,7 @@ pub fn init_cpu() {
     hal::irq::init_cpu();
     hal::timer::init();
     timer::program_next_tick();
-    log!("irq: Initialized for cpu {}", hal::cpu::cpu_id());
+    // log!("irq: Initialized for cpu {}", hal::cpu::cpu_id());
 }
 
 #[derive(Clone)]
@@ -79,7 +79,6 @@ pub fn clear_notification(irq: usize) -> Result<(), Error> {
 
 /// 内核在 trap 中调用：处理 claim 到的 IRQ（mask + notify + complete）
 pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
-    log!("irq: Handling claimed irq: {} on cpu: {}", id, cpuid);
     // 1. Mask interrupt
     hal::irq::mask(id as u32, cpuid);
     // 2. Complete immediately to unblock PLIC priority threshold.

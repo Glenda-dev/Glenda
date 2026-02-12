@@ -38,12 +38,12 @@ use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
  [1]: https://www.kernel.org/doc/Documentation/riscv/boot.rst
 
 */
-pub fn glenda_main() -> ! {
-    printk::set_verbose(true);
-    init::init();
+pub fn glenda_main(is_primary: bool) -> ! {
+    init::init(is_primary);
+
     let cpuid = hal::cpu::cpu_id();
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
-    if cpuid == 0 {
+    if is_primary {
         print_banner();
         let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
         printk!("bootargs: {}\n", bootargs);

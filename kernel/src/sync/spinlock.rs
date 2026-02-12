@@ -29,7 +29,11 @@ impl<T: ?Sized> SpinLock<T> {
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
         cpu::push_off();
         if self.holding() {
-            panic!("SpinLock::lock: Deadlock on CPU");
+            panic!(
+                "SpinLock::lock: Deadlock on CPU {} (Holder: {})",
+                cpu::get().id,
+                self.cpu_id.load(Ordering::Relaxed)
+            );
         }
 
         loop {

@@ -129,6 +129,13 @@ pub unsafe fn write_satp(value: usize) {
 }
 
 #[inline(always)]
+pub unsafe fn write_tp(value: usize) {
+    unsafe {
+        asm!("mv tp, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
 pub unsafe fn sfence_vma(vaddr: usize) {
     unsafe {
         asm!("sfence.vma {}, zero", in(reg) vaddr);

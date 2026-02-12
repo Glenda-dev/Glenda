@@ -4,7 +4,7 @@ use core::fmt::Arguments;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 static PRINTK_LOCK: SpinLock<()> = SpinLock::new(());
-pub static VERBOSE: AtomicBool = AtomicBool::new(false);
+pub static VERBOSE: AtomicBool = AtomicBool::new(true);
 
 pub fn set_verbose(enable: bool) {
     VERBOSE.store(enable, Ordering::Relaxed);

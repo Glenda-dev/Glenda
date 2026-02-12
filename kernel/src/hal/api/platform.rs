@@ -37,6 +37,6 @@ pub fn init(dtb: PlatformHandle) {
 }
 
 /// 引导其他 CPU
-pub fn bootstrap_cpus() -> ! {
+pub fn bootstrap_cpus() {
     unimplemented!()
 }

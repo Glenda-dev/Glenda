@@ -88,7 +88,8 @@ impl PmemManager {
 
                 // Zero the allocated frame
                 unsafe {
-                    core::ptr::write_bytes(paddr.as_mut_ptr::<u8>(), 0, size);
+                    let vaddr = hal::mem::phys_to_virt(paddr);
+                    core::ptr::write_bytes(vaddr.as_mut_ptr::<u8>(), 0, size);
                 }
                 return Some(paddr);
             }

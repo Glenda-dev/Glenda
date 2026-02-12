@@ -1,6 +1,6 @@
+use super::asm;
 use super::dtb;
 use super::platform::PlatformHandle;
-use crate::glenda_main;
 use core::arch::global_asm;
 
 global_asm!(
@@ -13,7 +13,7 @@ global_asm!(
     .equ BOOT_STACK_SIZE, 65536 // 64KB 启动栈
     .equ MAX_BOOT_HARTS, 8  // 最多 8 个 hart 并发启动
     
-    .macro HART_ENTRY
+    .macro HART_ENTRY entry
         csrw sie, zero
         la   t1, boot_stack_top
         li   t2, BOOT_STACK_SIZE
@@ -28,14 +28,14 @@ global_asm!(
         mv   sp, t1
         li   s0, 0
 2:
-        tail glenda_boot
+        tail \entry
     .endm
 
 _start: // boot hart
-    HART_ENTRY
+    HART_ENTRY glenda_boot
 
 secondary_start: // secondary harts
-    HART_ENTRY
+    HART_ENTRY glenda_secondary
 
 // 启动栈放在 .bss 段，这样不会与代码混在一起
     .section .bss
@@ -60,7 +60,7 @@ pub enum BootLoaderType {
 pub static mut BOOT_LOADER_TYPE: BootLoaderType = BootLoaderType::OpenSBI;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn glenda_boot(_a0: usize, a1: usize) -> ! {
+pub extern "C" fn glenda_boot(a0: usize, a1: usize) -> ! {
     let dtb = a1;
     #[cfg(feature = "multiboot2")]
     {
@@ -86,6 +86,14 @@ pub extern "C" fn glenda_boot(_a0: usize, a1: usize) -> ! {
     }
     let dtb = PlatformHandle::from(dtb);
     dtb::init(dtb.as_ptr());
-    log!("hal: HAL initialized, dtb at {:#x}", dtb.bits());
-    glenda_main();
+    log!("hal: HAL initialized on cpu {}, dtb at {:#x}", a0, dtb.bits());
+    crate::glenda_main(true);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glenda_secondary(hartid: usize, _a1: usize) -> ! {
+    unsafe {
+        asm::write_tp(hartid);
+    }
+    crate::glenda_main(false);
 }

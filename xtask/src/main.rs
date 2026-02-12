@@ -62,11 +62,9 @@ fn main() -> anyhow::Result<()> {
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
         Cmd::Run => {
-            build::build(&cfg)?;
             qemu::qemu_run(&cfg)?;
         }
         Cmd::Gdb { port } => {
-            build::build(&cfg)?;
             qemu::qemu_gdb(&cfg, port)?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,

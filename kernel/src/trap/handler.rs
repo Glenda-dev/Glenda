@@ -8,7 +8,6 @@ use crate::ipc;
 use crate::ipc::protocol;
 use crate::ipc::{MsgFlags, MsgTag};
 use crate::irq;
-use crate::printk;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc::TCB;
 use crate::proc::scheduler;
@@ -75,7 +74,7 @@ fn interrupt_handler(e: TrapInterrupt, pc: usize, cause: usize, value: usize, st
         TrapInterrupt::Software => timer_ssip(status),
         // 剩下的被认为是需要打印的内容
         _ => {
-            printk!(
+            printk_unsynced!(
                 "{}TRAP(Interrupt){}: {}; pc={:#x}, cause={:#x}, value={:#x}, status={:#x}\n",
                 ANSI_YELLOW,
                 ANSI_RESET,
@@ -149,8 +148,8 @@ fn fault_handler(
 
         // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
         ipc::call(tcb, ep, badge, None).unwrap_or_else(|err| {
-            log!(
-                "Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}",
+            printk_unsynced!(
+                "Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}\n",
                 err,
                 e,
                 cause,
@@ -169,7 +168,7 @@ fn fault_handler(
 }
 
 fn unhandled_exception(e: TrapException, cause: usize, pc: usize, value: usize, status: usize) {
-    printk!(
+    printk_unsynced!(
         "\n{}TRAP(Exception){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_RED,
         ANSI_RESET,
@@ -183,7 +182,7 @@ fn unhandled_exception(e: TrapException, cause: usize, pc: usize, value: usize, 
 }
 
 fn unhandled_interrupt(e: TrapInterrupt, cause: usize, pc: usize, value: usize, status: usize) {
-    printk!(
+    printk_unsynced!(
         "{}TRAP(Interrupt){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_YELLOW,
         ANSI_RESET,
@@ -217,8 +216,9 @@ fn external_handler() {
     let id = hal::irq::claim(cpuid);
     match id {
         None => return,
-        Some(id) => irq::handle_claimed(cpuid, id as usize)
-            .unwrap_or_else(|e| printk!("trap: Failed to handle external interrupt: {:?}\n", e)),
+        Some(id) => irq::handle_claimed(cpuid, id as usize).unwrap_or_else(|e| {
+            printk_unsynced!("trap: Failed to handle external interrupt: {:?}\n", e)
+        }),
     }
 }
 

@@ -32,23 +32,20 @@ pub fn init_kernel_vm() {
     // 1. 映射所有物理内存 (Identity Mapping)
     // 微内核需要访问所有物理内存来管理 Untyped 资源。
     // 在不使用 HHDM 的情况下，我们直接将所有 RAM 恒等映射。
-    let mem = info
-        .memory_regions
-        .iter()
-        .find(|r| r.region_type == platform::MemoryType::Ram)
-        .expect("No RAM region found in platform memory regions");
-    let mem_start_pa = mem.start;
-    let mem_start_va = hal::mem::phys_to_virt(mem_start_pa);
-    let mem_size = mem.size;
-    flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
-    log!(
-        "vm: Map RAM [{:#x}, {:#x}) -> [{:#x}, {:#x}) {flags}",
-        mem_start_pa.as_usize(),
-        (mem_start_pa + mem_size).as_usize(),
-        mem_start_va.as_usize(),
-        (mem_start_va + mem_size).as_usize()
-    );
-    kpt.map_with_alloc(mem_start_va, mem_start_pa, mem_size, flags);
+    for mem in info.memory_regions.iter().filter(|r| r.region_type == platform::MemoryType::Ram) {
+        let mem_start_pa = mem.start;
+        let mem_start_va = hal::mem::phys_to_virt(mem_start_pa);
+        let mem_size = mem.size;
+        flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
+        log!(
+            "vm: Map RAM [{:#x}, {:#x}) -> [{:#x}, {:#x}) {flags}",
+            mem_start_pa.as_usize(),
+            (mem_start_pa + mem_size).as_usize(),
+            mem_start_va.as_usize(),
+            (mem_start_va + mem_size).as_usize()
+        );
+        kpt.map_with_alloc(mem_start_va, mem_start_pa, mem_size, flags);
+    }
 
     // 2. 重映射内核段以加强权限控制 (覆盖上面的 RW 映射)
     let text_start = PhysAddr::from(unsafe { &__text_start as *const u8 as usize });
