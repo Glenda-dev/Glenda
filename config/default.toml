@@ -89,10 +89,29 @@ name = "musl-glenda"
 path = "lib/musl-glenda"
 build = "make"
 output = "lib/libc.a"
+[[services]]
+name = "sifive-gpio"
+path = "drivers/gpio/sifive-gpio"
+build = "cargo"
+output = "build/sifive-gpio.elf"
+kind = "service"
+[[services]]
+name = "sdhci"
+path = "drivers/sdio/sdhci"
+build = "cargo"
+output = "build/sdhci.elf"
+kind = "service"
 
 [[files]]
 name = "init.json"
 path = "config/init.json"
+[[files]]
+name = "drivers.json"
+path = "config/drivers.json"
+[[files]]
+name = "fs.json"
+path = "config/fs.json"
+
 
 [features]
 kernel = []
