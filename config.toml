@@ -7,6 +7,9 @@ cpus = 1
 mem = "2G"
 display = "nographic"
 drive = "disk.img"
+net = true
+mac = "52:54:00:11:22:33"
+hostfwd = ["tcp::8080-:80"]
 bootargs = "-v"
 
 [[services]]
@@ -38,6 +41,18 @@ name = "virtio-blk"
 path = "drivers/virtio/block"
 build = "cargo"
 output = "build/virtio-blk.elf"
+kind = "service"
+[[services]]
+name = "goldfish-rtc"
+path = "drivers/timer/goldfish-rtc"
+build = "cargo"
+output = "build/goldfish-rtc.elf"
+kind = "service"
+[[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
 kind = "service"
 
 [[libraries]]
