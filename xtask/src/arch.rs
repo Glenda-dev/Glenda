@@ -48,6 +48,15 @@ impl Arch {
             Arch::Loongarch64 => "loongarch64-elf-",
         }
     }
+
+    pub fn uefi_firmware_candidates(&self) -> Vec<&'static str> {
+        match self {
+            Arch::Riscv64 => vec!["/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd"],
+            Arch::Aarch64 => vec!["/usr/share/edk2/aarch64/QEMU_EFI.fd"],
+            Arch::X86_64 => vec!["/usr/share/ovmf/OVMF.fd", "/usr/share/qemu/OVMF.fd"],
+            Arch::Loongarch64 => vec!["/usr/share/edk2/loongarch/QEMU_EFI.fd"],
+        }
+    }
 }
 
 impl Display for Arch {

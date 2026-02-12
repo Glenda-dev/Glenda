@@ -12,16 +12,40 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<String> {
 }
 
 pub fn qemu_run(cfg: &Config) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target")
-        .join(cfg.system.arch.target_triple())
-        .join(cfg.system.profile.as_str())
-        .join("kernel");
-    if !elf.exists() {
-        return Err(anyhow::anyhow!("[ ERROR ] ELF not found: {}", elf.display()));
+    // Check for Disk image instead of bare kernel ELFs for direct bool behavior
+    let img = PathBuf::from("target/disk.img");
+    if !img.exists() {
+        return Err(anyhow::anyhow!(
+            "[ ERROR ] target/disk.img not found. Run `cargo xtask image` first."
+        ));
     }
+
     let qemu = qemu_cmd(cfg)?;
     let mut cmd = Command::new(&qemu);
     cmd.arg("-machine").arg("virt");
+
+    // BIOS/Firmware handling (OVMF/EDK2)
+    if let Some(bios) = &cfg.qemu.bios {
+        // User provided specific BIOS path
+        if PathBuf::from(bios).exists() {
+            cmd.arg("-drive").arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", bios));
+        } else {
+            // Maybe it's just a keyword or QEMU resource name
+            cmd.arg("-bios").arg(bios);
+        }
+    } else {
+        let candidates = cfg.system.arch.uefi_firmware_candidates();
+
+        if let Some(path) = candidates.iter().find(|p| PathBuf::from(p).exists()) {
+            eprintln!("[ INFO ] Using UEFI Firmware: {}", path);
+            cmd.arg("-drive").arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", path));
+        } else {
+            return Err(anyhow::anyhow!(
+                "[ ERROR ] No UEFI firmware found for {}. Please install edk2/ovmf or specify `bios` in config.toml.",
+                cfg.system.arch.as_str()
+             ));
+        }
+    }
 
     // CPUs
     if cfg.qemu.cpus > 1 {
@@ -36,7 +60,17 @@ pub fn qemu_run(cfg: &Config) -> anyhow::Result<()> {
         } else if *display == "none" {
             cmd.arg("-display").arg("none");
         } else {
+            // Add GPU device for graphical output
+            cmd.arg("-device").arg("virtio-gpu-device");
+            // Add input devices
+            cmd.arg("-device").arg("virtio-keyboard-pci");
+            cmd.arg("-device").arg("virtio-mouse-pci");
+            // cmd.arg("-device").arg("virtio-tablet-pci");
+
             cmd.arg("-display").arg(display);
+
+            // Add serial to stdio even if graphical
+            cmd.arg("-serial").arg("stdio");
         }
     }
     if let Some(drive) = &cfg.qemu.drive {
@@ -63,11 +97,13 @@ pub fn qemu_run(cfg: &Config) -> anyhow::Result<()> {
         cmd.arg("-device").arg(device);
     }
 
-    cmd.arg("-initrd").arg("target/modules.bin");
-    cmd.arg("-bios").arg("default").arg("-kernel").arg(elf.to_str().unwrap());
-    if let Some(args) = &cfg.qemu.bootargs {
-        cmd.arg("-append").arg(args);
-    }
+    // Boot from Disk Image
+    // For UEFI boot, a simple raw drive usually works
+    cmd.arg("-drive").arg(format!("file={},format=raw", img.display()));
+
+    // Pass bootargs via QEMU is tricky with ISO boot unless editing config.
+    // So we ignore cfg.qemu.bootargs here as it's baked into limine.conf by xtask image.
+
     run(&mut cmd)
 }
 

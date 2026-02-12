@@ -38,7 +38,7 @@ fn default_mem() -> String {
 }
 
 fn default_display() -> String {
-    "nographic".into()
+    "gtk".into() // Change default to graphical
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +61,8 @@ pub struct QemuConfig {
     pub mac: Option<String>,
     #[serde(default)]
     pub hostfwd: Option<Vec<String>>,
+    #[serde(default)]
+    pub bios: Option<String>,
 }
 
 impl Default for QemuConfig {
@@ -75,6 +77,7 @@ impl Default for QemuConfig {
             net_type: None,
             mac: None,
             hostfwd: None,
+            bios: None,
         }
     }
 }

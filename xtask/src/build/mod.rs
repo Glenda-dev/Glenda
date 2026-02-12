@@ -1,8 +1,12 @@
 mod cargo;
 mod cmake;
+mod image;
 mod make;
 
+pub use image::image;
+
 use crate::config::{Config, Service};
+
 use crate::util::{run, strip};
 use std::fs::{self, File};
 use std::io::Write;
@@ -16,6 +20,8 @@ pub fn build(cfg: &Config) -> anyhow::Result<()> {
     build_initrd(&cfg)?;
     // Build the kernel
     build_kernel(&cfg)?;
+    // Pack the image
+    image(&cfg)?;
     Ok(())
 }
 
