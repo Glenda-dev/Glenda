@@ -53,6 +53,14 @@ pub struct QemuConfig {
     pub bootargs: Option<String>,
     #[serde(default)]
     pub drive: Option<String>,
+    #[serde(default)]
+    pub net: bool,
+    #[serde(default)]
+    pub net_type: Option<String>,
+    #[serde(default)]
+    pub mac: Option<String>,
+    #[serde(default)]
+    pub hostfwd: Option<Vec<String>>,
 }
 
 impl Default for QemuConfig {
@@ -63,6 +71,10 @@ impl Default for QemuConfig {
             display: default_display(),
             bootargs: None,
             drive: None,
+            net: false,
+            net_type: None,
+            mac: None,
+            hostfwd: None,
         }
     }
 }

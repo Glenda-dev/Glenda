@@ -30,19 +30,39 @@ pub fn qemu_run(cfg: &Config) -> anyhow::Result<()> {
     // Memory
     cmd.arg("-m").arg(&cfg.qemu.mem);
     // Display handling
-    let display = &cfg.qemu.display;
-    if display == "nographic" {
-        cmd.arg("-nographic");
-    } else if display == "none" {
-        cmd.arg("-display").arg("none");
-    } else {
-        // pass raw display backend name (e.g. gtk, sdl)
-        cmd.arg("-display").arg(display);
+    if let Some(display) = &cfg.qemu.display.as_str().split(',').next() {
+        if *display == "nographic" {
+            cmd.arg("-nographic");
+        } else if *display == "none" {
+            cmd.arg("-display").arg("none");
+        } else {
+            cmd.arg("-display").arg(display);
+        }
     }
     if let Some(drive) = &cfg.qemu.drive {
         cmd.arg("-drive").arg(format!("file={drive},if=none,format=raw,id=x0"));
         cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
     }
+
+    if cfg.qemu.net {
+        let net_type = cfg.qemu.net_type.as_deref().unwrap_or("user");
+        let mut netdev = format!("{},id=net0", net_type);
+        if net_type == "user" {
+            if let Some(hostfwds) = &cfg.qemu.hostfwd {
+                for fwd in hostfwds {
+                    netdev.push_str(&format!(",hostfwd={}", fwd));
+                }
+            }
+        }
+        cmd.arg("-netdev").arg(netdev);
+
+        let mut device = String::from("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1");
+        if let Some(mac) = &cfg.qemu.mac {
+            device.push_str(&format!(",mac={}", mac));
+        }
+        cmd.arg("-device").arg(device);
+    }
+
     cmd.arg("-initrd").arg("target/modules.bin");
     cmd.arg("-bios").arg("default").arg("-kernel").arg(elf.to_str().unwrap());
     if let Some(args) = &cfg.qemu.bootargs {
@@ -81,6 +101,26 @@ pub fn qemu_gdb(cfg: &Config, port: u16) -> anyhow::Result<()> {
         cmd.arg("-drive").arg(format!("file={drive},if=none,format=raw,id=x0"));
         cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
     }
+
+    if cfg.qemu.net {
+        let net_type = cfg.qemu.net_type.as_deref().unwrap_or("user");
+        let mut netdev = format!("{},id=net0", net_type);
+        if net_type == "user" {
+            if let Some(hostfwds) = &cfg.qemu.hostfwd {
+                for fwd in hostfwds {
+                    netdev.push_str(&format!(",hostfwd={}", fwd));
+                }
+            }
+        }
+        cmd.arg("-netdev").arg(netdev);
+
+        let mut device = String::from("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1");
+        if let Some(mac) = &cfg.qemu.mac {
+            device.push_str(&format!(",mac={}", mac));
+        }
+        cmd.arg("-device").arg(device);
+    }
+
     cmd.arg("-initrd").arg("target/modules.bin");
     if let Some(args) = &cfg.qemu.bootargs {
         cmd.arg("-append").arg(args);
