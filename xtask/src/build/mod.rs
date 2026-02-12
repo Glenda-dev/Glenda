@@ -137,7 +137,14 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
                 if let Some(parent) = dst_path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::copy(&src_path, &dst_path)?;
+                fs::copy(&src_path, &dst_path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to copy {} to {}: {}",
+                        src_path.display(),
+                        dst_path.display(),
+                        e
+                    )
+                })?;
 
                 dst_path
             }
@@ -158,15 +165,28 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
             anyhow::bail!("Service artifact not found at: {}", artifact_path.display());
         }
 
-        let mut data = fs::read(&artifact_path)?;
+        let mut data = fs::read(&artifact_path).map_err(|e| {
+            anyhow::anyhow!("Failed to read artifact at {}: {}", artifact_path.display(), e)
+        })?;
 
         // If it's an ELF file, strip it for the initrd
         if data.starts_with(b"\x7fELF") {
             let tmp_path = Path::new("target").join(format!("{}.stripped", c.name));
-            fs::copy(&artifact_path, &tmp_path)?;
+            fs::copy(&artifact_path, &tmp_path).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to copy {} to {}: {}",
+                    artifact_path.display(),
+                    tmp_path.display(),
+                    e
+                )
+            })?;
             strip(cfg, &tmp_path)?;
-            data = fs::read(&tmp_path)?;
-            let _ = fs::remove_file(&tmp_path);
+            data = fs::read(&tmp_path).map_err(|e| {
+                anyhow::anyhow!("Failed to read stripped artifact at {}: {}", tmp_path.display(), e)
+            })?;
+            fs::remove_file(&tmp_path).map_err(|e| {
+                anyhow::anyhow!("Failed to remove temporary file {}: {}", tmp_path.display(), e)
+            })?;
         }
 
         Ok((c.name.clone(), data))
@@ -204,7 +224,8 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
 
     // 3. Process files
     for m in cfg.files.iter() {
-        let data = fs::read(&m.path)?;
+        let data = fs::read(&m.path)
+            .map_err(|e| anyhow::anyhow!("Failed to read file at {}: {}", m.path, e))?;
         entries.push((4, m.name.clone(), data));
     }
 

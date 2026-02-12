@@ -5,10 +5,14 @@ use which::which;
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Running: $ {:?}", cmd);
-    let status =
-        cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit()).stderr(Stdio::inherit()).status()?;
+    let status = cmd
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| anyhow::anyhow!("[ ERROR ] Failed to start command {:?}: {}", cmd, e))?;
     if !status.success() {
-        return Err(anyhow::anyhow!("[ ERROR ] command failed with status {}", status));
+        return Err(anyhow::anyhow!("[ ERROR ] command failed with status {}: {:?}", status, cmd));
     }
     Ok(())
 }

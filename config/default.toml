@@ -47,7 +47,7 @@ output = "build/virtio-blk.elf"
 kind = "service"
 [[services]]
 name = "virtio-net"
-path = "drivers/virtio/virtio-net"
+path = "drivers/virtio/net"
 build = "cargo"
 output = "build/virtio-net.elf"
 kind = "service"
@@ -104,13 +104,13 @@ kind = "service"
 
 [[files]]
 name = "init.json"
-path = "config/init.json"
+path = "platform/qemu/init.json"
 [[files]]
 name = "drivers.json"
-path = "config/drivers.json"
+path = "platform/qemu/drivers.json"
 [[files]]
 name = "fs.json"
-path = "config/fs.json"
+path = "platform/qemu/fs.json"
 
 
 [features]
