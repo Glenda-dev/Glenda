@@ -73,7 +73,6 @@ version = "0.1.0"
 dependencies = [
  "libape",
  "libglenda-rs",
- "spin 0.10.0",
 ]
 
 [[package]]
@@ -132,7 +131,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d44d578cadd17312c75e7d0ef489361f160ace58f7139aa32001fee1a51b89b5"
 dependencies = [
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -584,6 +583,7 @@ dependencies = [
  "bitflags 2.10.0",
  "chrono",
  "fdt",
+ "limine",
  "num_enum",
 ]
 
@@ -593,7 +593,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libglenda-rs",
- "spin 0.10.0",
 ]
 
 [[package]]
@@ -613,6 +612,15 @@ dependencies = [
  "serde",
  "serde-big-array",
  "serde_json",
+]
+
+[[package]]
+name = "limine"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af6d2ee42712e7bd2c787365cd1dab06ef59a61becbf87bec7b32b970bd2594b"
+dependencies = [
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -939,15 +947,6 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
-name = "spin"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
 dependencies = [
  "lock_api",
 ]

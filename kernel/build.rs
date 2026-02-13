@@ -2,6 +2,7 @@ use std::process::Command;
 
 fn main() {
     let output = Command::new("git").args(&["rev-parse", "--short", "HEAD"]).output();
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
     let git_hash = match output {
         Ok(o) if o.status.success() => String::from_utf8(o.stdout).unwrap(),
@@ -13,7 +14,7 @@ fn main() {
     let timestamp = now.format("%a %b %d %H:%M:%S UTC %Y").to_string();
 
     println!("cargo:rustc-env=KERNEL_BUILD_TIME={}", timestamp);
-
+    println!("cargo:rerun-if-changed=hal/{}/linker.ld", arch);
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/index");
 }

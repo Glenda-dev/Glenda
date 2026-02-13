@@ -8,14 +8,14 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
     // Copy kernel to top level target similar to build_kernel
     // Note: build_kernel copies to target/kernel already.
 
-    let iso_root = Path::new("target/iso_root");
+    let img_root = Path::new("target/img_root");
     let limine_path = Path::new("target/limine");
 
-    if iso_root.exists() {
-        fs::remove_dir_all(iso_root)?;
+    if img_root.exists() {
+        fs::remove_dir_all(img_root)?;
     }
-    fs::create_dir_all(iso_root.join("EFI/BOOT"))?;
-    fs::create_dir_all(iso_root.join("boot"))?;
+    fs::create_dir_all(img_root.join("EFI/BOOT"))?;
+    fs::create_dir_all(img_root.join("boot"))?;
 
     // Download Limine if missing
     if !limine_path.exists() {
@@ -33,9 +33,9 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
     }
 
     // Copy kernel and initrd
-    fs::copy("target/kernel", iso_root.join("boot/glenda.elf"))?;
+    fs::copy("target/kernel", img_root.join("boot/glenda.elf"))?;
     if Path::new("target/modules.bin").exists() {
-        fs::copy("target/modules.bin", iso_root.join("boot/modules.bin"))?;
+        fs::copy("target/modules.bin", img_root.join("boot/modules.bin"))?;
     } else {
         // Create empty? or warn
         eprintln!("[ WARN ] No modules.bin found");
@@ -47,58 +47,45 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
         Arch::Riscv64 => {
             fs::copy(
                 limine_path.join("BOOTRISCV64.EFI"),
-                iso_root.join("EFI/BOOT/BOOTRISCV64.EFI"),
+                img_root.join("EFI/BOOT/BOOTRISCV64.EFI"),
             )?;
             fs::copy(
                 limine_path.join("limine-uefi-cd.bin"),
-                iso_root.join("boot/limine-uefi-cd.bin"),
+                img_root.join("boot/limine-uefi-cd.bin"),
             )?;
         }
         Arch::X86_64 => {
-            fs::copy(limine_path.join("BOOTX64.EFI"), iso_root.join("EFI/BOOT/BOOTX64.EFI"))?;
-            fs::copy(limine_path.join("limine-bios.sys"), iso_root.join("boot/limine-bios.sys"))?;
+            fs::copy(limine_path.join("BOOTX64.EFI"), img_root.join("EFI/BOOT/BOOTX64.EFI"))?;
+            fs::copy(limine_path.join("limine-bios.sys"), img_root.join("boot/limine-bios.sys"))?;
             fs::copy(
                 limine_path.join("limine-bios-cd.bin"),
-                iso_root.join("boot/limine-bios-cd.bin"),
+                img_root.join("boot/limine-bios-cd.bin"),
             )?;
             fs::copy(
                 limine_path.join("limine-uefi-cd.bin"),
-                iso_root.join("boot/limine-uefi-cd.bin"),
+                img_root.join("boot/limine-uefi-cd.bin"),
             )?;
         }
         Arch::Loongarch64 => {
             fs::copy(
                 limine_path.join("BOOTLOONGARCH64.EFI"),
-                iso_root.join("EFI/BOOT/BOOTLOONGARCH64.EFI"),
+                img_root.join("EFI/BOOT/BOOTLOONGARCH64.EFI"),
             )?;
             fs::copy(
                 limine_path.join("limine-uefi-cd.bin"),
-                iso_root.join("boot/limine-uefi-cd.bin"),
+                img_root.join("boot/limine-uefi-cd.bin"),
             )?;
         }
         Arch::Aarch64 => {
-            fs::copy(limine_path.join("BOOTAA64.EFI"), iso_root.join("EFI/BOOT/BOOTAA64.EFI"))?;
+            fs::copy(limine_path.join("BOOTAA64.EFI"), img_root.join("EFI/BOOT/BOOTAA64.EFI"))?;
             fs::copy(
                 limine_path.join("limine-uefi-cd.bin"),
-                iso_root.join("boot/limine-uefi-cd.bin"),
+                img_root.join("boot/limine-uefi-cd.bin"),
             )?;
         }
     }
 
-    // Create limine.conf
-    // Note: Limine config syntax
-    // Using boot():/ path to explicitly point to the boot partition.
-    let limine_conf = format!(
-        r#"
-timeout: 3
-
-/Glenda ({})
-    protocol: limine
-    kernel_path: boot():/boot/glenda.elf
-    module_path: boot():/boot/modules.bin
-"#,
-        arch
-    );
+    let limine_conf_path = Path::new("config/limine.conf");
 
     // Build Disk Image (FAT32)
     eprintln!("[ INFO ] Generating Disk image (FAT32)...");
@@ -174,11 +161,10 @@ timeout: 3
     }
 
     // Write limine.conf to temp file then copy
-    // (We reuse the previous limine.conf creation logic, assuming it's written to target/iso_root/boot/limine.conf)
+    // (We reuse the previous limine.conf creation logic, assuming it's written to target/img_root/boot/limine.conf)
     // Actually we can just write it to a temp path.
     // Let's use target/limine.conf as temp
-    fs::write("target/limine.conf", &limine_conf)?;
-    mcopy(Path::new("target/limine.conf"), "boot/limine.conf")?;
+    mcopy(limine_conf_path, "boot/limine.conf")?;
 
     eprintln!("[ INFO ] Image generated at {}", image_path.display());
 
