@@ -2,6 +2,7 @@ mod cnode;
 mod ipc;
 mod irq;
 mod kernel;
+mod mmio;
 mod tcb;
 mod untyped;
 mod vspace;
@@ -26,6 +27,7 @@ pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), 
         CapType::VSpace => vspace::invoke_vspace(cap, method),
         CapType::Reply => ipc::invoke_reply(cap, method),
         CapType::Kernel => kernel::invoke_kernel(cap, method),
+        CapType::Mmio => mmio::invoke_mmio(cap, method, cptr),
         _ => {
             log!("Invoke: Invalid capability: {}", cap);
             Err(Error::InvalidType)

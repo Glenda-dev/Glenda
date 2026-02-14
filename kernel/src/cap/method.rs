@@ -60,3 +60,7 @@ pub mod vspacemethod {
     pub const SETUP: usize = 4;
     pub const DEBUG_PRINT: usize = 5;
 }
+
+pub mod mmiomethod {
+    pub const GET_FRAME: usize = 1;
+}

@@ -70,6 +70,9 @@ impl Display for Capability {
                 s.field("asid", &asid);
                 s.field("gen", &generation);
             }
+            CapType::Mmio => {
+                s.field("mmio", &"global");
+            }
             _ => {}
         }
         s.finish()
@@ -299,6 +302,13 @@ impl Capability {
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (asid_val << DATA_SHIFT)
             | (gen_val << (DATA_SHIFT + ASID_BITS));
+        Self { words: [w0, w1] }
+    }
+
+    pub fn create_mmio(rights: Rights) -> Self {
+        let w0 = 0;
+        let w1 = (CapType::Mmio as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
 

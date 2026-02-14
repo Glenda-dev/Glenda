@@ -17,6 +17,7 @@ pub enum CapType {
     IrqHandler = 8,
     Kernel = 9,
     VSpace = 10,
+    Mmio = 11,
     #[num_enum(default)]
     Unknown = 255,
 }

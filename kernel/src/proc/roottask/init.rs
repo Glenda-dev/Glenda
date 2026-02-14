@@ -8,11 +8,10 @@ use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
 use crate::log;
+use crate::mem::PageTable;
 use crate::mem::pmem;
-use crate::mem::{PageTable, PhysFrame};
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
-use crate::platform;
 
 pub struct RootCaps {
     pub vspace: Capability,
@@ -24,7 +23,7 @@ pub struct RootCaps {
     pub bootinfo: Capability,
     pub kernel: Capability,
     pub untyped_cspace: Capability,
-    pub mmio_cspace: Capability,
+    pub mmio: Capability,
     pub irq_cspace: Capability,
 }
 
@@ -39,7 +38,7 @@ pub fn alloc_root_caps() -> Result<RootCaps, Error> {
         bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).ok_or(Error::OutOfMemory)?,
         kernel: Capability::create_kernel(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
-        mmio_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        mmio: Capability::create_mmio(Rights::ALL),
         irq_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
     })
 }
@@ -152,25 +151,12 @@ pub fn init_cspace(
     cspace.insert(KERNEL_CAP, &caps.kernel)?;
     cspace.insert(BOOTINFO_CAP, &caps.bootinfo)?;
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
-    cspace.insert(MMIO_CAP, &caps.mmio_cspace)?;
+    cspace.insert(MMIO_CAP, &caps.mmio)?;
     cspace.insert(IRQ_CAP, &caps.irq_cspace)?;
 
-    // === 1. MMIO Caps (Stored in MMIO CNode at slot 7) ===
-    let mut slot = 1;
-    let mmio_cnode = unsafe { caps.mmio_cspace.obj_ptr().as_mut::<CNode>() };
-
-    let mmap = crate::boot::get_mem_map();
-    for entry in mmap {
-        if entry.kind == platform::MemoryType::Mmio {
-            let cap = Capability::create_frame(
-                &PhysFrame { paddr: entry.base, pages: (entry.length + PGSIZE - 1) / PGSIZE },
-                Rights::ALL,
-            );
-            // 插入到 MMIO 子 CNode
-            mmio_cnode.insert(CapPtr::from(slot), &cap)?;
-            slot += 1;
-        }
-    }
+    // === 1. MMIO Caps (Deprecated old logic) ===
+    // 内核现在不再在启动阶段探测 MMIO 内存并填充 CNode。
+    // 应用程序应使用 MMIO_CAP (Mmio 类型) 动态获取 Frame。
 
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let (untyped_regions, count) = pmem::get_untyped();
