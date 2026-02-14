@@ -64,7 +64,8 @@ pub fn kpt_setup(kpt: &mut PageTable) {
 }
 
 pub fn pt_setup(pt: &mut PageTable) -> Result<(), crate::error::Error> {
-    let tramp_pa = PhysAddr::from(unsafe { &__trampoline as *const u8 as usize });
+    let tramp_va_sym = VirtAddr::from(unsafe { &__trampoline as *const u8 as usize });
+    let tramp_pa = virt_to_phys(tramp_va_sym);
     pt.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
 }
 
