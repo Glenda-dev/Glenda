@@ -46,7 +46,7 @@ pub fn glenda_main(is_primary: bool) -> ! {
     printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     if is_primary {
         print_banner();
-        let bootargs = core::str::from_utf8(platform::get().bootargs.as_slice()).unwrap_or("");
+        let bootargs = crate::boot::get_cmdline().unwrap_or("");
         printk!("bootargs: {}\n", bootargs);
         if !bootargs.contains("-v") {
             printk::set_verbose(false);

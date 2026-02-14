@@ -1,7 +1,7 @@
 mod arch;
 
-use super::BOOT_INFO;
-use crate::boot::{BootInfo, MemoryMapEntry};
+use super::BOOT_LOADER_INFO;
+use crate::boot::{BootLoaderInfo, MemoryMapEntry};
 use crate::hal;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
@@ -120,7 +120,10 @@ pub fn init() {
     let cmdline =
         BOOTARGS_REQUEST.get_response().map(|res| res.cmdline()).and_then(|s| s.to_str().ok());
 
-    BOOT_INFO.call_once(|| BootInfo {
+    let mp_response = MP_REQUEST.get_response();
+    let cpu_count = mp_response.map(|res| res.cpus().len()).unwrap_or(1);
+
+    BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
         dtb_addr: DTB_REQUEST.get_response().map(|res| PhysAddr::from(res.dtb_ptr() as usize)),
         rsdp_addr: RSDP_REQUEST.get_response().map(|res| PhysAddr::from(res.address() as usize)),
         hhdm_offset,
@@ -129,6 +132,7 @@ pub fn init() {
         kernel_size,
         initrd_addr,
         cmdline,
+        cpu_count,
     });
 }
 

@@ -51,21 +51,21 @@ impl PmemManager {
         log!("pmem: Added region [{}, {})", start, end);
     }
 
-    fn init(&mut self, kernel_end: PhysAddr, info: &platform::PlatformInfo) {
+    fn init(&mut self, kernel_end: PhysAddr) {
         let mut available = 0;
+        let mmap = crate::boot::get_mem_map();
         log!(
-            "pmem: Initializing pmem regions. Kernel end at {}, found {} regions",
+            "pmem: Initializing pmem regions. Kernel end at {}, found {} regions in bootloader map",
             kernel_end,
-            info.memory_region_count
+            mmap.len()
         );
         // Clear existing regions just in case
         self.count = 0;
 
-        for i in 0..info.memory_region_count {
-            let r = &info.memory_regions[i];
-            if r.region_type == platform::MemoryType::Ram {
-                let r_start = r.start;
-                let r_end = r_start + r.size;
+        for entry in mmap {
+            if entry.kind == platform::MemoryType::Ram {
+                let r_start = entry.base;
+                let r_end = r_start + entry.length;
 
                 // Check overlap with kernel image (assumed to be from 0..kernel_end or ram_start..kernel_end)
                 // A simple heuristic: if the region contains kernel_end, we start allocation after kernel_end
@@ -82,8 +82,10 @@ impl PmemManager {
                     r_start
                 };
 
-                self.add_region(effective_start, r_end);
-                available += r.size;
+                if effective_start < r_end {
+                    self.add_region(effective_start, r_end);
+                    available += r_end.as_usize() - effective_start.as_usize();
+                }
             }
         }
         log!(
@@ -157,9 +159,8 @@ pub fn debug_info() {
 }
 
 pub fn initialize_regions() {
-    let info = platform::get();
     let kernel_end = boot::get_kernel_address().0 + boot::get_kernel_size();
-    PMEM.lock().init(kernel_end, &info);
+    PMEM.lock().init(kernel_end);
 }
 
 /// 分配一个物理页 Capability

@@ -2,7 +2,6 @@ use crate::hal;
 use crate::hal::mem::{PGSIZE, USER_VA};
 use crate::mem::pmem;
 use crate::mem::{PageTable, Perms, VirtAddr};
-use crate::platform;
 use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
@@ -67,11 +66,9 @@ static INITRD_REGION: Once<(VirtAddr, usize)> = Once::new();
 
 pub fn init() {
     log!("proc: Initializing initrd...");
-    let info = platform::get();
-    let range = info.initrd;
-    let payload_va = hal::mem::phys_to_virt(range.start);
-    log!("proc: Found initrd: va={:?}, size={}", payload_va, range.size);
-    let size = range.size;
+    let (paddr, size) = crate::boot::get_initrd().expect("No initrd found");
+    let payload_va = hal::mem::phys_to_virt(paddr);
+    log!("proc: Found initrd: va={:?}, size={}", payload_va, size);
 
     let ptr = payload_va.as_ptr::<u8>();
     let b0 = unsafe { *ptr.add(0) };

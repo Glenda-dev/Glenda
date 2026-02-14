@@ -1,6 +1,5 @@
 use super::cpu;
 use crate::hal::riscv64::sbi;
-use crate::platform::PlatformInfo;
 use crate::platform::acpi::GlendaAcpiHandler;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use ::acpi::AcpiTables;
@@ -21,12 +20,12 @@ unsafe extern "C" {
 
 static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
 
-pub fn parse_dtb(fdt: &fdt::Fdt, info: &mut PlatformInfo) {
-    dtb::parse(fdt, info)
+pub fn parse_dtb(fdt: &fdt::Fdt) {
+    dtb::parse(fdt)
 }
 
-pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>, info: &mut PlatformInfo) {
-    acpi::parse(tables, info)
+pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>) {
+    acpi::parse(tables)
 }
 
 /// 关闭系统
@@ -48,7 +47,7 @@ pub fn bootstrap_cpus() {
 
     let start_addr = secondary_start as usize;
     let opaque = crate::boot::get_dtb().map(|pa| pa.as_usize()).unwrap_or(0);
-    let harts = crate::platform::get().cpu_count;
+    let harts = crate::boot::get_cpu_count();
     let cpuid = cpu::cpu_id();
     for target in 0..harts {
         if target == cpuid {

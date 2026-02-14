@@ -1,15 +1,14 @@
 use crate::mem::MemoryRange;
-use crate::platform::PlatformInfo;
 use crate::platform::acpi::GlendaAcpiHandler;
 use acpi::AcpiTables;
 
 /// 获取平台信息(DTB)
-pub fn parse_dtb(fdt: &fdt::Fdt, info: &mut PlatformInfo) {
+pub fn parse_dtb(fdt: &fdt::Fdt) {
     unimplemented!()
 }
 
 /// 获取平台信息(ACPI)
-pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>, info: &mut PlatformInfo) {
+pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>) {
     unimplemented!()
 }
 

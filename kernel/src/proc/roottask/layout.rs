@@ -10,7 +10,6 @@ pub const BOOTINFO_CAP: CapPtr = CapPtr::from(9);
 pub const UNTYPED_CAP: CapPtr = CapPtr::from(10);
 pub const MMIO_CAP: CapPtr = CapPtr::from(11);
 pub const IRQ_CAP: CapPtr = CapPtr::from(12);
-pub const PLATFORM_CAP: CapPtr = CapPtr::from(13);
 
 pub const STACK_VA: usize = UTCB_VA - PGSIZE; // 用户栈映射地址
 pub const STACK_PAGES: usize = 16; // 用户栈页面数 16 * 4KB = 64KB

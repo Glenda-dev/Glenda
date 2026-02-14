@@ -91,8 +91,12 @@ fn print_help() {
 
 fn print_platform_info() {
     printk!("Platform: {}\n", hal::ARCH);
-    let info = platform::get();
-    printk!("{:?}", info);
+    if let Some(rsdp) = crate::boot::get_rsdp() {
+        printk!("ACPI RSDP: {}\n", rsdp);
+    }
+    if let Some(dtb) = crate::boot::get_dtb() {
+        printk!("DTB: {}\n", dtb);
+    }
 }
 
 fn debug_struct(addr_str: &str, type_str: &str) {

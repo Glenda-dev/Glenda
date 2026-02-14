@@ -15,7 +15,7 @@ pub struct MemoryMapEntry {
     pub kind: MemoryType,
 }
 
-pub struct BootInfo {
+pub struct BootLoaderInfo {
     pub dtb_addr: Option<PhysAddr>,
     pub rsdp_addr: Option<PhysAddr>,
     pub hhdm_offset: usize,
@@ -24,38 +24,46 @@ pub struct BootInfo {
     pub kernel_size: usize,
     pub initrd_addr: Option<(PhysAddr, usize)>,
     pub cmdline: Option<&'static str>,
+    pub cpu_count: usize,
 }
 
-pub static BOOT_INFO: Once<BootInfo> = Once::new();
+pub static BOOT_LOADER_INFO: Once<BootLoaderInfo> = Once::new();
 
 pub fn get_dtb() -> Option<PhysAddr> {
-    BOOT_INFO.get().and_then(|info| info.dtb_addr)
+    BOOT_LOADER_INFO.get().and_then(|info| info.dtb_addr)
 }
 
 pub fn get_initrd() -> Option<(PhysAddr, usize)> {
-    BOOT_INFO.get().and_then(|info| info.initrd_addr)
+    BOOT_LOADER_INFO.get().and_then(|info| info.initrd_addr)
 }
 
 pub fn get_rsdp() -> Option<PhysAddr> {
-    BOOT_INFO.get().and_then(|info| info.rsdp_addr)
+    BOOT_LOADER_INFO.get().and_then(|info| info.rsdp_addr)
 }
 
 pub fn get_hhdm() -> usize {
-    BOOT_INFO.get().map(|info| info.hhdm_offset).unwrap_or(0)
+    BOOT_LOADER_INFO.get().map(|info| info.hhdm_offset).unwrap_or(0)
 }
 
 pub fn get_mem_map() -> &'static [MemoryMapEntry] {
-    BOOT_INFO.get().map(|info| info.memory_map).unwrap_or(&[])
+    BOOT_LOADER_INFO.get().map(|info| info.memory_map).unwrap_or(&[])
 }
 
 pub fn get_kernel_address() -> (PhysAddr, VirtAddr) {
-    BOOT_INFO.get().map(|info| info.kernel_address).unwrap_or((PhysAddr::null(), VirtAddr::null()))
+    BOOT_LOADER_INFO
+        .get()
+        .map(|info| info.kernel_address)
+        .unwrap_or((PhysAddr::null(), VirtAddr::null()))
 }
 
 pub fn get_kernel_size() -> usize {
-    BOOT_INFO.get().map(|info| info.kernel_size).unwrap_or(0)
+    BOOT_LOADER_INFO.get().map(|info| info.kernel_size).unwrap_or(0)
 }
 
 pub fn get_cmdline() -> Option<&'static str> {
-    BOOT_INFO.get().and_then(|info| info.cmdline)
+    BOOT_LOADER_INFO.get().and_then(|info| info.cmdline)
+}
+
+pub fn get_cpu_count() -> usize {
+    BOOT_LOADER_INFO.get().map(|info| info.cpu_count).unwrap_or(1)
 }

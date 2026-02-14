@@ -1,11 +1,14 @@
 use crate::drivers as generic_drivers;
 use crate::hal::riscv64::drivers::{INTC, IntcDriver, UART, UartDriver};
-use crate::platform::PlatformInfo;
 use crate::platform::acpi::GlendaAcpiHandler;
 use acpi::AcpiTables;
 use acpi::spcr::SpcrInterfaceType;
 
-pub fn parse(tables: &AcpiTables<GlendaAcpiHandler>, _info: &mut PlatformInfo) {
+pub fn parse(tables: &AcpiTables<GlendaAcpiHandler>) {
+    // 0. Initialize platform info
+    // Default RISC-V frequency is often 10MHz in QEMU.
+    crate::hal::timer::set_frequency(10_000_000);
+
     // 1. Parse SPCR for UART
     // Serial Port Console Redirection Table
     if let Ok(spcr) = tables.find_table::<acpi::spcr::Spcr>() {

@@ -1,8 +1,23 @@
 use crate::drivers as generic_drivers;
 use crate::hal::riscv64::drivers::{INTC, IntcDriver, UART, UartDriver};
-use crate::platform::PlatformInfo;
 
-pub fn parse(fdt: &fdt::Fdt, _info: &mut PlatformInfo) {
+pub fn parse(fdt: &fdt::Fdt) {
+    let timer_frequency = fdt
+        .find_node("/cpus")
+        .and_then(|node| node.property("timebase-frequency"))
+        .and_then(|prop| {
+            if prop.value.len() == 4 {
+                Some(u32::from_be_bytes(prop.value.try_into().unwrap()) as usize)
+            } else if prop.value.len() == 8 {
+                Some(u64::from_be_bytes(prop.value.try_into().unwrap()) as usize)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(10_000_000);
+
+    crate::hal::timer::set_frequency(timer_frequency);
+
     for node in fdt.all_nodes() {
         if let Some(compatibles) = node.compatible() {
             for compat in compatibles.all() {

@@ -11,7 +11,6 @@ use super::{TCB, ThreadState};
 use crate::cap::CNode;
 
 use crate::mem::PageTable;
-use crate::platform::PlatformInfo;
 use init::*;
 use layout::*;
 
@@ -63,11 +62,7 @@ fn spawn_payload(root_task: ProcPayload) -> Result<(), Error> {
     let bootinfo = unsafe { caps.bootinfo.obj_ptr().as_mut::<BootInfo>() };
     init_bootinfo(bootinfo)?;
 
-    // 5. Setup platform info
-    let platform_info = unsafe { caps.platform.obj_ptr().as_mut::<PlatformInfo>() };
-    init_platform(platform_info);
-
-    // 6. Setup CSpace
+    // 5. Setup CSpace
     let cspace = unsafe { caps.cspace.obj_ptr().as_mut::<CNode>() };
     init_cspace(cspace, &caps, bootinfo)?;
     // 7. Configure TCB resources
@@ -90,8 +85,7 @@ trapframe   (1 page)
 UTCB        (1 page)
 ustack      (N pages)
 ------------
-platforminfo    (1 page)  0x40000000
-Initrd      (N pages) 0x40001000
+Initrd      (N pages) 0x50000000
 ————————————
 heap        (M pages) 0x20000000
 -------------

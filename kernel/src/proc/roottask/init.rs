@@ -9,12 +9,10 @@ use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::irq::IRQ;
 use crate::log;
 use crate::mem::pmem;
-use crate::mem::{MemoryRange, PageTable, PhysFrame};
+use crate::mem::{PageTable, PhysFrame};
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 use crate::platform;
-use crate::platform::PLATFORM_PAGES;
-use crate::platform::PlatformInfo;
 
 pub struct RootCaps {
     pub vspace: Capability,
@@ -28,7 +26,6 @@ pub struct RootCaps {
     pub untyped_cspace: Capability,
     pub mmio_cspace: Capability,
     pub irq_cspace: Capability,
-    pub platform: Capability,
 }
 
 pub fn alloc_root_caps() -> Result<RootCaps, Error> {
@@ -39,7 +36,6 @@ pub fn alloc_root_caps() -> Result<RootCaps, Error> {
         utcb: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
         tf: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
         kstack: pmem::alloc_frame_cap(KSTACK_PAGES).ok_or(Error::OutOfMemory)?,
-        platform: pmem::alloc_frame_cap(PLATFORM_PAGES).ok_or(Error::OutOfMemory)?,
         bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).ok_or(Error::OutOfMemory)?,
         kernel: Capability::create_kernel(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
@@ -81,13 +77,14 @@ pub fn init_vspace(
     );
 
     // 映射 Initrd 到固定位置
-    let range = platform::get().initrd;
-    vspace.map_with_alloc(
-        VirtAddr::from(INITRD_VA),
-        range.start.align_down(PGSIZE),
-        range.size,
-        Perms::USER | Perms::READ,
-    );
+    if let Some((start, size)) = crate::boot::get_initrd() {
+        vspace.map_with_alloc(
+            VirtAddr::from(INITRD_VA),
+            start.align_down(PGSIZE),
+            size,
+            Perms::USER | Perms::READ,
+        );
+    }
 
     // 映射用户栈
     let stack_va_start = STACK_VA;
@@ -114,10 +111,28 @@ pub fn init_vspace(
 }
 pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
     // 设置 Initrd 信息
-    let initrd = platform::get().initrd;
-    let initrd_offset = initrd.start.as_usize() % PGSIZE;
-    bootinfo.initrd_start = INITRD_VA + initrd_offset;
-    bootinfo.initrd_size = initrd.size;
+    if let Some((start, size)) = crate::boot::get_initrd() {
+        let initrd_offset = start.as_usize() % PGSIZE;
+        bootinfo.initrd_offset = initrd_offset;
+        bootinfo.initrd_size = size;
+    }
+
+    // ACPI优先
+    if let Some(rsdp) = crate::boot::get_rsdp() {
+        bootinfo.platform_type = super::bootinfo::PlatformType::ACPI;
+        bootinfo.addr = rsdp.as_usize();
+        bootinfo.size = 0x1000;
+    } else if let Some(dtb) = crate::boot::get_dtb() {
+        bootinfo.platform_type = super::bootinfo::PlatformType::DTB;
+        bootinfo.addr = dtb.as_usize();
+        bootinfo.size = 0x10000;
+    }
+
+    if let Some(cmdline) = crate::boot::get_cmdline() {
+        let bytes = cmdline.as_bytes();
+        let len = bytes.len().min(bootinfo.cmdline.len());
+        bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
+    }
 
     bootinfo.version = crate::version::get_version();
     bootinfo.build = crate::version::get_build_time_bytes();
@@ -125,23 +140,17 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn init_platform(platform: &mut PlatformInfo) {
-    let info = platform::get();
-    *platform = info.clone();
-}
 pub fn init_cspace(
     cspace: &mut CNode,
     caps: &RootCaps,
-    bootinfo: &mut BootInfo,
+    _bootinfo: &mut BootInfo,
 ) -> Result<(), Error> {
     log!("proc: Setting up Root Task CSpace at {:p}", cspace);
-    let info = platform::get();
     cspace.insert(CSPACE_CAP, &caps.cspace)?;
     cspace.insert(VSPACE_CAP, &caps.vspace)?;
     cspace.insert(TCB_CAP, &caps.tcb)?;
     cspace.insert(KERNEL_CAP, &caps.kernel)?;
     cspace.insert(BOOTINFO_CAP, &caps.bootinfo)?;
-    cspace.insert(PLATFORM_CAP, &caps.platform)?;
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
     cspace.insert(MMIO_CAP, &caps.mmio_cspace)?;
     cspace.insert(IRQ_CAP, &caps.irq_cspace)?;
@@ -150,21 +159,15 @@ pub fn init_cspace(
     let mut slot = 1;
     let mmio_cnode = unsafe { caps.mmio_cspace.obj_ptr().as_mut::<CNode>() };
 
-    for i in 0..info.memory_regions.len() {
-        let region = &info.memory_regions[i];
-        if region.region_type == platform::MemoryType::Mmio {
+    let mmap = crate::boot::get_mem_map();
+    for entry in mmap {
+        if entry.kind == platform::MemoryType::Mmio {
             let cap = Capability::create_frame(
-                &PhysFrame { paddr: region.start, pages: (region.size + PGSIZE - 1) / PGSIZE },
+                &PhysFrame { paddr: entry.base, pages: (entry.length + PGSIZE - 1) / PGSIZE },
                 Rights::ALL,
             );
             // 插入到 MMIO 子 CNode
             mmio_cnode.insert(CapPtr::from(slot), &cap)?;
-
-            if bootinfo.mmio_count < bootinfo.mmio_list.len() {
-                bootinfo.mmio_list[bootinfo.mmio_count] =
-                    MemoryRange { start: region.start, size: region.size };
-                bootinfo.mmio_count += 1;
-            }
             slot += 1;
         }
     }
@@ -180,9 +183,9 @@ pub fn init_cspace(
         untyped_cnode.insert(CapPtr::from(slot), &cap)?;
         slot += 1;
 
-        if bootinfo.untyped_count < bootinfo.untyped_list.len() {
-            bootinfo.untyped_list[bootinfo.untyped_count] = region;
-            bootinfo.untyped_count += 1;
+        if _bootinfo.untyped_count < _bootinfo.untyped_list.len() {
+            _bootinfo.untyped_list[_bootinfo.untyped_count] = region;
+            _bootinfo.untyped_count += 1;
         }
     }
 
@@ -197,6 +200,5 @@ pub fn init_cspace(
         irq_cnode.insert(CapPtr::from(slot), &cap)?;
         slot += 1;
     }
-    bootinfo.irq_count = MAX_IRQS;
     Ok(())
 }
