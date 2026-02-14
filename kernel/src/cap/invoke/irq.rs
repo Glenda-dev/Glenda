@@ -1,5 +1,5 @@
 use super::super::method::*;
-use crate::cap::{CapPtr, CapType, Capability};
+use crate::cap::{Badge, CapPtr, CapType, Capability};
 use crate::error::Error;
 use crate::hal;
 use crate::irq;
@@ -7,7 +7,14 @@ use crate::proc::scheduler;
 
 pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let irq = if cap.cap_type() == CapType::IrqHandler {
-        cap.value()
+        let badge = cap.get_badge().get();
+        if badge == 0 {
+            // 这是 Master IRQ Capability (IRQ Control)
+            // 只有 mint 操作有意义，这里应返回错误
+            log!("IRQ::invoke failed: IRQ control capability cannot be invoked directly");
+            return Err(Error::InvalidCapability);
+        }
+        badge
     } else {
         log!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
@@ -30,7 +37,10 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
             if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
-                    irq::bind_notification(irq, &ep_cap)
+                    // 使用 IrqHandler 能力携带的 Badge 作为通知时的标识
+                    let mut badged_ep = ep_cap.clone();
+                    badged_ep.set_badge(Badge::from(irq));
+                    irq::bind_notification(irq, &badged_ep)
                 } else {
                     error!(
                         "IRQ::SetNotification failed: invalid target cap type {:?}",

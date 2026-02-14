@@ -5,7 +5,6 @@ use crate::cap::cnode::CNode;
 use crate::hal;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
-use crate::irq::IRQ;
 use crate::mem::PageTable;
 use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
@@ -60,7 +59,7 @@ impl Display for Capability {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
             }
             CapType::IrqHandler => {
-                s.field("irq", &self.words[0]);
+                s.field("irq", &self.get_badge().get());
             }
             CapType::VSpace => {
                 let (paddr, id) = self.vspace_info();
@@ -135,13 +134,12 @@ impl Capability {
         let mut new_cap = self.clone();
 
         // 只有原始能力未标记，且新标记有效时，才允许注入
-        // 目前仅 Endpoint 支持 Badge
-        if self.cap_type() == CapType::Endpoint {
+        // 目前 Endpoint 和 IrqHandler 支持 Badge
+        if self.cap_type() == CapType::Endpoint || self.cap_type() == CapType::IrqHandler {
             let current_badge = self.get_badge();
             if current_badge.is_null() && !badge.is_null() {
                 let b = badge;
                 // 清除旧 Badge (虽然是0) 并设置新 Badge
-                // 注意：这里假设 Badge 在高位，且没有其他数据
                 new_cap.set_badge(b);
             }
         }
@@ -278,8 +276,8 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_irqhandler(irq: &IRQ, rights: Rights) -> Self {
-        let w0 = irq.id();
+    pub fn create_irqhandler(rights: Rights) -> Self {
+        let w0 = 0;
         let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
@@ -313,7 +311,7 @@ impl Capability {
     }
 
     pub fn get_badge(&self) -> Badge {
-        if self.cap_type() == CapType::Endpoint {
+        if self.cap_type() == CapType::Endpoint || self.cap_type() == CapType::IrqHandler {
             Badge::from(self.words[1] >> DATA_SHIFT)
         } else {
             Badge::null()
@@ -326,7 +324,7 @@ impl Capability {
     }
 
     pub fn set_badge(&mut self, badge: Badge) {
-        if self.cap_type() == CapType::Endpoint {
+        if self.cap_type() == CapType::Endpoint || self.cap_type() == CapType::IrqHandler {
             let mask = !((!0usize) << DATA_SHIFT);
             self.words[1] = (self.words[1] & mask) | (badge.get() << DATA_SHIFT);
         }

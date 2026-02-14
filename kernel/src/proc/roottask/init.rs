@@ -4,9 +4,7 @@ use super::layout::*;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
-use crate::hal::irq::MAX_IRQS;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
-use crate::irq::IRQ;
 use crate::log;
 use crate::mem::PageTable;
 use crate::mem::pmem;
@@ -24,7 +22,7 @@ pub struct RootCaps {
     pub kernel: Capability,
     pub untyped_cspace: Capability,
     pub mmio: Capability,
-    pub irq_cspace: Capability,
+    pub irq_control: Capability,
 }
 
 pub fn alloc_root_caps() -> Result<RootCaps, Error> {
@@ -39,7 +37,7 @@ pub fn alloc_root_caps() -> Result<RootCaps, Error> {
         kernel: Capability::create_kernel(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
         mmio: Capability::create_mmio(Rights::ALL),
-        irq_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        irq_control: Capability::create_irqhandler(Rights::ALL),
     })
 }
 
@@ -152,7 +150,7 @@ pub fn init_cspace(
     cspace.insert(BOOTINFO_CAP, &caps.bootinfo)?;
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
     cspace.insert(MMIO_CAP, &caps.mmio)?;
-    cspace.insert(IRQ_CAP, &caps.irq_cspace)?;
+    cspace.insert(IRQ_CAP, &caps.irq_control)?;
 
     // === 1. MMIO Caps (Deprecated old logic) ===
     // 内核现在不再在启动阶段探测 MMIO 内存并填充 CNode。
@@ -175,16 +173,5 @@ pub fn init_cspace(
         }
     }
 
-    // === 3. IRQ Caps (Stored in Root CNode L1 directly, starting slot 8) ===
-    // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
-    let mut slot = 1;
-    let irq_cnode = unsafe { caps.irq_cspace.obj_ptr().as_mut::<CNode>() };
-    for irq in 1..MAX_IRQS {
-        let irq_obj = IRQ::new(irq);
-        let cap = Capability::create_irqhandler(&irq_obj, Rights::ALL);
-        // 插入到 IRQ 子 CNode
-        irq_cnode.insert(CapPtr::from(slot), &cap)?;
-        slot += 1;
-    }
     Ok(())
 }
