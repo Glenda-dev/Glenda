@@ -1,5 +1,6 @@
 // TODO: Check address validity
 use crate::hal::mem::VA_MAX;
+use crate::sync::Once;
 use core::fmt::{Debug, Display};
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 
@@ -190,4 +191,34 @@ impl VPN {
     pub const fn as_usize(&self) -> usize {
         self.0
     }
+}
+
+pub fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
+    VirtAddr::from(pa.as_usize() + *HHDM_OFFSET.get().expect("HHDM offset not initialized"))
+}
+
+pub static HHDM_OFFSET: Once<usize> = Once::new();
+pub static KERNEL_VIRT_BASE: Once<VirtAddr> = Once::new();
+pub static KERNEL_PHYS_BASE: Once<PhysAddr> = Once::new();
+
+pub fn virt_to_phys(va: VirtAddr) -> PhysAddr {
+    let v = va.as_usize();
+    let k_vbase = *KERNEL_VIRT_BASE.get().expect("Kernel virtual base not initialized");
+    if k_vbase != VirtAddr::null() && v >= k_vbase.as_usize() {
+        let k_pbase = *KERNEL_PHYS_BASE.get().expect("Kernel physical base not initialized");
+        let k_offset = k_vbase.as_usize() - k_pbase.as_usize();
+        return PhysAddr::from(v - k_offset);
+    }
+    PhysAddr::from(v - *HHDM_OFFSET.get().expect("HHDM offset not initialized"))
+}
+
+pub fn init() {
+    let hhdm = crate::boot::get_hhdm();
+    HHDM_OFFSET.call_once(|| hhdm);
+    log!("mem: HHDM offset set to {:#x}", hhdm);
+    let kernel_addr = crate::boot::get_kernel_address();
+    let (pbase, vbase) = kernel_addr;
+    KERNEL_PHYS_BASE.call_once(|| pbase);
+    KERNEL_VIRT_BASE.call_once(|| vbase);
+    log!("mem: Kernel physical base set to {}, virtual base set to {}", pbase, vbase);
 }

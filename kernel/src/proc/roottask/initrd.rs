@@ -1,8 +1,8 @@
 use crate::hal;
 use crate::hal::mem::{PGSIZE, USER_VA};
-
 use crate::mem::pmem;
 use crate::mem::{PageTable, Perms, VirtAddr};
+use crate::platform;
 use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
@@ -66,9 +66,11 @@ const PAYLOAD_MAGIC: u32 = 0x99999999;
 static INITRD_REGION: Once<(VirtAddr, usize)> = Once::new();
 
 pub fn init() {
-    let info = hal::platform::info();
+    log!("proc: Initializing initrd...");
+    let info = platform::get();
     let range = info.initrd;
     let payload_va = hal::mem::phys_to_virt(range.start);
+    log!("proc: Found initrd: va={:?}, size={}", payload_va, range.size);
     let size = range.size;
 
     let ptr = payload_va.as_ptr::<u8>();
@@ -79,7 +81,7 @@ pub fn init() {
     let magic = u32::from_le_bytes([b0, b1, b2, b3]);
 
     if magic != PAYLOAD_MAGIC {
-        log!("proc: {}Warning{}: Invalid payload magic: {:#x}", ANSI_YELLOW, ANSI_RESET, magic);
+        warn!("proc: {}Warning{}: Invalid payload magic: {:#x}", ANSI_YELLOW, ANSI_RESET, magic);
         return;
     }
 

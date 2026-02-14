@@ -1,9 +1,11 @@
-use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::PhysAddr;
 use crate::sync::Once;
 use core::fmt;
 use core::mem::size_of;
+
+pub mod acpi;
+pub mod dtb;
 
 static PLATFORM_INFO: Once<PlatformInfo> = Once::new();
 pub const PLATFORM_SIZE: usize = size_of::<PlatformInfo>();
@@ -81,6 +83,7 @@ pub enum MemoryType {
     Ram = 1,
     Mmio = 2,
     Reserved = 3,
+    Reclaimable = 4,
 }
 
 /// 描述一个硬件设备资源
@@ -109,6 +112,13 @@ pub struct DeviceDesc {
 
     /// 拓扑结构支持：该设备连接到的总线类型
     pub bus_type: BusType,
+}
+
+impl DeviceDesc {
+    pub fn compatible_str(&self) -> &str {
+        let len = self.compatible.iter().position(|&c| c == 0).unwrap_or(self.compatible.len());
+        core::str::from_utf8(&self.compatible[..len]).unwrap_or("unknown")
+    }
 }
 
 impl fmt::Debug for DeviceDesc {
@@ -214,11 +224,60 @@ impl PlatformInfo {
             u32::MAX
         }
     }
+
+    pub fn find_device(&self, kind: DeviceKind) -> Option<&DeviceDesc> {
+        for i in 0..self.device_count {
+            if self.devices[i].kind == kind {
+                return Some(&self.devices[i]);
+            }
+        }
+        None
+    }
 }
 
 pub fn init() {
-    PLATFORM_INFO.call_once(|| hal::platform::info());
-    log!("platform: Initialized via HAL");
+    let mut info = if let Some(dtb_pa) = crate::boot::get_dtb() {
+        self::dtb::parse(dtb_pa.as_usize())
+    } else if let Some(rsdp_pa) = crate::boot::get_rsdp() {
+        self::acpi::parse(rsdp_pa.as_usize())
+    } else {
+        panic!("No platform information found (DTB or ACPI)");
+    };
+
+    // Override or supplement memory regions with generic bootloader memory map if available
+    let mmap = crate::boot::get_mem_map();
+    if !mmap.is_empty() {
+        log!("platform: Found bootloader memory map with {} entries", mmap.len());
+        info.memory_region_count = 0;
+        for entry in mmap {
+            info.add_memory(entry.base, entry.length, entry.kind);
+        }
+    }
+
+    if let Some((start, size)) = crate::boot::get_initrd() {
+        info.initrd = MemoryRegion {
+            start,
+            size,
+            region_type: MemoryType::Reserved,
+        };
+        log!("platform: Initrd found at {}, size: {}", start, size);
+    }
+
+    if info.clock_freq == 0 {
+        log!("platform: Clock frequency not detected, defaulting to 10MHz");
+        info.clock_freq = 10_000_000;
+    }
+
+    if let Some(cmdline) = crate::boot::get_cmdline() {
+        let bytes = cmdline.as_bytes();
+        let len = core::cmp::min(bytes.len(), info.bootargs.len() - 1);
+        info.bootargs[..len].copy_from_slice(&bytes[..len]);
+        info.bootargs[len] = 0;
+        log!("platform: Bootargs overridden by bootloader: {}", cmdline);
+    }
+
+    PLATFORM_INFO.call_once(|| info);
+    log!("platform: Initialized via {:?}", info.model());
 }
 
 pub fn get() -> &'static PlatformInfo {

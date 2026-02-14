@@ -1,6 +1,7 @@
 // A busy-wait 16550A-compatible UART Driver
 
-use crate::sync::Once;
+use crate::hal::mem::{PGSIZE, phys_to_virt};
+use crate::mem::{PageTable, Perms, PhysAddr};
 use core::cmp;
 use core::fmt::{self, Write};
 use core::ptr::{read_volatile, write_volatile};
@@ -43,47 +44,64 @@ impl Config {
 }
 
 pub struct Uart {
-    thr: *mut u8,
-    lsr: *const u8,
-    lsr_thre: u8,
     cfg: Config,
+    size: usize,
 }
 
 unsafe impl Send for Uart {}
 unsafe impl Sync for Uart {}
 
 impl Uart {
-    pub const fn from_config(cfg: Config) -> Self {
-        Self {
-            cfg,
-            thr: (cfg.base + cfg.thr_offset) as *mut u8,
-            lsr: (cfg.base + cfg.lsr_offset) as *const u8,
-            lsr_thre: cfg.lsr_thre_bit,
-        }
+    pub const fn from_config(cfg: Config, size: usize) -> Self {
+        Self { cfg, size }
     }
 
     #[inline(always)]
-    pub fn putb(&self, b: u8) {
+    fn putb(&self, b: u8) {
         unsafe {
-            while (read_volatile(self.lsr) & self.lsr_thre) == 0 {}
-            write_volatile(self.thr, b);
+            let base_va = phys_to_virt(PhysAddr::from(self.cfg.base)).as_usize();
+            let thr = (base_va + self.cfg.thr_offset) as *mut u8;
+            let lsr = (base_va + self.cfg.lsr_offset) as *const u8;
+
+            while (read_volatile(lsr) & self.cfg.lsr_thre_bit) == 0 {}
+            write_volatile(thr, b);
         }
     }
 
-    pub fn get(&self) -> Option<u8> {
+    fn get(&self) -> Option<u8> {
         unsafe {
-            if (read_volatile(self.lsr) & 1) == 0 {
-                None
-            } else {
-                Some(read_volatile(self.thr as *const u8))
-            }
+            let base_va = phys_to_virt(PhysAddr::from(self.cfg.base)).as_usize();
+            let thr = (base_va + self.cfg.thr_offset) as *const u8;
+            let lsr = (base_va + self.cfg.lsr_offset) as *const u8;
+
+            if (read_volatile(lsr) & 1) == 0 { None } else { Some(read_volatile(thr)) }
         }
     }
+}
 
-    pub fn puts(&self, s: &str) {
-        for &b in s.as_bytes() {
-            self.putb(b);
-        }
+impl super::Uart for Uart {
+    fn putc(&self, b: u8) {
+        self.putb(b);
+    }
+
+    fn getc(&self) -> Option<u8> {
+        self.get()
+    }
+
+    fn map_mmio(&self, kpt: &mut PageTable) {
+        let pa = PhysAddr::from(self.cfg.base).align_down(PGSIZE);
+        let va = phys_to_virt(pa);
+        let size = (self.size + PGSIZE - 1) / PGSIZE * PGSIZE;
+        let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
+        log!(
+            "ns16550a: Map MMIO [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
+            pa.as_usize(),
+            (pa + size).as_usize(),
+            va.as_usize(),
+            (va + size).as_usize(),
+            flags
+        );
+        kpt.map_with_alloc(va, pa, size, flags);
     }
 }
 
@@ -123,12 +141,6 @@ pub const DEFAULT_QEMU_VIRT: Config = Config::new(
     0x05,        // LSR offset
     0x20,        // LSR.THRE
 );
-
-pub static UART: Once<Uart> = Once::new();
-
-pub fn init(cfg: Config) {
-    UART.call_once(|| Uart::from_config(cfg));
-}
 
 /*
  See SPEC: https://devicetree-specification.readthedocs.io/en/stable/device-bindings.html

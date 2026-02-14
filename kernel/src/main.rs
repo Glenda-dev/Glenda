@@ -9,6 +9,7 @@ mod cap;
 mod cpu;
 #[cfg(feature = "gdb")]
 mod debug;
+mod drivers;
 mod error;
 mod hal;
 mod init;
@@ -78,4 +79,15 @@ fn run_shell() {
 fn print_banner() {
     printk!("{}", logo::LOGO);
     version::print();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glenda_boot() -> ! {
+    crate::glenda_main(true);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glenda_secondary(hartid: usize) -> ! {
+    hal::cpu::set_cpuid(hartid);
+    crate::glenda_main(false);
 }

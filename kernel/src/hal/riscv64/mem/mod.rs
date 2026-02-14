@@ -1,8 +1,6 @@
-mod addr;
 mod pte;
 mod vm;
 
-pub use addr::{phys_to_virt, virt_to_phys};
 pub use pte::Pte;
 
 pub const PGSIZE: usize = 4096;
@@ -17,12 +15,13 @@ pub const KSTACK_PAGES: usize = 4; // 16KB
 
 use super::asm;
 use crate::mem::TRAMPOLINE_VA;
+pub use crate::mem::addr::phys_to_virt;
+pub use crate::mem::addr::virt_to_phys;
 use crate::mem::{PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 const SATP_MODE: usize = 8;
 unsafe extern "C" {
     static __trampoline: u8;
-    static __alloc_start: u8;
 }
 
 pub unsafe fn activate_vspace(val: usize) {
@@ -69,6 +68,10 @@ pub fn pt_setup(pt: &mut PageTable) -> Result<(), crate::error::Error> {
     pt.map(VirtAddr::from(TRAMPOLINE_VA), tramp_pa, PGSIZE, Perms::READ | Perms::EXECUTE)
 }
 
-pub fn kernel_end_addr() -> PhysAddr {
-    unsafe { PhysAddr::from(&__alloc_start as *const u8 as usize) }
+pub fn get_pt() -> &'static mut PageTable {
+    let satp = asm::read_satp();
+    let root_ppn = satp & ((1 << 44) - 1);
+    let root_paddr = PhysAddr::from(root_ppn << 12);
+    let root_vaddr = phys_to_virt(root_paddr);
+    unsafe { &mut *root_vaddr.as_mut_ptr::<PageTable>() }
 }

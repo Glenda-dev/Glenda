@@ -1,6 +1,5 @@
 use super::asm;
-use super::dtb;
-use super::sbi;
+use crate::hal::riscv64::sbi;
 
 /// 初始化时钟硬件
 pub fn init() {}
@@ -18,5 +17,5 @@ pub fn set_next_event(cycles: usize) {
 /// 获取时钟源频率 (Hz)
 /// 用于将毫秒/纳秒转换为周期
 pub fn get_frequency() -> usize {
-    dtb::timebase_frequency()
+    crate::platform::get().clock_freq
 }

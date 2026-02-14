@@ -3,7 +3,7 @@ mod cmake;
 mod image;
 mod make;
 
-pub use image::image;
+pub use image::{image_img, image_iso, prepare};
 
 use crate::config::{Config, Service};
 
@@ -20,8 +20,8 @@ pub fn build(cfg: &Config) -> anyhow::Result<()> {
     build_initrd(&cfg)?;
     // Build the kernel
     build_kernel(&cfg)?;
-    // Pack the image
-    image(&cfg)?;
+    // Prepare the bootable image (copy files, etc.)
+    prepare(&cfg)?;
     Ok(())
 }
 

@@ -36,6 +36,11 @@ enum Cmd {
     Size,
     /// Dump QEMU DTB to target/virt.dtb
     DumpDtb,
+    /// Generate bootable disk image (ISO or FAT32)
+    Image {
+        #[arg(long)]
+        iso: bool,
+    },
     Clean,
     /// Run cargo check on all components
     Check {
@@ -66,6 +71,13 @@ fn main() -> anyhow::Result<()> {
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,
         Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,
+        Cmd::Image { iso } => {
+            if iso {
+                build::image_iso(&cfg)?;
+            } else {
+                build::image_img(&cfg)?;
+            }
+        }
         Cmd::Clean => build::clean(&cfg)?,
         Cmd::Check { args } => check::check(&cfg, &args)?,
     }

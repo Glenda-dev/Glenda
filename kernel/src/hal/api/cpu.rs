@@ -8,3 +8,8 @@ pub fn cpu_id() -> usize {
 pub fn read_cycle() -> usize {
     unimplemented!()
 }
+
+/// 设置当前 CPU 核心 ID（仅在启动其他核心时使用）
+pub fn set_cpuid(cpuid: usize) {
+    unimplemented!()
+}

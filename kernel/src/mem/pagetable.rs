@@ -164,8 +164,7 @@ impl PageTable {
             if !pte_val.is_valid() || pte_val.is_leaf() {
                 error!(
                     "PageTable::map_table failed: parent missing/huge at level {} va={:?}\n",
-                    l,
-                    va
+                    l, va
                 );
                 return Err(Error::MappingFailed); // 父级页表不存在或已被大页占用
             }
@@ -199,7 +198,7 @@ impl PageTable {
 
         let mut va = start;
         let mut pa = pa.align_down(PGSIZE);
-        while va < end {
+        'map_loop: while va < end {
             // 手动遍历页表，如果中间层级缺失则分配
             let mut table = self as *mut PageTable;
             for level in (1..PT_LEVELS).rev() {
@@ -211,6 +210,31 @@ impl PageTable {
 
                     // 建立中间层级映射 (V=1, 无 R/W/X)
                     *entry = Pte::from(frame_pa, Perms::VALID);
+                }
+
+                if entry.is_leaf() {
+                    // Check if existing huge page covers our range compatible
+                    let page_size = 1usize << (12 + level * 9);
+                    let huge_page_start_pa = pa.align_down(page_size);
+                    let entry_pa = entry.pa();
+
+                    if entry_pa == huge_page_start_pa {
+                        // Found compatible huge page. Skip over it.
+                        let next_boundary = va.align_down(page_size) + page_size;
+                        // Calculate how much we can skip
+                        let dist_to_boundary = next_boundary.as_usize() - va.as_usize();
+                        let dist_to_end = end.as_usize() - va.as_usize();
+                        let step = core::cmp::min(dist_to_boundary, dist_to_end);
+                        
+                        va += step;
+                        pa += step;
+                        continue 'map_loop;
+                    }
+
+                    panic!(
+                        "map_with_alloc: Huge page support (splitting) not implemented. Level={}, va={:?}, entry={:?}",
+                        level, va, entry
+                    );
                 }
 
                 // 进入下一级

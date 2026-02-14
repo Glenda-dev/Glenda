@@ -1,4 +1,4 @@
-use super::super::sbi;
+use crate::hal::riscv64::sbi;
 use core::fmt::{self, Write};
 
 pub struct SBIWriter;

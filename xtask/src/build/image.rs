@@ -4,18 +4,18 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-pub fn image(cfg: &Config) -> anyhow::Result<()> {
+pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
     // Copy kernel to top level target similar to build_kernel
     // Note: build_kernel copies to target/kernel already.
 
-    let img_root = Path::new("target/img_root");
+    let fsroot = Path::new("target/fsroot");
     let limine_path = Path::new("target/limine");
 
-    if img_root.exists() {
-        fs::remove_dir_all(img_root)?;
+    if fsroot.exists() {
+        fs::remove_dir_all(fsroot)?;
     }
-    fs::create_dir_all(img_root.join("EFI/BOOT"))?;
-    fs::create_dir_all(img_root.join("boot"))?;
+    fs::create_dir_all(fsroot.join("EFI/BOOT"))?;
+    fs::create_dir_all(fsroot.join("boot"))?;
 
     // Download Limine if missing
     if !limine_path.exists() {
@@ -33,9 +33,9 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
     }
 
     // Copy kernel and initrd
-    fs::copy("target/kernel", img_root.join("boot/glenda.elf"))?;
+    fs::copy("target/kernel", fsroot.join("boot/glenda.elf"))?;
     if Path::new("target/modules.bin").exists() {
-        fs::copy("target/modules.bin", img_root.join("boot/modules.bin"))?;
+        fs::copy("target/modules.bin", fsroot.join("boot/modules.bin"))?;
     } else {
         // Create empty? or warn
         eprintln!("[ WARN ] No modules.bin found");
@@ -43,50 +43,28 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
 
     // Copy Limine files (UEFI)
     let arch = cfg.system.arch;
-    match arch {
-        Arch::Riscv64 => {
-            fs::copy(
-                limine_path.join("BOOTRISCV64.EFI"),
-                img_root.join("EFI/BOOT/BOOTRISCV64.EFI"),
-            )?;
-            fs::copy(
-                limine_path.join("limine-uefi-cd.bin"),
-                img_root.join("boot/limine-uefi-cd.bin"),
-            )?;
-        }
-        Arch::X86_64 => {
-            fs::copy(limine_path.join("BOOTX64.EFI"), img_root.join("EFI/BOOT/BOOTX64.EFI"))?;
-            fs::copy(limine_path.join("limine-bios.sys"), img_root.join("boot/limine-bios.sys"))?;
-            fs::copy(
-                limine_path.join("limine-bios-cd.bin"),
-                img_root.join("boot/limine-bios-cd.bin"),
-            )?;
-            fs::copy(
-                limine_path.join("limine-uefi-cd.bin"),
-                img_root.join("boot/limine-uefi-cd.bin"),
-            )?;
-        }
-        Arch::Loongarch64 => {
-            fs::copy(
-                limine_path.join("BOOTLOONGARCH64.EFI"),
-                img_root.join("EFI/BOOT/BOOTLOONGARCH64.EFI"),
-            )?;
-            fs::copy(
-                limine_path.join("limine-uefi-cd.bin"),
-                img_root.join("boot/limine-uefi-cd.bin"),
-            )?;
-        }
-        Arch::Aarch64 => {
-            fs::copy(limine_path.join("BOOTAA64.EFI"), img_root.join("EFI/BOOT/BOOTAA64.EFI"))?;
-            fs::copy(
-                limine_path.join("limine-uefi-cd.bin"),
-                img_root.join("boot/limine-uefi-cd.bin"),
-            )?;
-        }
+    let limine_efi = arch.limine_efi_file();
+    fs::copy(limine_path.join(limine_efi), fsroot.join("EFI/BOOT").join(limine_efi))?;
+
+    // Copy CD/BIOS helper files
+    fs::copy(limine_path.join("limine-uefi-cd.bin"), fsroot.join("boot/limine-uefi-cd.bin"))?;
+    if matches!(arch, Arch::X86_64) {
+        fs::copy(limine_path.join("limine-bios.sys"), fsroot.join("boot/limine-bios.sys"))?;
+        fs::copy(limine_path.join("limine-bios-cd.bin"), fsroot.join("boot/limine-bios-cd.bin"))?;
     }
 
     let limine_conf_path = Path::new("config/limine.conf");
+    fs::copy(limine_conf_path, fsroot.join("boot/limine.conf"))?;
+    eprintln!("[ INFO ] Preparation complete. Files copied to {}", fsroot.display());
+    Ok(())
+}
 
+pub fn image_img(cfg: &Config) -> anyhow::Result<()> {
+    // Copy kernel to top level target similar to build_kernel
+    // Note: build_kernel copies to target/kernel already.
+    let arch = cfg.system.arch;
+    let limine_path = Path::new("target/limine");
+    let limine_conf_path = Path::new("config/limine.conf");
     // Build Disk Image (FAT32)
     eprintln!("[ INFO ] Generating Disk image (FAT32)...");
     let image_path = Path::new("target/disk.img");
@@ -145,28 +123,50 @@ pub fn image(cfg: &Config) -> anyhow::Result<()> {
     }
 
     // Copy Limine files
-    match arch {
-        Arch::Riscv64 => {
-            mcopy(&limine_path.join("BOOTRISCV64.EFI"), "EFI/BOOT/BOOTRISCV64.EFI")?;
-        }
-        Arch::X86_64 => {
-            mcopy(&limine_path.join("BOOTX64.EFI"), "EFI/BOOT/BOOTX64.EFI")?;
-        }
-        Arch::Loongarch64 => {
-            mcopy(&limine_path.join("BOOTLOONGARCH64.EFI"), "EFI/BOOT/BOOTLOONGARCH64.EFI")?;
-        }
-        Arch::Aarch64 => {
-            mcopy(&limine_path.join("BOOTAA64.EFI"), "EFI/BOOT/BOOTAA64.EFI")?;
-        }
-    }
+    let limine_efi = arch.limine_efi_file();
+    mcopy(&limine_path.join(limine_efi), &format!("EFI/BOOT/{}", limine_efi))?;
 
     // Write limine.conf to temp file then copy
-    // (We reuse the previous limine.conf creation logic, assuming it's written to target/img_root/boot/limine.conf)
+    // (We reuse the previous limine.conf creation logic, assuming it's written to target/fsroot/boot/limine.conf)
     // Actually we can just write it to a temp path.
     // Let's use target/limine.conf as temp
     mcopy(limine_conf_path, "boot/limine.conf")?;
 
     eprintln!("[ INFO ] Image generated at {}", image_path.display());
+
+    Ok(())
+}
+
+pub fn image_iso(_cfg: &Config) -> anyhow::Result<()> {
+    let fsroot = Path::new("target/fsroot");
+    let iso_path = Path::new("target/glenda.iso");
+
+    eprintln!("[ INFO ] Generating ISO image...");
+
+    let status = Command::new("xorriso")
+        .args(&[
+            "-as",
+            "mkisofs",
+            "-b",
+            "boot/limine-uefi-cd.bin",
+            "-no-emul-boot",
+            "-boot-load-size",
+            "4",
+            "-boot-info-table",
+            "--efi-boot",
+            "boot/limine-uefi-cd.bin",
+            "-efi-boot-part",
+            "--efi-boot-image",
+            "--protective-msdos-label",
+            fsroot.to_str().unwrap(),
+            "-o",
+            iso_path.to_str().unwrap(),
+        ])
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("xorriso failed");
+    }
 
     Ok(())
 }

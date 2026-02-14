@@ -1,10 +1,13 @@
 use super::cpu;
-use super::dtb;
-use super::sbi;
-
+use crate::hal::riscv64::sbi;
 use crate::platform::PlatformInfo;
+use crate::platform::acpi::GlendaAcpiHandler;
 use crate::printk::{ANSI_RED, ANSI_RESET};
+use ::acpi::AcpiTables;
 use core::sync::atomic::{AtomicBool, Ordering};
+
+mod acpi;
+mod dtb;
 
 /*
  由主 hart 通过 HSM 启动次级 hart 的入口
@@ -18,24 +21,12 @@ unsafe extern "C" {
 
 static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
 
-#[repr(transparent)]
-#[derive(Copy, Clone)]
-pub struct PlatformHandle(usize);
-
-impl PlatformHandle {
-    pub fn from(addr: usize) -> Self {
-        PlatformHandle(addr as usize)
-    }
-    pub fn as_ptr(&self) -> *const u8 {
-        self.0 as *const u8
-    }
-    pub fn bits(&self) -> usize {
-        self.0
-    }
+pub fn parse_dtb(fdt: &fdt::Fdt, info: &mut PlatformInfo) {
+    dtb::parse(fdt, info)
 }
 
-pub fn info() -> PlatformInfo {
-    dtb::get_platform_info()
+pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>, info: &mut PlatformInfo) {
+    acpi::parse(tables, info)
 }
 
 /// 关闭系统
@@ -49,20 +40,15 @@ pub fn reboot() -> ! {
     let err = sbi::system_reset(1, 0);
     panic!("Failed to reboot system via SBI: {:?}", err);
 }
-/// 发送核间中断 (IPI)
-///
-/// `mask`: 目标 CPU 的掩码 (通常是 bit mask 或类似于 sbi 的 hart_mask)
-pub fn send_ipi(mask: usize, mask_base: usize) {
-    sbi::send_ipi(mask, mask_base).expect("Failed to send IPI");
-}
 
 pub fn bootstrap_cpus() {
     if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return;
     }
+
     let start_addr = secondary_start as usize;
-    let opaque = dtb::dtb_addr();
-    let harts = dtb::hart_count();
+    let opaque = crate::boot::get_dtb().map(|pa| pa.as_usize()).unwrap_or(0);
+    let harts = crate::platform::get().cpu_count;
     let cpuid = cpu::cpu_id();
     for target in 0..harts {
         if target == cpuid {

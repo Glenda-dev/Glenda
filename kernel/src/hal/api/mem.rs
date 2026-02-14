@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::mem::{PPN, PageTable, Perms, PhysAddr, VPN, VirtAddr};
+use crate::mem::{PageTable, Perms, PhysAddr, VirtAddr, PPN, VPN};
 
 /// 页大小
 pub const PGSIZE: usize = 4096;
@@ -116,5 +116,10 @@ pub const fn virt_to_phys(va: VirtAddr) -> PhysAddr {
 
 /// 获取内核结束地址
 pub const fn kernel_end_addr() -> PhysAddr {
+    unimplemented!()
+}
+
+/// 获取当前页表
+pub fn get_pt() -> &'static mut PageTable {
     unimplemented!()
 }

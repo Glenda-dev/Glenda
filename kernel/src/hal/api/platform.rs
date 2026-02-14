@@ -1,12 +1,15 @@
 use crate::mem::MemoryRange;
 use crate::platform::PlatformInfo;
+use crate::platform::acpi::GlendaAcpiHandler;
+use acpi::AcpiTables;
 
-#[repr(transparent)]
-#[derive(Copy, Clone)]
-pub struct PlatformHandle(usize);
+/// 获取平台信息(DTB)
+pub fn parse_dtb(fdt: &fdt::Fdt, info: &mut PlatformInfo) {
+    unimplemented!()
+}
 
-/// 获取平台信息
-pub fn info() -> PlatformInfo {
+/// 获取平台信息(ACPI)
+pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>, info: &mut PlatformInfo) {
     unimplemented!()
 }
 
@@ -28,11 +31,6 @@ pub fn send_ipi(mask: usize, mask_base: usize) {
 
 /// 获取内存范围
 pub fn memory_range() -> Option<MemoryRange> {
-    unimplemented!()
-}
-
-/// 平台初始化
-pub fn init(dtb: PlatformHandle) {
     unimplemented!()
 }
 

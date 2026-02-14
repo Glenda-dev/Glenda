@@ -8,3 +8,8 @@ pub fn cpu_id() -> usize {
 pub fn read_cycle() -> usize {
     asm::rdcycle()
 }
+pub fn set_cpuid(cpuid: usize) {
+    unsafe {
+        asm::write_tp(cpuid);
+    }
+}

@@ -87,3 +87,8 @@ pub fn set_threshold(threshold: usize, cpuid: usize) {
 pub fn clear_soft() {
     unimplemented!()
 }
+
+/// 发送核间中断 (IPI)
+pub fn send_ipi(mask: usize, mask_base: usize) {
+    unimplemented!()
+}

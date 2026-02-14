@@ -53,8 +53,17 @@ impl Arch {
         match self {
             Arch::Riscv64 => vec!["/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd"],
             Arch::Aarch64 => vec!["/usr/share/edk2/aarch64/QEMU_EFI.fd"],
-            Arch::X86_64 => vec!["/usr/share/ovmf/OVMF.fd", "/usr/share/qemu/OVMF.fd"],
+            Arch::X86_64 => vec!["/usr/share/ovmf/X64/OVMF.fd", "/usr/share/qemu/OVMF.fd"],
             Arch::Loongarch64 => vec!["/usr/share/edk2/loongarch/QEMU_EFI.fd"],
+        }
+    }
+
+    pub fn limine_efi_file(&self) -> &'static str {
+        match self {
+            Arch::Riscv64 => "BOOTRISCV64.EFI",
+            Arch::X86_64 => "BOOTX64.EFI",
+            Arch::Aarch64 => "BOOTAA64.EFI",
+            Arch::Loongarch64 => "BOOTLOONGARCH64.EFI",
         }
     }
 }

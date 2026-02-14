@@ -60,17 +60,17 @@ fn kick_harts() {
     // 发送 IPI 给所有其他核心，唤醒它们或触发抢占
     // 这里的 mask 应该根据实际启用的 cpu 计算，暂时广播给所有
     // 忽略错误
-    let _ = hal::platform::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
+    let _ = hal::irq::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
     // SBI v0.2: hart_mask, hart_mask_base.
     // To send to all harts: mask pointer? No, it's a bitmask if < XLEN.
     // But sbi_send_ipi takes a pointer in newer spec?
-    // The implementation in sbi.rs uses legacy/v0.1 style or v0.2 direct value?
-    // sbi.rs: sbi_call(SBI_EXT_IPI, 0, hart_mask, hart_mask_base, 0)
+    // The implementation in sbi uses legacy/v0.1 style or v0.2 direct value?
+    // sbi: sbi_call(SBI_EXT_IPI, 0, hart_mask, hart_mask_base, 0)
     // If we want to broadcast, we usually need to know the topology.
     // For now, let's assume a small number of harts and use a mask.
     // Assuming MAX_HARTS <= 64.
     let mask = (1 << MAX_CPUS) - 1;
-    let _ = hal::platform::send_ipi(mask, 0);
+    let _ = hal::irq::send_ipi(mask, 0);
 }
 
 /// 将线程加入调度队列
@@ -96,7 +96,7 @@ pub fn add_thread(tcb: &mut TCB) {
     // 这样目标核心如果处于 WFI 状态会被唤醒，或者在运行其他线程时触发调度检查
     if target_hart_id != current_hart_id {
         let mask = 1 << target_hart_id;
-        let _ = hal::platform::send_ipi(mask, 0);
+        let _ = hal::irq::send_ipi(mask, 0);
     }
 }
 

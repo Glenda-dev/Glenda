@@ -1,15 +1,16 @@
 use super::PhysAddr;
+use crate::boot;
 use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
+use crate::hal;
 use crate::hal::mem::PGSIZE;
-
 use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
+use crate::platform;
 use crate::printk;
 use crate::proc::TCB;
 use crate::proc::asid;
 use crate::sync::SpinLock;
-use crate::{hal, platform};
 
 const MAX_PMEM_REGIONS: usize = 16;
 
@@ -51,6 +52,12 @@ impl PmemManager {
     }
 
     fn init(&mut self, kernel_end: PhysAddr, info: &platform::PlatformInfo) {
+        let mut available = 0;
+        log!(
+            "pmem: Initializing pmem regions. Kernel end at {}, found {} regions",
+            kernel_end,
+            info.memory_region_count
+        );
         // Clear existing regions just in case
         self.count = 0;
 
@@ -65,16 +72,25 @@ impl PmemManager {
                 // If the region is completely below kernel_end, we ignore it (it's kernel code/data)
 
                 let effective_start = if r_start < kernel_end && r_end > kernel_end {
+                    log!(
+                        "pmem: Adjusting region start {} -> {} due to kernel overlap",
+                        r_start,
+                        kernel_end
+                    );
                     kernel_end
-                } else if r_end <= kernel_end {
-                    continue; // Region used by kernel
                 } else {
                     r_start
                 };
 
                 self.add_region(effective_start, r_end);
+                available += r.size;
             }
         }
+        log!(
+            "pmem: Initialization complete with {} regions, {} MB available",
+            self.count,
+            available / (1024 * 1024)
+        );
     }
 
     fn alloc_addr(&mut self, size: usize, align: usize) -> Option<PhysAddr> {
@@ -141,8 +157,9 @@ pub fn debug_info() {
 }
 
 pub fn initialize_regions() {
-    let info = hal::platform::info();
-    PMEM.lock().init(hal::mem::kernel_end_addr(), &info);
+    let info = platform::get();
+    let kernel_end = boot::get_kernel_address().0 + boot::get_kernel_size();
+    PMEM.lock().init(kernel_end, &info);
 }
 
 /// 分配一个物理页 Capability

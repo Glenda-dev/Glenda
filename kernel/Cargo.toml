@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+acpi = { version = "5.2.0", default-features = false }
 bitflags = "2.10.0"
 fdt = "0.1.5"
 limine = "0.5.0"
@@ -19,3 +20,5 @@ shell = []
 gdb = []
 bl-limine = []
 bl-multiboot2 = []
+bl-uefi = []
+bl-opensbi = []

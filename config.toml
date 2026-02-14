@@ -3,7 +3,7 @@ arch = "riscv64"
 profile = "relwithdebuginfo"
 
 [qemu]
-cpus = 1
+cpus = 4
 mem = "2G"
 display = "nographic"
 drive = "disk.img"

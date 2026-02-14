@@ -10,13 +10,16 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         .map_err(|_| anyhow::anyhow!("[ ERROR ] {} not found in PATH", qemu_arch))?;
 
     let mut cmd = Command::new(&qemu);
-    // Check for Disk image instead of bare kernel ELFs for direct bool behavior
-    let img = PathBuf::from("target/disk.img");
-    if !img.exists() {
+
+    // Use vvfat for the boot directory to allow easy updates
+    // Map target/fsroot to a virtual FAT drive
+    let fsroot = std::env::current_dir()?.join("target/fsroot");
+    if !fsroot.exists() {
         return Err(anyhow::anyhow!(
-            "[ ERROR ] target/disk.img not found. Run `cargo xtask build` first."
+            "[ ERROR ] target/fsroot not found. Run `cargo xtask image` first."
         ));
     }
+
     cmd.arg("-machine").arg("virt");
     // BIOS/Firmware handling (OVMF/EDK2)
     if let Some(bios) = &cfg.qemu.bios {
@@ -91,9 +94,9 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         cmd.arg("-device").arg(device);
     }
 
-    // Boot from Disk Image
-    // For UEFI boot, a simple raw drive usually works
-    cmd.arg("-drive").arg(format!("file={},format=raw", img.display()));
+    // Use vvfat for the boot device
+    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw", fsroot.display()));
+
     Ok(cmd)
 }
 
