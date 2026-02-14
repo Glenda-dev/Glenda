@@ -77,6 +77,7 @@ fn run_shell() {
 }
 
 fn print_banner() {
+    printk!("{}", printk::ANSI_CLEAR);
     printk!("{}", logo::LOGO);
     version::print();
 }

@@ -106,3 +106,4 @@ pub const ANSI_BLUE: &str = "\x1b[34m";
 pub const ANSI_MAGENTA: &str = "\x1b[35m";
 pub const ANSI_CYAN: &str = "\x1b[36m";
 pub const ANSI_WHITE: &str = "\x1b[37m";
+pub const ANSI_CLEAR: &str = "\x1b[2J\x1b[H";
