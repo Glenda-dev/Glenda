@@ -27,3 +27,4 @@ target
 *.log
 *.elf
 *.bak
+*.bin

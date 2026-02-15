@@ -20,7 +20,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         ));
     }
 
-    cmd.arg("-machine").arg("virt");
+    cmd.arg("-machine").arg("virt,acpi=on");
     // BIOS/Firmware handling (OVMF/EDK2)
     if let Some(bios) = &cfg.qemu.bios {
         // User provided specific BIOS path
@@ -125,5 +125,60 @@ pub fn qemu_dump_dtb(cfg: &Config) -> anyhow::Result<()> {
         "[ INFO ] You can decompile it with: dtc -I dtb -O dts -o target/virt.dts {}",
         dtb_path
     );
+    Ok(())
+}
+
+pub fn qemu_dump_acpi(cfg: &Config) -> anyhow::Result<()> {
+    // Note: acpi_table_save is currently only supported on x86 and some ARM targets in QEMU.
+    // For RISC-V, this command is not yet available in the HMP monitor.
+    if cfg.system.arch.as_str() != "x86_64" && cfg.system.arch.as_str() != "aarch64" {
+        eprintln!(
+            "[ WARN ] `acpi_table_save` is not supported by QEMU for {}.",
+            cfg.system.arch.as_str()
+        );
+        eprintln!("[ INFO ] For RISC-V, you can dump ACPI tables by:");
+        eprintln!("  1. Booting into UEFI shell and using the `acpiview` command.");
+        eprintln!("  2. Reading the tables directly from the host if they were provided as files.");
+        return Ok(());
+    }
+
+    let mut cmd = qemu_cmd(cfg)?;
+    let acpi_path = std::env::current_dir()?.join("target/acpi.dat");
+    let acpi_path_str = acpi_path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
+
+    // For RISC-V/ARM virt machine, we need to explicitly enable ACPI
+    cmd.arg("-machine").arg("virt,acpi=on");
+    cmd.arg("-display").arg("none");
+    // Disable default serial to avoid conflict with monitor on stdio
+    cmd.arg("-serial").arg("null");
+    cmd.arg("-monitor").arg("stdio");
+    cmd.arg("-S");
+
+    eprintln!("[ INFO ] Dumping ACPI tables to {}...", acpi_path_str);
+
+    use std::io::Write;
+    let mut child = cmd
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped()) // Capture output to see if there are errors
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("[ ERROR ] Failed to start QEMU: {}", e))?;
+
+    let mut stdin = child.stdin.take().unwrap();
+    // Wait for QEMU to initialize monitor a bit longer
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    writeln!(stdin, "acpi_table_save {}", acpi_path_str)?;
+    writeln!(stdin, "quit")?;
+
+    let status = child.wait()?;
+    if status.success() {
+        eprintln!("[ INFO ] ACPI tables dumped to {}.", acpi_path_str);
+        eprintln!(
+            "[ INFO ] You can use `acpixtract -a {}` on the host to extract individual tables.",
+            acpi_path_str
+        );
+    } else {
+        return Err(anyhow::anyhow!("[ ERROR ] QEMU failed during ACPI dump"));
+    }
+
     Ok(())
 }
