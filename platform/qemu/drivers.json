@@ -28,6 +28,20 @@
             "compatible": [
                 "virtio,mmio,net"
             ]
+        },
+        {
+            "name": "dtb",
+            "binary": "dtb",
+            "compatible": [
+                "dtb"
+            ]
+        },
+        {
+            "name": "acpi",
+            "binary": "acpi",
+            "compatible": [
+                "acpi"
+            ]
         }
     ]
 }

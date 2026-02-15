@@ -4,6 +4,14 @@ version = 4
 
 [[package]]
 name = "acpi"
+version = "0.1.0"
+dependencies = [
+ "acpi 5.2.0",
+ "libglenda-rs",
+]
+
+[[package]]
+name = "acpi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94476c7ef97af4c4d998b3f422c1b01d5211aad57c80ed200baf148d1f1efab6"
@@ -358,6 +366,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dtb"
+version = "0.1.0"
+dependencies = [
+ "fdt",
+ "libglenda-rs",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,7 +637,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
- "acpi",
+ "acpi 5.2.0",
  "bitflags 2.11.0",
  "chrono",
  "fdt",
@@ -792,6 +808,14 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "pci"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "log",
+]
 
 [[package]]
 name = "postcard"

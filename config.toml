@@ -53,6 +53,18 @@ path = "drivers/virtio/net"
 build = "cargo"
 output = "build/virtio-net.elf"
 kind = "service"
+[[services]]
+name = "dtb"
+path = "drivers/bus/dtb"
+build = "cargo"
+output = "build/dtb.elf"
+kind = "service"
+[[services]]
+name = "acpi"
+path = "drivers/bus/acpi"
+build = "cargo"
+output = "build/acpi.elf"
+kind = "service"
 
 [[libraries]]
 name = "libglenda-rs"
