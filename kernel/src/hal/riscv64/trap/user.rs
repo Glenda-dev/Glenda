@@ -52,7 +52,12 @@ pub fn trap_user_return() {
     // S 态页表
     // S 态 hartid
     // KSTACK(0) 顶部
-    ctx.configure_kernel(asm::read_satp(), cpu::cpu_id(), kstack_top, trap_user_handler as *const () as usize);
+    ctx.configure_kernel(
+        asm::read_satp(),
+        cpu::cpu_id(),
+        kstack_top,
+        trap_user_handler as *const () as usize,
+    );
 
     // sscratch 指向 TrapFrame 的虚拟地址
     let user_tf_va = TRAPFRAME_VA;
