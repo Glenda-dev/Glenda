@@ -7,7 +7,7 @@ use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
 use crate::mem::addr::phys_to_virt;
 use crate::platform;
-use crate::printk;
+// use crate::printk;
 use crate::proc::TCB;
 use crate::proc::asid;
 use crate::sync::SpinLock;

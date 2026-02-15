@@ -1,4 +1,4 @@
-use crate::printk_unsynced;
+// use crate::printk_unsynced;
 use core::arch::asm;
 
 #[inline(always)]

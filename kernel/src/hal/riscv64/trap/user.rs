@@ -12,7 +12,7 @@ use core::mem::transmute;
 /// 在 kernel_vector 汇编代码中被调用
 #[unsafe(no_mangle)]
 pub extern "C" fn trap_user_handler() {
-    let kernel_vec_addr = kernel_vector as usize;
+    let kernel_vec_addr = kernel_vector as *const () as usize;
     unsafe {
         asm::write_stvec(kernel_vec_addr);
     }
@@ -35,7 +35,7 @@ pub fn trap_user_return() {
 
     // 将 stvec 切换到用户态向量入口
     let tramp_base_va = TRAMPOLINE_VA;
-    let user_vec_off = (user_vector as usize) & (PGSIZE - 1);
+    let user_vec_off = (user_vector as *const () as usize) & (PGSIZE - 1);
     let user_vec_addr = tramp_base_va + user_vec_off;
     unsafe {
         // 关闭 SIE (Bit 1)
@@ -52,7 +52,7 @@ pub fn trap_user_return() {
     // S 态页表
     // S 态 hartid
     // KSTACK(0) 顶部
-    ctx.configure_kernel(asm::read_satp(), cpu::cpu_id(), kstack_top, trap_user_handler as usize);
+    ctx.configure_kernel(asm::read_satp(), cpu::cpu_id(), kstack_top, trap_user_handler as *const () as usize);
 
     // sscratch 指向 TrapFrame 的虚拟地址
     let user_tf_va = TRAPFRAME_VA;
@@ -61,7 +61,7 @@ pub fn trap_user_return() {
     }
 
     // 通过 TRAMPOLINE 的高地址映射调用 user_return
-    let user_ret_off = (user_return as usize) & (PGSIZE - 1);
+    let user_ret_off = (user_return as *const () as usize) & (PGSIZE - 1);
     let user_ret_addr = tramp_base_va + user_ret_off;
     let user_return_fn: extern "C" fn(u64, u64) -> ! = unsafe { transmute(user_ret_addr) };
     user_return_fn(user_tf_va as u64, user_satp)

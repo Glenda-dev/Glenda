@@ -255,7 +255,7 @@ impl PageTable {
         }
     }
     pub fn debug_print(&self) {
-        use crate::printk;
+        // use crate::printk;
 
         // #[inline(always)]
         // fn sv39_canon(va: usize) -> usize {

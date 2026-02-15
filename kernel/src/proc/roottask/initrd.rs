@@ -3,7 +3,7 @@ use crate::hal::mem::{PGSIZE, USER_VA};
 use crate::mem::addr::phys_to_virt;
 use crate::mem::pmem;
 use crate::mem::{PageTable, Perms, VirtAddr};
-use crate::printk;
+// use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
 use crate::proc::roottask::STACK_VA;

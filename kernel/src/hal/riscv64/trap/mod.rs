@@ -18,7 +18,7 @@ pub use user::{trap_user_handler, trap_user_return};
 /// 将 CPU 的异常入口基地址 (stvec/vbar_el1) 指向内核的 trap handler
 pub unsafe fn vector_init() {
     unsafe {
-        asm!("csrw stvec, {}", in(reg) kernel_vector as usize);
+        asm!("csrw stvec, {}", in(reg) kernel_vector as *const () as usize);
     }
 }
 

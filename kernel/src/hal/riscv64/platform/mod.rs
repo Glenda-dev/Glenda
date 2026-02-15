@@ -45,7 +45,7 @@ pub fn bootstrap_cpus() {
         return;
     }
 
-    let start_addr = secondary_start as usize;
+    let start_addr = secondary_start as *const () as usize;
     let opaque = crate::boot::get_dtb().map(|pa| pa.as_usize()).unwrap_or(0);
     let harts = crate::boot::get_cpu_count();
     let cpuid = cpu::cpu_id();

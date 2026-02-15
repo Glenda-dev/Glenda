@@ -3,7 +3,7 @@ use super::thread::{TCB, ThreadState};
 use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
-use crate::printk;
+// use crate::printk;
 
 // 最大优先级数量 (0-255)
 pub const MAX_PRIORITY: usize = 256;

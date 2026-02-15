@@ -199,10 +199,10 @@ impl TCB {
 
         // 3. 设置用户态初始状态
         tf.configure(entry_point, stack_top, thread_pointer);
-        tf.configure_kernel(mmu, hal::cpu::cpu_id(), kstack_top, trap_user_handler as usize);
+        tf.configure_kernel(mmu, hal::cpu::cpu_id(), kstack_top, trap_user_handler as *const () as usize);
 
         // 4. 设置内核上下文，使其在被调度时跳转到 trap_user_return
-        let ra = trap_user_return as usize;
+        let ra = trap_user_return as *const () as usize;
         self.context.configure(ra, kstack_top);
     }
 
@@ -271,7 +271,7 @@ impl TCB {
     }
 
     pub fn debug_print(&self) {
-        use crate::printk;
+        // use crate::printk;
         printk!("TCB @ {:#x}:\n", self as *const _ as usize);
         printk!("  state:          {:?}\n", self.state);
         printk!("  priority:       {}\n", self.priority);

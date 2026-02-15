@@ -7,7 +7,7 @@ use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
-use crate::log;
+// use crate::log;
 use crate::mem::PageTable;
 use crate::mem::addr::virt_to_phys;
 use crate::mem::pmem;

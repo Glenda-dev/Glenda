@@ -2,7 +2,7 @@ use super::super::method::*;
 use crate::cap::{Capability, Rights};
 use crate::error::Error;
 use crate::hal;
-use crate::printk;
+// use crate::printk;
 use crate::proc::scheduler;
 
 pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {

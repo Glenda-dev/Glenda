@@ -2,7 +2,7 @@ use super::{CapType, Capability};
 use crate::error::Error;
 use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
-use crate::printk;
+// use crate::printk;
 use crate::sync::{SpinLock, SpinLockGuard};
 use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display};
