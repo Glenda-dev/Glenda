@@ -5,6 +5,7 @@ use crate::boot::{BootLoaderInfo, MemoryMapEntry};
 use crate::hal;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
+use limine::memory_map::EntryType;
 use limine::request::*;
 
 pub const MAX_MEM_ENTRIES: usize = 256;
@@ -92,13 +93,13 @@ pub fn init() {
                     base: PhysAddr::from(entry.base as usize),
                     length: entry.length as usize,
                     kind: match entry.entry_type {
-                        limine::memory_map::EntryType::USABLE => MemoryType::Ram,
-                        limine::memory_map::EntryType::RESERVED => MemoryType::Reserved,
-                        limine::memory_map::EntryType::BAD_MEMORY => MemoryType::Reserved,
-                        limine::memory_map::EntryType::ACPI_RECLAIMABLE => MemoryType::Reserved,
-                        limine::memory_map::EntryType::BOOTLOADER_RECLAIMABLE => {
-                            MemoryType::Reserved
-                        }
+                        EntryType::USABLE => MemoryType::Ram,
+                        EntryType::RESERVED => MemoryType::Reserved,
+                        EntryType::BAD_MEMORY => MemoryType::Reserved,
+                        EntryType::ACPI_RECLAIMABLE => MemoryType::Mmio,
+                        EntryType::BOOTLOADER_RECLAIMABLE => MemoryType::Reclaimable,
+                        EntryType::ACPI_NVS => MemoryType::Mmio,
+                        EntryType::FRAMEBUFFER => MemoryType::Mmio,
                         _ => MemoryType::Reserved,
                     },
                 };

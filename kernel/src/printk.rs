@@ -51,14 +51,10 @@ macro_rules! log {
 #[macro_export]
 macro_rules! error {
     ($fmt:expr) => {
-        if crate::printk::is_verbose() {
-            crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt), crate::printk::ANSI_RESET);
-        }
+        crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt), crate::printk::ANSI_RESET);
     };
     ($fmt:expr, $($arg:tt)*) => {
-        if crate::printk::is_verbose() {
-            crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
-        }
+        crate::printk!("{}{}{}\n", crate::printk::ANSI_RED, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
     };
 }
 
@@ -66,14 +62,10 @@ macro_rules! error {
 #[macro_export]
 macro_rules! warn {
     ($fmt:expr) => {
-        if crate::printk::is_verbose() {
-            crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt), crate::printk::ANSI_RESET);
-        }
+        crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt), crate::printk::ANSI_RESET);
     };
     ($fmt:expr, $($arg:tt)*) => {
-        if crate::printk::is_verbose() {
-            crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
-        }
+        crate::printk!("{}{}{}\n", crate::printk::ANSI_YELLOW, format_args!($fmt, $($arg)*), crate::printk::ANSI_RESET);
     };
 }
 
