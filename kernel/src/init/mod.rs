@@ -8,9 +8,10 @@ mod trap;
 mod vm;
 
 use core::hint::spin_loop;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 static INIT_DONE: AtomicBool = AtomicBool::new(false);
+static INIT_CPUS_DONE: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init(is_primary: bool) {
     if is_primary {
@@ -36,6 +37,11 @@ fn init_primary() {
     crate::boot::bootstrap();
     // 3. 发布屏障，允许其他核心继续
     INIT_DONE.store(true, Ordering::Release);
+    INIT_CPUS_DONE.fetch_add(1, Ordering::SeqCst);
+    let cpus = crate::boot::get_cpu_count();
+    while INIT_CPUS_DONE.load(Ordering::SeqCst) < cpus {
+        spin_loop();
+    }
 }
 
 fn init_secondary() {
@@ -48,4 +54,9 @@ fn init_secondary() {
     cpu::init();
     trap::init();
     irq::init();
+    INIT_CPUS_DONE.fetch_add(1, Ordering::SeqCst);
+    let cpus = crate::boot::get_cpu_count();
+    while INIT_CPUS_DONE.load(Ordering::SeqCst) < cpus {
+        spin_loop();
+    }
 }

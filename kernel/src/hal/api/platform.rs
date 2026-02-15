@@ -1,4 +1,3 @@
-use crate::mem::MemoryRange;
 use crate::platform::acpi::GlendaAcpiHandler;
 use acpi::AcpiTables;
 
@@ -19,17 +18,6 @@ pub fn shutdown() -> ! {
 
 /// 重启系统
 pub fn reboot() -> ! {
-    unimplemented!()
-}
-/// 发送核间中断 (IPI)
-///
-/// `mask`: 目标 CPU 的掩码 (通常是 bit mask 或类似于 sbi 的 hart_mask)
-pub fn send_ipi(mask: usize, mask_base: usize) {
-    unimplemented!()
-}
-
-/// 获取内存范围
-pub fn memory_range() -> Option<MemoryRange> {
     unimplemented!()
 }
 

@@ -24,6 +24,8 @@ members = [
 ]
 resolver = "2"
 
+[profile.dev]
+panic = "abort"
 
 [profile.development]
 panic = "abort"

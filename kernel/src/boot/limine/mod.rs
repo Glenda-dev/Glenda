@@ -146,7 +146,7 @@ unsafe extern "C" fn secondary_trampoline(cpu: &Cpu) -> ! {
 pub fn bootstrap() {
     if let Some(response) = MP_REQUEST.get_response() {
         let bsp_id = arch::bspid(response);
-        log!("limine: SMP info found. BSP ID: {}", bsp_id);
+        log!("limine: Bootstrapping from CPU {}", bsp_id);
         for cpu in response.cpus() {
             let cpuid = arch::cpuid(cpu);
             if cpuid != bsp_id {
