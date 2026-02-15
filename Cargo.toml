@@ -21,8 +21,8 @@ members = [
     "fs/extfs",
     "examples/hello",
     "service/gopher",
-    "drivers/bus/acpi",
-    "drivers/bus/dtb",
+    "drivers/platform/acpi",
+    "drivers/platform/dtb",
     "drivers/bus/pci",
 ]
 resolver = "2"
