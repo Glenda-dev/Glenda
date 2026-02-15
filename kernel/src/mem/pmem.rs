@@ -2,10 +2,10 @@ use super::PhysAddr;
 use crate::boot;
 use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, Capability, Rights};
-use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::PageTable;
 use crate::mem::UntypedRegion;
+use crate::mem::addr::phys_to_virt;
 use crate::platform;
 use crate::printk;
 use crate::proc::TCB;
@@ -106,7 +106,7 @@ impl PmemManager {
 
                 // Zero the allocated frame
                 unsafe {
-                    let vaddr = hal::mem::phys_to_virt(paddr);
+                    let vaddr = phys_to_virt(paddr);
                     core::ptr::write_bytes(vaddr.as_mut_ptr::<u8>(), 0, size);
                 }
                 return Some(paddr);
@@ -184,7 +184,7 @@ pub fn alloc_cnode_cap() -> Option<Capability> {
     let size = CNODE_PAGES * PGSIZE;
     let align = PGSIZE;
     PMEM.lock().alloc_addr(size, align).map(|paddr| {
-        let vaddr = hal::mem::phys_to_virt(paddr);
+        let vaddr = phys_to_virt(paddr);
         let cnode = unsafe { vaddr.as_mut::<CNode>() };
         cnode.init();
         Capability::create_cnode(cnode, Rights::ALL)
@@ -193,7 +193,7 @@ pub fn alloc_cnode_cap() -> Option<Capability> {
 
 pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
-        let pt = unsafe { hal::mem::phys_to_virt(paddr).as_mut::<PageTable>() };
+        let pt = unsafe { phys_to_virt(paddr).as_mut::<PageTable>() };
         *pt = PageTable::new();
         Capability::create_pagetable(pt, level, Rights::ALL)
     })
@@ -201,7 +201,7 @@ pub fn alloc_pagetable_cap(level: usize) -> Option<Capability> {
 
 pub fn alloc_vspace_cap() -> Option<Capability> {
     PMEM.lock().alloc_addr(PGSIZE, PGSIZE).map(|paddr| {
-        let pt = unsafe { hal::mem::phys_to_virt(paddr).as_mut::<PageTable>() };
+        let pt = unsafe { phys_to_virt(paddr).as_mut::<PageTable>() };
         *pt = PageTable::new();
         let asid = asid::alloc();
         Capability::create_vspace(pt, asid, Rights::ALL)
@@ -211,7 +211,7 @@ pub fn alloc_vspace_cap() -> Option<Capability> {
 pub fn alloc_tcb_cap() -> Option<Capability> {
     let align = core::mem::align_of::<TCB>();
     PMEM.lock().alloc_addr(core::mem::size_of::<TCB>(), align).map(|paddr| {
-        let vaddr = hal::mem::phys_to_virt(paddr);
+        let vaddr = phys_to_virt(paddr);
         let tcb = unsafe { vaddr.as_mut::<TCB>() };
         *tcb = TCB::new();
         Capability::create_tcb(tcb, Rights::ALL)

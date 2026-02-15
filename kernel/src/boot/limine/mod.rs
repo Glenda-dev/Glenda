@@ -113,8 +113,7 @@ pub fn init() {
     let initrd_addr =
         MODULE_REQUEST.get_response().and_then(|res| res.modules().first()).map(|file| {
             let va = file.addr() as usize;
-            let pa = if va >= hhdm_offset { va - hhdm_offset } else { va };
-            (PhysAddr::from(pa), file.size() as usize)
+            (VirtAddr::from(va), file.size() as usize)
         });
 
     let cmdline =
@@ -124,8 +123,8 @@ pub fn init() {
     let cpu_count = mp_response.map(|res| res.cpus().len()).unwrap_or(1);
 
     BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
-        dtb_addr: DTB_REQUEST.get_response().map(|res| PhysAddr::from(res.dtb_ptr() as usize)),
-        rsdp_addr: RSDP_REQUEST.get_response().map(|res| PhysAddr::from(res.address() as usize)),
+        dtb_addr: DTB_REQUEST.get_response().map(|res| VirtAddr::from(res.dtb_ptr() as usize)),
+        rsdp_addr: RSDP_REQUEST.get_response().map(|res| VirtAddr::from(res.address() as usize)),
         hhdm_offset,
         memory_map: unsafe { &MEM_MAP[..MEM_MAP_COUNT] },
         kernel_address: kernel_addr,

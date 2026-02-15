@@ -2,10 +2,10 @@ use super::CapType;
 use super::Rights;
 use crate::cap::Badge;
 use crate::cap::cnode::CNode;
-use crate::hal;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::PageTable;
+use crate::mem::addr::{phys_to_virt, virt_to_phys};
 use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
@@ -163,10 +163,10 @@ impl Capability {
             CapType::Endpoint => VirtAddr::from(self.words[0]),
             CapType::Reply => VirtAddr::from(self.words[0]),
             CapType::CNode => VirtAddr::from(self.words[0]),
-            CapType::Untyped => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
-            CapType::Frame => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
-            CapType::PageTable => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
-            CapType::VSpace => hal::mem::phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::Untyped => phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::Frame => phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::PageTable => phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::VSpace => phys_to_virt(PhysAddr::from(self.words[0])),
             _ => VirtAddr::null(),
         }
     }
@@ -259,7 +259,7 @@ impl Capability {
     }
 
     pub fn create_pagetable(pt: &PageTable, level: usize, rights: Rights) -> Self {
-        let paddr = hal::mem::virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
+        let paddr = virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
         let w0 = paddr.as_usize();
         let w1 = (CapType::PageTable as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
@@ -291,7 +291,7 @@ impl Capability {
     }
     pub fn create_vspace(pt: &PageTable, asid: Asid, rights: Rights) -> Self {
         let asid_val = asid.id as usize & ASID_MASK;
-        let paddr = hal::mem::virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
+        let paddr = virt_to_phys(VirtAddr::from(pt as *const PageTable as usize));
         // 获取 Generation (保留低 35 位: 64 - 13 - 16 = 35)
         // Bit 29 到 63
         let gen_val = asid.generation as usize; // 高位会被移位自动处理，或者可以按需在这里mask

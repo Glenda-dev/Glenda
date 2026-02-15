@@ -1,6 +1,7 @@
 use crate::hal;
 use crate::mem::PageTable;
 use crate::mem::VirtAddr;
+use crate::mem::addr::virt_to_phys;
 use crate::sync::Once;
 
 // TODO: HHDM support
@@ -30,7 +31,7 @@ pub fn switch_to_kernel() {
     let cpuid = hal::cpu::cpu_id();
     let kpt = KERNEL_PAGE_TABLE.get().expect("Kernel page table not initialized");
     let kpt_va = VirtAddr::from(kpt as *const _ as usize);
-    let kpt_pa = hal::mem::virt_to_phys(kpt_va);
+    let kpt_pa = virt_to_phys(kpt_va);
     let reg = hal::mem::get_mmu_register(kpt_pa, 0);
     unsafe {
         hal::mem::activate_vspace(reg);

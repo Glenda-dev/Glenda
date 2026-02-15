@@ -1,6 +1,7 @@
 use crate::hal::cpu::cpu_id;
-use crate::hal::mem::{PGSIZE, phys_to_virt};
+use crate::hal::mem::PGSIZE;
 use crate::log;
+use crate::mem::addr::phys_to_virt;
 use crate::mem::{PageTable, Perms, PhysAddr};
 use core::arch::asm;
 use core::ptr::{read_volatile, write_volatile};

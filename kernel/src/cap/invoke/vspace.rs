@@ -1,12 +1,12 @@
 use super::super::method::*;
 use crate::cap::{CapPtr, CapType, Capability};
+use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::PGSIZE;
-
-use crate::error::Error;
 use crate::mem::PageTable;
 use crate::mem::Perms;
 use crate::mem::VirtAddr;
+use crate::mem::addr::phys_to_virt;
 use crate::proc::scheduler;
 
 pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error> {
@@ -18,7 +18,7 @@ pub fn invoke_pagetable(cap: &mut Capability, method: usize) -> Result<(), Error
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
-    let pt_ptr = hal::mem::phys_to_virt(paddr);
+    let pt_ptr = phys_to_virt(paddr);
     let pt = unsafe { pt_ptr.as_mut::<PageTable>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
@@ -82,7 +82,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
     };
 
     // PageTable 需要物理地址转虚拟地址才能操作
-    let pt_ptr = hal::mem::phys_to_virt(paddr);
+    let pt_ptr = phys_to_virt(paddr);
     let pt = unsafe { pt_ptr.as_mut::<PageTable>() };
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {

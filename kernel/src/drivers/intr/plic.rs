@@ -1,4 +1,5 @@
-use crate::hal::mem::{PGSIZE, phys_to_virt};
+use crate::hal::mem::PGSIZE;
+use crate::mem::addr::phys_to_virt;
 use crate::mem::{PageTable, Perms, PhysAddr};
 use core::ptr::{read_volatile, write_volatile};
 

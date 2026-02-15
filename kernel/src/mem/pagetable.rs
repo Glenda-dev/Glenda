@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::Pte;
 use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
-
+use crate::mem::addr::phys_to_virt;
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 
@@ -19,7 +19,7 @@ impl PageTable {
 
     /// 从物理地址获取页表的可变引用
     pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
-        let vaddr = hal::mem::phys_to_virt(paddr);
+        let vaddr = phys_to_virt(paddr);
         unsafe { vaddr.as_mut::<PageTable>() }
     }
 
@@ -53,7 +53,7 @@ impl PageTable {
 
             // 进入下一级页表
             let next_pa = pte_val.pa();
-            let next_va = hal::mem::phys_to_virt(next_pa);
+            let next_va = phys_to_virt(next_pa);
             table = unsafe { next_va.as_mut::<PageTable>() };
         }
 
@@ -169,7 +169,7 @@ impl PageTable {
                 return Err(Error::MappingFailed); // 父级页表不存在或已被大页占用
             }
             let next_pa = pte_val.pa();
-            let next_va = hal::mem::phys_to_virt(next_pa);
+            let next_va = phys_to_virt(next_pa);
             table = unsafe { next_va.as_mut::<PageTable>() };
         }
 
@@ -225,7 +225,7 @@ impl PageTable {
                         let dist_to_boundary = next_boundary.as_usize() - va.as_usize();
                         let dist_to_end = end.as_usize() - va.as_usize();
                         let step = core::cmp::min(dist_to_boundary, dist_to_end);
-                        
+
                         va += step;
                         pa += step;
                         continue 'map_loop;
@@ -240,7 +240,7 @@ impl PageTable {
                 // 进入下一级
                 let next_pa = entry.pa();
                 // 在恒等映射模式下，物理地址即为内核虚拟地址
-                let next_va = hal::mem::phys_to_virt(next_pa);
+                let next_va = phys_to_virt(next_pa);
                 table = unsafe { next_va.as_mut::<PageTable>() };
             }
 
@@ -281,7 +281,7 @@ impl PageTable {
             }
 
             let pgtbl_1_pa = pte2.pa();
-            let pgtbl_1_va = hal::mem::phys_to_virt(pgtbl_1_pa);
+            let pgtbl_1_va = phys_to_virt(pgtbl_1_pa);
             printk!(".. L1[{}] pa={:#x}\n", i, pgtbl_1_pa.as_usize());
 
             let pgtbl_1 = unsafe { pgtbl_1_va.as_ref::<PageTable>() };
@@ -296,7 +296,7 @@ impl PageTable {
                 }
 
                 let pgtbl_0_pa = pte1.pa();
-                let pgtbl_0_va = hal::mem::phys_to_virt(pgtbl_0_pa);
+                let pgtbl_0_va = phys_to_virt(pgtbl_0_pa);
                 printk!(".. .. L0[{}] pa={:#x}\n", j, pgtbl_0_pa.as_usize());
 
                 let pgtbl_0 = unsafe { pgtbl_0_va.as_ref::<PageTable>() };

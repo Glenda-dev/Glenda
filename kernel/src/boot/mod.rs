@@ -16,28 +16,28 @@ pub struct MemoryMapEntry {
 }
 
 pub struct BootLoaderInfo {
-    pub dtb_addr: Option<PhysAddr>,
-    pub rsdp_addr: Option<PhysAddr>,
+    pub dtb_addr: Option<VirtAddr>,
+    pub rsdp_addr: Option<VirtAddr>,
     pub hhdm_offset: usize,
     pub memory_map: &'static [MemoryMapEntry],
     pub kernel_address: (PhysAddr, VirtAddr),
     pub kernel_size: usize,
-    pub initrd_addr: Option<(PhysAddr, usize)>,
+    pub initrd_addr: Option<(VirtAddr, usize)>,
     pub cmdline: Option<&'static str>,
     pub cpu_count: usize,
 }
 
 pub static BOOT_LOADER_INFO: Once<BootLoaderInfo> = Once::new();
 
-pub fn get_dtb() -> Option<PhysAddr> {
+pub fn get_dtb() -> Option<VirtAddr> {
     BOOT_LOADER_INFO.get().and_then(|info| info.dtb_addr)
 }
 
-pub fn get_initrd() -> Option<(PhysAddr, usize)> {
+pub fn get_initrd() -> Option<(VirtAddr, usize)> {
     BOOT_LOADER_INFO.get().and_then(|info| info.initrd_addr)
 }
 
-pub fn get_rsdp() -> Option<PhysAddr> {
+pub fn get_rsdp() -> Option<VirtAddr> {
     BOOT_LOADER_INFO.get().and_then(|info| info.rsdp_addr)
 }
 

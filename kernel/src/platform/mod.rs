@@ -1,4 +1,5 @@
-use crate::mem::PhysAddr;
+use crate::boot;
+use crate::mem::{PhysAddr, VirtAddr};
 
 pub mod acpi;
 pub mod dtb;
@@ -24,7 +25,7 @@ pub enum MemoryType {
 }
 
 pub fn init() {
-    if let Some(rsdp_pa) = crate::boot::get_rsdp() {
+    if let Some(rsdp_pa) = boot::get_rsdp() {
         self::acpi::parse(rsdp_pa.as_usize());
     } else if let Some(dtb_pa) = crate::boot::get_dtb() {
         self::dtb::parse(dtb_pa.as_usize());
@@ -33,10 +34,10 @@ pub fn init() {
     }
 }
 
-pub fn get_dtb() -> Option<PhysAddr> {
-    crate::boot::get_dtb()
+pub fn get_dtb() -> Option<VirtAddr> {
+    boot::get_dtb()
 }
 
-pub fn get_rsdp() -> Option<PhysAddr> {
-    crate::boot::get_rsdp()
+pub fn get_rsdp() -> Option<VirtAddr> {
+    boot::get_rsdp()
 }

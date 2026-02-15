@@ -1,12 +1,15 @@
 use super::bootinfo::BOOTINFO_PAGES;
 use super::bootinfo::BootInfo;
+use super::bootinfo::PlatformType;
 use super::layout::*;
+use crate::boot;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
 use crate::log;
 use crate::mem::PageTable;
+use crate::mem::addr::virt_to_phys;
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 use crate::mem::{TRAPFRAME_VA, UTCB_VA};
@@ -74,10 +77,10 @@ pub fn init_vspace(
     );
 
     // 映射 Initrd 到固定位置
-    if let Some((start, size)) = crate::boot::get_initrd() {
+    if let Some((start, size)) = boot::get_initrd() {
         vspace.map_with_alloc(
             VirtAddr::from(INITRD_VA),
-            start.align_down(PGSIZE),
+            virt_to_phys(start).align_down(PGSIZE),
             size,
             Perms::USER | Perms::READ,
         );
@@ -106,26 +109,27 @@ pub fn init_vspace(
     hal::mem::pt_setup(vspace)?;
     Ok(())
 }
+
 pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
     // 设置 Initrd 信息
-    if let Some((start, size)) = crate::boot::get_initrd() {
+    if let Some((start, size)) = boot::get_initrd() {
         let initrd_offset = start.as_usize() % PGSIZE;
         bootinfo.initrd_offset = initrd_offset;
         bootinfo.initrd_size = size;
     }
 
     // ACPI优先
-    if let Some(rsdp) = crate::boot::get_rsdp() {
-        bootinfo.platform_type = super::bootinfo::PlatformType::ACPI;
-        bootinfo.addr = rsdp.as_usize();
+    if let Some(rsdp) = boot::get_rsdp() {
+        bootinfo.platform_type = PlatformType::ACPI;
+        bootinfo.addr = virt_to_phys(rsdp).as_usize();
         bootinfo.size = 0x1000;
-    } else if let Some(dtb) = crate::boot::get_dtb() {
-        bootinfo.platform_type = super::bootinfo::PlatformType::DTB;
-        bootinfo.addr = dtb.as_usize();
+    } else if let Some(dtb) = boot::get_dtb() {
+        bootinfo.platform_type = PlatformType::DTB;
+        bootinfo.addr = virt_to_phys(dtb).as_usize();
         bootinfo.size = 0x10000;
     }
 
-    if let Some(cmdline) = crate::boot::get_cmdline() {
+    if let Some(cmdline) = boot::get_cmdline() {
         let bytes = cmdline.as_bytes();
         let len = bytes.len().min(bootinfo.cmdline.len());
         bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
@@ -140,7 +144,7 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
 pub fn init_cspace(
     cspace: &mut CNode,
     caps: &RootCaps,
-    _bootinfo: &mut BootInfo,
+    bootinfo: &mut BootInfo,
 ) -> Result<(), Error> {
     log!("proc: Setting up Root Task CSpace at {:p}", cspace);
     cspace.insert(CSPACE_CAP, &caps.cspace)?;
@@ -167,9 +171,9 @@ pub fn init_cspace(
         untyped_cnode.insert(CapPtr::from(slot), &cap)?;
         slot += 1;
 
-        if _bootinfo.untyped_count < _bootinfo.untyped_list.len() {
-            _bootinfo.untyped_list[_bootinfo.untyped_count] = region;
-            _bootinfo.untyped_count += 1;
+        if bootinfo.untyped_count < bootinfo.untyped_list.len() {
+            bootinfo.untyped_list[bootinfo.untyped_count] = region;
+            bootinfo.untyped_count += 1;
         }
     }
 

@@ -15,8 +15,7 @@ pub const KSTACK_PAGES: usize = 4; // 16KB
 
 use super::asm;
 use crate::mem::TRAMPOLINE_VA;
-pub use crate::mem::addr::phys_to_virt;
-pub use crate::mem::addr::virt_to_phys;
+use crate::mem::addr::{phys_to_virt, virt_to_phys};
 use crate::mem::{PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 const SATP_MODE: usize = 8;

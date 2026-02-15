@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::mem::{PageTable, Perms, PhysAddr, VirtAddr, PPN, VPN};
+use crate::mem::{PPN, PageTable, Perms, PhysAddr, VPN, VirtAddr};
 
 /// 页大小
 pub const PGSIZE: usize = 4096;
@@ -102,16 +102,6 @@ impl Pte {
     pub const fn pa(&self) -> PhysAddr {
         unimplemented!()
     }
-}
-
-/// 物理地址与虚拟地址转换
-pub const fn phys_to_virt(pa: PhysAddr) -> VirtAddr {
-    unimplemented!()
-}
-
-/// 虚拟地址与物理地址转换
-pub const fn virt_to_phys(va: VirtAddr) -> PhysAddr {
-    unimplemented!()
 }
 
 /// 获取内核结束地址
