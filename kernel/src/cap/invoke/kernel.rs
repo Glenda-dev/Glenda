@@ -10,7 +10,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("Kernel::invoke failed: no UTCB");
+            error!("Kernel::invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -18,7 +18,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
     match method {
         kernelmethod::CONSOLE_PUT_STR => {
             if cap.has_rights(Rights::WRITE) == false {
-                log!("Kernel::ConsolePutStr failed: permission denied");
+                error!("Kernel::ConsolePutStr failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
 
@@ -30,7 +30,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
                     match core::str::from_utf8(slice) {
                         Ok(s) => printk!("{}", s),
                         Err(_) => {
-                            printk!(
+                            warn!(
                                 "Kernel::ConsolePutStr warning: invalid UTF-8, printing as bytes"
                             );
                             for &b in slice {
@@ -45,7 +45,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         kernelmethod::CONSOLE_GET_CHAR => {
             if cap.has_rights(Rights::READ) == false {
-                log!("Kernel::ConsoleGetChar failed: permission denied");
+                error!("Kernel::ConsoleGetChar failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             let c = hal::console::read() as usize;
@@ -54,7 +54,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         kernelmethod::CONSOLE_GET_STR => {
             if cap.has_rights(Rights::READ) == false {
-                log!("Kernel::ConsoleGetStr failed: permission denied");
+                error!("Kernel::ConsoleGetStr failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
 
@@ -82,7 +82,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         kernelmethod::SHELL => {
             if !cap.has_rights(Rights::EXECUTE) {
-                log!("Kernel::Shell failed: permission denied");
+                error!("Kernel::Shell failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             #[cfg(feature = "shell")]
@@ -91,7 +91,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         kernelmethod::GET_TIME => {
             if !cap.has_rights(Rights::READ) {
-                log!("Kernel::TimeNow failed: permission denied");
+                error!("Kernel::TimeNow failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             let now = hal::timer::get_time();
@@ -99,7 +99,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         _ => {
-            log!("Kernel::invoke failed: invalid method {}", method);
+            error!("Kernel::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

@@ -110,7 +110,7 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         _ => {
-            log!("CNode::invoke failed: invalid method {}", method);
+            error!("CNode::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

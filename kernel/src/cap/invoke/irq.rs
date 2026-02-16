@@ -11,12 +11,12 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
         if badge == 0 {
             // 这是 Master IRQ Capability (IRQ Control)
             // 只有 mint 操作有意义，这里应返回错误
-            log!("IRQ::invoke failed: IRQ control capability cannot be invoked directly");
+            error!("IRQ::invoke failed: IRQ control capability cannot be invoked directly");
             return Err(Error::InvalidCapability);
         }
         badge
     } else {
-        log!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
+        error!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -24,7 +24,7 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("IRQ::invoke failed: no UTCB");
+            error!("IRQ::invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -69,7 +69,7 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
             Ok(())
         }
         _ => {
-            log!("IRQ::invoke failed: invalid method {}", method);
+            error!("IRQ::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

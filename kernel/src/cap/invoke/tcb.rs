@@ -9,7 +9,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb_ptr = if cap.cap_type() == CapType::TCB {
         cap.obj_ptr()
     } else {
-        log!("TCB::invoke failed: invalid obj type {:?}", cap.cap_type());
+        error!("TCB::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -18,7 +18,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let utcb = match current_tcb.get_utcb() {
         Some(u) => u,
         None => {
-            log!("TCB::invoke failed: no UTCB");
+            error!("TCB::invoke failed: no UTCB");
             return Err(Error::MappingFailed);
         }
     };
@@ -43,7 +43,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 && tf_cap.is_none()
                 && kstack_cap.is_none()
             {
-                log!(
+                error!(
                     "TCB::Configure failed: missing caps {} {} {} {} {}",
                     cspace_cptr,
                     vspace_cptr,
@@ -90,11 +90,11 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
                     tcb.set_fault_handler(ep_cap, native);
                     Ok(())
                 } else {
-                    log!("TCB::SetFaultHandler failed: invalid obj type {:?}", ep_cap.cap_type());
+                    error!("TCB::SetFaultHandler failed: invalid obj type {:?}", ep_cap.cap_type());
                     Err(Error::InvalidType)
                 }
             } else {
-                log!("TCB::SetFaultHandler failed: cap not found {:?}", ep_cptr);
+                error!("TCB::SetFaultHandler failed: cap not found {:?}", ep_cptr);
                 Err(Error::InvalidCapability)
             }
         }
@@ -111,7 +111,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         tcbmethod::RESUME => {
             if !cap.has_rights(Rights::EXECUTE) {
-                log!("TCB::Resume failed: permission denied");
+                error!("TCB::Resume failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             // Resume
@@ -147,7 +147,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         _ => {
-            log!("TCB::invoke failed: invalid method {}", method);
+            error!("TCB::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }

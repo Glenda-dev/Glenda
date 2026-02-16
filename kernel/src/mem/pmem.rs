@@ -39,7 +39,7 @@ impl PmemManager {
 
     fn add_region(&mut self, start: PhysAddr, end: PhysAddr) {
         if self.count >= MAX_PMEM_REGIONS {
-            log!("pmem: Warning, ignoring memory region [{}, {}) due to limit", start, end);
+            warn!("pmem: Warning, ignoring memory region [{}, {}) due to limit", start, end);
             return;
         }
         if end <= start {

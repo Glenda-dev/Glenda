@@ -9,7 +9,7 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let ep_ptr = if cap.cap_type() == CapType::Endpoint {
         cap.obj_ptr()
     } else {
-        log!("IPC::invoke failed: invalid obj type {:?}", cap.cap_type());
+        error!("IPC::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -19,14 +19,14 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
     // 获取 UTCB 以读取参数 (msg_info)
     if tcb.get_utcb().is_none() {
-        log!("IPC::invoke failed: no UTCB");
+        error!("IPC::invoke failed: no UTCB");
         return Err(Error::MappingFailed);
     }
 
     match method {
         ipcmethod::SEND => {
             if !cap.has_rights(Rights::SEND) {
-                log!("IPC::Send failed: permission denied");
+                error!("IPC::Send failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             let cap_to_send = ipc::transfer_cap(tcb);
@@ -34,14 +34,14 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         ipcmethod::RECV => {
             if !cap.has_rights(Rights::RECV) {
-                log!("IPC::Recv failed: permission denied");
+                error!("IPC::Recv failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             ipc::recv(tcb, ep)
         }
         ipcmethod::CALL => {
             if !cap.has_rights(Rights::CALL) {
-                log!("IPC::Call failed: permission denied");
+                error!("IPC::Call failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             let cap_to_send = ipc::transfer_cap(tcb);
@@ -49,21 +49,21 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
         }
         ipcmethod::NOTIFY => {
             if !cap.has_rights(Rights::SEND) {
-                log!("IPC::Notify failed: permission denied");
+                error!("IPC::Notify failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             ipc::notify(ep, badge)
         }
         ipcmethod::PROXY => {
             if !cap.has_rights(Rights::CUSTOM) {
-                log!("IPC::Proxy failed: permission denied");
+                error!("IPC::Proxy failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             let cap_to_send = ipc::transfer_cap(tcb);
             ipc::proxy(tcb, ep, cap_to_send)
         }
         _ => {
-            log!("IPC::invoke failed: invalid method {}", method);
+            error!("IPC::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }
@@ -73,7 +73,7 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb_ptr = if cap.cap_type() == CapType::Reply {
         cap.obj_ptr()
     } else {
-        log!("Reply::invoke failed: invalid obj type {:?}", cap.cap_type());
+        error!("Reply::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
     };
 
@@ -88,7 +88,7 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         _ => {
-            log!("Reply::invoke failed: invalid method {}", method);
+            error!("Reply::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)
         }
     }
