@@ -150,8 +150,13 @@ pub fn bootstrap() {
         for cpu in response.cpus() {
             let cpuid = arch::cpuid(cpu);
             if cpuid != bsp_id {
-                log!("limine: Starting CPU {}", cpu.id);
+                log!("limine: Starting CPU {}", cpuid);
+                #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
                 cpu.goto_address.write(secondary_trampoline);
+                #[cfg(target_arch = "loongarch64")]
+                {
+                    // TODO
+                }
             }
         }
     } else {

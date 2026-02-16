@@ -1,0 +1,27 @@
+[system]
+arch = "loongarch64"
+profile = "relwithdebuginfo"
+
+[qemu]
+cpus = 1
+mem = "1G"
+display = "nographic"
+drive = "disk.img"
+bootargs = "-v"
+
+[[services]]
+name = "warren"
+path = "service/warren"
+build = "cargo"
+output = "build/warren.elf"
+kind = "root_task"
+
+[[libraries]]
+name = "libglenda-rs"
+path = "lib/libglenda-rs"
+build = "cargo"
+output = ""
+
+[features]
+kernel = []
+libglenda-rs = ["rt-bare"]
