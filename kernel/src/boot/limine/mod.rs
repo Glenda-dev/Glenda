@@ -62,7 +62,7 @@ static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 #[unsafe(link_section = ".requests")]
 static MP_REQUEST: MpRequest = MpRequest::new();
 
-pub fn init() {
+pub unsafe fn init() {
     let mp_response = MP_REQUEST.get_response().expect("limine: MP request failed!");
     let bsp_id = arch::bspid(mp_response);
     log!("limine: SMP info found. BSP ID: {}", bsp_id);

@@ -24,6 +24,7 @@ members = [
     "drivers/platform/acpi",
     "drivers/platform/dtb",
     "drivers/bus/pci",
+    "drivers/virtio/mmio",
 ]
 resolver = "2"
 

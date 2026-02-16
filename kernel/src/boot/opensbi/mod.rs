@@ -185,7 +185,7 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
     unsafe { &MEM_MAP[..MEM_MAP_COUNT] }
 }
 
-pub fn init() {
+pub unsafe fn init() {
     let dtb_pa = unsafe { OPENSBI_DTB_ADDR };
     let hartid = unsafe { OPENSBI_HARTID };
 

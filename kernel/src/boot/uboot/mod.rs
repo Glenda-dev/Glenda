@@ -171,7 +171,7 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
     unsafe { &MEM_MAP[..MEM_MAP_COUNT] }
 }
 
-pub fn init() {
+pub unsafe fn init() {
     let dtb_pa = unsafe { UBOOT_DTB_ADDR };
     if dtb_pa == 0 {
         return;

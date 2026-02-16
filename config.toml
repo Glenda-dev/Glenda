@@ -1,7 +1,7 @@
 [system]
 arch = "riscv64"
 profile = "relwithdebuginfo"
-bootloader = "multiboot2"
+bootloader = "opensbi"
 
 [qemu]
 cpus = 1
@@ -59,6 +59,12 @@ name = "dtb"
 path = "drivers/platform/dtb"
 build = "cargo"
 output = "build/dtb.elf"
+kind = "service"
+[[services]]
+name = "virtio-mmio"
+path = "drivers/virtio/mmio"
+build = "cargo"
+output = "build/virtio-mmio.elf"
 kind = "service"
 [[services]]
 name = "acpi"

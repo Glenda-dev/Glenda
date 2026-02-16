@@ -1177,6 +1177,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "virtio-mmio"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "virtio-common",
+]
+
+[[package]]
 name = "virtio-net"
 version = "0.1.0"
 dependencies = [

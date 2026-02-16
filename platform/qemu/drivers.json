@@ -12,7 +12,7 @@
             "name": "virtio-blk",
             "binary": "virtio-blk",
             "compatible": [
-                "virtio,mmio,block"
+                "virtio-block"
             ]
         },
         {
@@ -26,7 +26,7 @@
             "name": "virtio-net",
             "binary": "virtio-net",
             "compatible": [
-                "virtio,mmio,net"
+                "virtio-net"
             ]
         },
         {
@@ -41,6 +41,13 @@
             "binary": "acpi",
             "compatible": [
                 "acpi"
+            ]
+        },
+        {
+            "name": "virtio-mmio",
+            "binary": "virtio-mmio",
+            "compatible": [
+                "virtio,mmio"
             ]
         }
     ]
