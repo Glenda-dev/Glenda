@@ -104,6 +104,7 @@ pub enum Bootloader {
     Limine,
     Uboot,
     Opensbi,
+    Multiboot2,
 }
 
 impl Bootloader {
@@ -112,6 +113,7 @@ impl Bootloader {
             Bootloader::Limine => "limine",
             Bootloader::Uboot => "uboot",
             Bootloader::Opensbi => "opensbi",
+            Bootloader::Multiboot2 => "multiboot2",
         }
     }
 }

@@ -57,7 +57,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
                 cmd.arg("-initrd").arg(initrd_path);
             }
         }
-        crate::arch::Bootloader::Limine => {
+        crate::arch::Bootloader::Limine | crate::arch::Bootloader::Multiboot2 => {
             // BIOS/Firmware handling (OVMF/EDK2)
             if let Some(bios) = &cfg.qemu.bios {
                 // User provided specific BIOS path

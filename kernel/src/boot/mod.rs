@@ -11,6 +11,9 @@ pub mod uboot;
 #[cfg(feature = "bl-opensbi")]
 pub mod opensbi;
 
+#[cfg(feature = "bl-multiboot2")]
+pub mod multiboot2;
+
 #[cfg(feature = "bl-limine")]
 pub use limine::{bootstrap, init};
 
@@ -19,6 +22,9 @@ pub use uboot::{bootstrap, init};
 
 #[cfg(feature = "bl-opensbi")]
 pub use opensbi::{bootstrap, init};
+
+#[cfg(feature = "bl-multiboot2")]
+pub use multiboot2::{bootstrap, init};
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {

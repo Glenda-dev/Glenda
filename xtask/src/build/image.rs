@@ -59,6 +59,15 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
         let limine_conf_path = Path::new("config/limine.conf");
         fs::copy(limine_conf_path, fsroot.join("boot/limine.conf"))?;
     }
+
+    if cfg.system.bootloader == crate::arch::Bootloader::Multiboot2 {
+        let grub_conf_path = Path::new("config/grub.cfg");
+        if grub_conf_path.exists() {
+            fs::create_dir_all(fsroot.join("boot/grub"))?;
+            fs::copy(grub_conf_path, fsroot.join("boot/grub/grub.cfg"))?;
+        }
+    }
+
     // Copy uEnv.txt for U-Boot from config directory
     if cfg.system.bootloader == crate::arch::Bootloader::Uboot {
         let uenv_source = Path::new("config/uEnv.txt");
