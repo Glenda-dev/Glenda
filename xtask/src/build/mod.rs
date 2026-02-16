@@ -26,14 +26,36 @@ pub fn build(cfg: &Config) -> anyhow::Result<()> {
 }
 
 pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
-    let features = cfg.features.get("kernel").map(|arr| arr.join(",")).unwrap_or_default();
+    let mut features = cfg.features.get("kernel").map(|arr| arr.join(",")).unwrap_or_default();
+
+    // Auto-append bootloader feature if not present
+    let bl_feature = format!("bl-{}", cfg.system.bootloader.as_str());
+    if !features.contains(&bl_feature) {
+        if !features.is_empty() {
+            features.push(',');
+        }
+        features.push_str(&bl_feature);
+    }
+
     let mut cmd = Command::new("cargo");
     cmd.current_dir("kernel");
     cmd.arg("build").arg("--target").arg(cfg.system.arch.target_triple());
 
     // Inject kernel linker script with absolute path
     let cwd = std::env::current_dir()?;
-    let linker_script = cwd.join("kernel/src/hal").join(cfg.system.arch.as_str()).join("linker.ld");
+    let linker_script = cwd
+        .join("kernel/src/layout")
+        .join(cfg.system.bootloader.as_str())
+        .join(cfg.system.arch.as_str())
+        .join("linker.ld");
+
+    if !linker_script.exists() {
+        return Err(anyhow::anyhow!(
+            "[ ERROR ] Linker script not found: {}\n[ HELP  ] Ensure it exists or check bootloader/arch compatibility.",
+            linker_script.display()
+        ));
+    }
+
     let rustflags = format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display());
     cmd.env("RUSTFLAGS", rustflags);
     cmd.arg("--profile").arg(&cfg.system.profile);

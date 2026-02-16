@@ -36,7 +36,6 @@ impl super::InterruptController for Plic {
             flags
         );
         kpt.map_with_alloc(va, pa, size, flags);
-        log!("plic: MMIO mapped successfully");
     }
 
     fn set_priority(&self, irq: usize, priority: usize) {

@@ -2,6 +2,7 @@ use crate::drivers as generic_drivers;
 use crate::hal::riscv64::drivers::{INTC, IntcDriver, UART, UartDriver};
 
 pub fn parse(fdt: &fdt::Fdt) {
+    log!("hal: Parsing fdt...");
     let timer_frequency = fdt
         .find_node("/cpus")
         .and_then(|node| node.property("timebase-frequency"))
@@ -22,6 +23,7 @@ pub fn parse(fdt: &fdt::Fdt) {
         if let Some(compatibles) = node.compatible() {
             for compat in compatibles.all() {
                 if compat == "riscv,plic0" || compat == "sifive,plic-1.0.0" {
+                    log!("hal: Found PLIC at {}", node.name);
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x400_0000);
@@ -29,10 +31,11 @@ pub fn parse(fdt: &fdt::Fdt) {
                         INTC.call_once(|| {
                             IntcDriver::Plic(generic_drivers::intr::plic::Plic::new(addr, size))
                         });
-                        log!("hal: plic initialized at {:#x}", addr);
+                        log!("hal: PLIC initialized at {:#x}", addr);
                     }
                     break;
                 } else if compat == "riscv,aplic" {
+                    log!("hal: Found APLIC at {}", node.name);
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x4000);
@@ -40,10 +43,11 @@ pub fn parse(fdt: &fdt::Fdt) {
                         INTC.call_once(|| {
                             IntcDriver::Aplic(generic_drivers::intr::aplic::Aplic::new(addr, size))
                         });
-                        log!("hal: aplic initialized at {:#x}", addr);
+                        log!("hal: APLIC initialized at {:#x}", addr);
                     }
                     break;
                 } else if compat == "ns16550a" || compat == "snps,dw-apb-uart" {
+                    log!("hal: Found NS16550A-compatible UART at {}", node.name);
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x100);
@@ -54,10 +58,11 @@ pub fn parse(fdt: &fdt::Fdt) {
                                 generic_drivers::uart::ns16550a::Uart::from_config(cfg, size),
                             )
                         });
-                        log!("hal: ns16550a initialized at {:#x}", addr);
+                        log!("hal: NS16550A initialized at {:#x}", addr);
                     }
                     break;
                 } else if compat == "arm,pl011" || compat == "arm,primecell" {
+                    log!("hal: Found PL011-compatible UART at {}", node.name);
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x1000);
@@ -65,7 +70,7 @@ pub fn parse(fdt: &fdt::Fdt) {
                         UART.call_once(|| {
                             UartDriver::Pl011(generic_drivers::uart::pl011::Pl011::new(addr, size))
                         });
-                        log!("hal: pl011 initialized at {:#x}", addr);
+                        log!("hal: PL011 initialized at {:#x}", addr);
                     }
                     break;
                 }

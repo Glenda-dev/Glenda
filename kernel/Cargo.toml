@@ -14,11 +14,12 @@ num_enum = { version = "0.7.5", default-features = false }
 chrono = "0.4"
 
 [features]
-default = ["logging", "bl-limine"]
+default = ["logging"]
 logging = []
 shell = []
 gdb = []
 bl-limine = []
+bl-uboot = []
 bl-multiboot2 = []
 bl-uefi = []
 bl-opensbi = []

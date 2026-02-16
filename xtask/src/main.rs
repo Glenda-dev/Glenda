@@ -68,8 +68,14 @@ fn main() -> anyhow::Result<()> {
 
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
-        Cmd::Run => qemu::qemu_run(&cfg)?,
-        Cmd::Gdb { port } => qemu::qemu_gdb(&cfg, port)?,
+        Cmd::Run => {
+            build::build(&cfg)?;
+            qemu::qemu_run(&cfg)?;
+        }
+        Cmd::Gdb { port } => {
+            build::build(&cfg)?;
+            qemu::qemu_gdb(&cfg, port)?;
+        }
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,
         Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,

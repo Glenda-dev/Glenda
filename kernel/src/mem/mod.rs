@@ -18,7 +18,7 @@ pub mod untyped;
 pub mod vm;
 
 bitflags! {
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     pub struct Perms: usize {
         const VALID = 1 << 0;
         const READ = 1 << 1;

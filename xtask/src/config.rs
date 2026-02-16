@@ -1,4 +1,4 @@
-use crate::arch::Arch;
+use crate::arch::{Arch, Bootloader};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -25,6 +25,8 @@ pub struct Library {
 pub struct SystemConfig {
     #[serde(default)]
     pub arch: Arch,
+    #[serde(default)]
+    pub bootloader: Bootloader,
     #[serde(default = "release")]
     pub profile: String,
 }
@@ -115,6 +117,6 @@ fn release() -> String {
 
 impl Default for SystemConfig {
     fn default() -> Self {
-        Self { arch: Arch::default(), profile: release() }
+        Self { arch: Arch::default(), bootloader: Bootloader::default(), profile: release() }
     }
 }

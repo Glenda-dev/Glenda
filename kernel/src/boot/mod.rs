@@ -5,8 +5,20 @@ use crate::sync::Once;
 #[cfg(feature = "bl-limine")]
 pub mod limine;
 
+#[cfg(feature = "bl-uboot")]
+pub mod uboot;
+
+#[cfg(feature = "bl-opensbi")]
+pub mod opensbi;
+
 #[cfg(feature = "bl-limine")]
 pub use limine::{bootstrap, init};
+
+#[cfg(feature = "bl-uboot")]
+pub use uboot::{bootstrap, init};
+
+#[cfg(feature = "bl-opensbi")]
+pub use opensbi::{bootstrap, init};
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {

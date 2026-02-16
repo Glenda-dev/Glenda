@@ -7,6 +7,7 @@ use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 
 #[repr(C, align(4096))]
+#[derive(Debug, Clone, Copy)]
 pub struct PageTable {
     pub entries: [Pte; PGNUM],
 }

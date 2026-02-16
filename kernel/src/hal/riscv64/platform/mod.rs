@@ -44,19 +44,19 @@ pub fn bootstrap_cpus() {
     if BOOTSTRAP_DONE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return;
     }
-
     let start_addr = secondary_start as *const () as usize;
     let opaque = crate::boot::get_dtb().map(|pa| pa.as_usize()).unwrap_or(0);
     let harts = crate::boot::get_cpu_count();
     let cpuid = cpu::cpu_id();
+    log!("sbi: Bootstrapping secondary CPUs from CPU {}...", cpuid);
     for target in 0..harts {
         if target == cpuid {
             continue;
         }
         match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => log!("cpus: Started CPU {} via SBI", target),
+            Ok(()) => log!("sbi: Started CPU {} via SBI", target),
             Err(err) => log!(
-                "{}cpus: Failed to start CPU {} via SBI: error {}{}\n",
+                "{}sbi: Failed to start CPU {} via SBI: error {}{}\n",
                 ANSI_RED,
                 target,
                 err,

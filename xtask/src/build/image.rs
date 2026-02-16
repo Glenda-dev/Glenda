@@ -17,21 +17,6 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
     fs::create_dir_all(fsroot.join("EFI/BOOT"))?;
     fs::create_dir_all(fsroot.join("boot"))?;
 
-    // Download Limine if missing
-    if !limine_path.exists() {
-        eprintln!("[ INFO ] Downloading Limine binaries (v10.x-binary)...");
-        Command::new("git")
-            .args(&[
-                "clone",
-                "https://github.com/limine-bootloader/limine.git",
-                "--branch",
-                "v10.x-binary",
-                "--depth=1",
-                "target/limine",
-            ])
-            .status()?;
-    }
-
     // Copy kernel and initrd
     fs::copy("target/kernel", fsroot.join("boot/glenda.elf"))?;
     if Path::new("target/modules.bin").exists() {
@@ -42,32 +27,62 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
     }
 
     // Copy Limine files (UEFI)
-    let arch = cfg.system.arch;
-    let limine_efi = arch.limine_efi_file();
-    fs::copy(limine_path.join(limine_efi), fsroot.join("EFI/BOOT").join(limine_efi))?;
+    // Download Limine if missing
+    if cfg.system.bootloader == crate::arch::Bootloader::Limine {
+        if !limine_path.exists() {
+            eprintln!("[ INFO ] Downloading Limine binaries (v10.x-binary)...");
+            Command::new("git")
+                .args(&[
+                    "clone",
+                    "https://github.com/limine-bootloader/limine.git",
+                    "--branch",
+                    "v10.x-binary",
+                    "--depth=1",
+                    "target/limine",
+                ])
+                .status()?;
+        }
+        let arch = cfg.system.arch;
+        let limine_efi = arch.limine_efi_file();
+        fs::copy(limine_path.join(limine_efi), fsroot.join("EFI/BOOT").join(limine_efi))?;
 
-    // Copy CD/BIOS helper files
-    fs::copy(limine_path.join("limine-uefi-cd.bin"), fsroot.join("boot/limine-uefi-cd.bin"))?;
-    if matches!(arch, Arch::X86_64) {
-        fs::copy(limine_path.join("limine-bios.sys"), fsroot.join("boot/limine-bios.sys"))?;
-        fs::copy(limine_path.join("limine-bios-cd.bin"), fsroot.join("boot/limine-bios-cd.bin"))?;
+        // Copy CD/BIOS helper files
+        fs::copy(limine_path.join("limine-uefi-cd.bin"), fsroot.join("boot/limine-uefi-cd.bin"))?;
+        if matches!(arch, Arch::X86_64) {
+            fs::copy(limine_path.join("limine-bios.sys"), fsroot.join("boot/limine-bios.sys"))?;
+            fs::copy(
+                limine_path.join("limine-bios-cd.bin"),
+                fsroot.join("boot/limine-bios-cd.bin"),
+            )?;
+        }
+
+        let limine_conf_path = Path::new("config/limine.conf");
+        fs::copy(limine_conf_path, fsroot.join("boot/limine.conf"))?;
+    }
+    // Copy uEnv.txt for U-Boot from config directory
+    if cfg.system.bootloader == crate::arch::Bootloader::Uboot {
+        let uenv_source = Path::new("config/uEnv.txt");
+        if uenv_source.exists() {
+            fs::copy(uenv_source, fsroot.join("uEnv.txt"))?;
+        } else {
+            eprintln!("[ WARN ] config/uEnv.txt not found, skipping copy");
+        }
     }
 
-    let limine_conf_path = Path::new("config/limine.conf");
-    fs::copy(limine_conf_path, fsroot.join("boot/limine.conf"))?;
     eprintln!("[ INFO ] Preparation complete. Files copied to {}", fsroot.display());
     Ok(())
 }
 
-pub fn image_img(cfg: &Config) -> anyhow::Result<()> {
-    // Copy kernel to top level target similar to build_kernel
-    // Note: build_kernel copies to target/kernel already.
-    let arch = cfg.system.arch;
-    let limine_path = Path::new("target/limine");
-    let limine_conf_path = Path::new("config/limine.conf");
+pub fn image_img(_cfg: &Config) -> anyhow::Result<()> {
     // Build Disk Image (FAT32)
     eprintln!("[ INFO ] Generating Disk image (FAT32)...");
     let image_path = Path::new("target/disk.img");
+    let fsroot = Path::new("target/fsroot");
+
+    if !fsroot.exists() {
+        anyhow::bail!("fsroot does not exist. Run prepare first.");
+    }
+
     if image_path.exists() {
         fs::remove_file(image_path)?;
     }
@@ -87,50 +102,21 @@ pub fn image_img(cfg: &Config) -> anyhow::Result<()> {
     }
 
     // 3. Populate using mtools
-    // Helper closure
-    let mmd = |dir: &str| -> anyhow::Result<()> {
-        let status = Command::new("mmd")
-            .arg("-i")
-            .arg("target/disk.img")
-            .arg(format!("::{}", dir))
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("mmd failed for {}", dir);
-        }
-        Ok(())
-    };
-    let mcopy = |src: &Path, dst: &str| -> anyhow::Result<()> {
-        let status = Command::new("mcopy")
-            .arg("-i")
-            .arg("target/disk.img")
-            .arg(src)
-            .arg(format!("::{}", dst))
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("mcopy failed for {}", dst);
-        }
-        Ok(())
-    };
+    // mcopy everything from fsroot to root of disk.
+    // Instead of using a wildcard which depends on a shell, we copy the contents of the directory.
+    let status = Command::new("mcopy")
+        .arg("-i")
+        .arg("target/disk.img")
+        .arg("-s")
+        .arg("-D")
+        .arg("o")
+        .arg("target/fsroot/.")
+        .arg("::/")
+        .status()?;
 
-    mmd("EFI")?;
-    mmd("EFI/BOOT")?;
-    mmd("boot")?;
-
-    // Copy kernel and modules
-    mcopy(Path::new("target/kernel"), "boot/glenda.elf")?;
-    if Path::new("target/modules.bin").exists() {
-        mcopy(Path::new("target/modules.bin"), "boot/modules.bin")?;
+    if !status.success() {
+        anyhow::bail!("mcopy failed to populate some files");
     }
-
-    // Copy Limine files
-    let limine_efi = arch.limine_efi_file();
-    mcopy(&limine_path.join(limine_efi), &format!("EFI/BOOT/{}", limine_efi))?;
-
-    // Write limine.conf to temp file then copy
-    // (We reuse the previous limine.conf creation logic, assuming it's written to target/fsroot/boot/limine.conf)
-    // Actually we can just write it to a temp path.
-    // Let's use target/limine.conf as temp
-    mcopy(limine_conf_path, "boot/limine.conf")?;
 
     eprintln!("[ INFO ] Image generated at {}", image_path.display());
 

@@ -25,15 +25,15 @@ fn init_primary() {
     // 0. 启动协议固化
     crate::boot::init();
     // 1. 全局配置与硬件发现
-    platform::init();
     cpu::init();
-    console::init();
+    trap::init();
     pmem::init();
+    platform::init();
+    console::init();
     vm::init();
     proc::init();
-    // 3. 本地 CPU 初始化 (每个核心都要运行)
-    trap::init();
     irq::init();
+    // 3. 本地 CPU 初始化 (每个核心都要运行)
     crate::boot::bootstrap();
     // 3. 发布屏障，允许其他核心继续
     INIT_DONE.store(true, Ordering::Release);

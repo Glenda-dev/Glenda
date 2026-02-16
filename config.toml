@@ -1,6 +1,7 @@
 [system]
 arch = "riscv64"
 profile = "relwithdebuginfo"
+bootloader = "limine"
 
 [qemu]
 cpus = 4

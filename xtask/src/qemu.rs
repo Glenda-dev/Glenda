@@ -21,26 +21,73 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     }
 
     cmd.arg("-machine").arg("virt,acpi=on");
-    // BIOS/Firmware handling (OVMF/EDK2)
-    if let Some(bios) = &cfg.qemu.bios {
-        // User provided specific BIOS path
-        if PathBuf::from(bios).exists() {
-            cmd.arg("-drive").arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", bios));
-        } else {
-            // Maybe it's just a keyword or QEMU resource name
-            cmd.arg("-bios").arg(bios);
-        }
-    } else {
-        let candidates = cfg.system.arch.uefi_firmware_candidates();
 
-        if let Some(path) = candidates.iter().find(|p| PathBuf::from(p).exists()) {
-            eprintln!("[ INFO ] Using UEFI Firmware: {}", path);
-            cmd.arg("-drive").arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", path));
-        } else {
-            return Err(anyhow::anyhow!(
-                "[ ERROR ] No UEFI firmware found for {}. Please install edk2/ovmf or specify `bios` in config.toml.",
-                cfg.system.arch.as_str()
-             ));
+    match cfg.system.bootloader {
+        crate::arch::Bootloader::Uboot => {
+            // Use U-Boot as the primary "kernel" (payload for OpenSBI)
+            let uboot_path = if let Some(bios) = &cfg.qemu.bios {
+                PathBuf::from(bios)
+            } else {
+                std::env::current_dir()?
+                    .join(format!("firmware/u-boot_{}.bin", cfg.system.arch.as_str()))
+            };
+
+            if !uboot_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "[ ERROR ] U-Boot binary not found at {}\n[ HELP  ] Please place the U-Boot binary there or specify `bios` in config.toml.",
+                    uboot_path.display()
+                ));
+            }
+
+            // Pass U-Boot as -kernel to QEMU. It will be loaded after OpenSBI.
+            cmd.arg("-kernel").arg(uboot_path);
+        }
+        crate::arch::Bootloader::Opensbi => {
+            // 直接将内核作为 OpenSBI 的 Payload
+            let kernel_path = std::env::current_dir()?.join("target/kernel");
+            cmd.arg("-kernel").arg(kernel_path);
+
+            // 指定 initrd 为 modules.bin
+            let initrd_path = fsroot.join("boot/modules.bin");
+            if initrd_path.exists() {
+                cmd.arg("-initrd").arg(initrd_path);
+            }
+        }
+        crate::arch::Bootloader::Limine => {
+            // BIOS/Firmware handling (OVMF/EDK2)
+            if let Some(bios) = &cfg.qemu.bios {
+                // User provided specific BIOS path
+                if PathBuf::from(bios).exists() {
+                    cmd.arg("-drive")
+                        .arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", bios));
+                } else {
+                    // Maybe it's just a keyword or QEMU resource name
+                    cmd.arg("-bios").arg(bios);
+                }
+            } else {
+                let candidates = cfg.system.arch.uefi_firmware_candidates();
+
+                if let Some(path) = candidates.iter().find(|p| PathBuf::from(p).exists()) {
+                    eprintln!("[ INFO ] Using UEFI Firmware: {}", path);
+                    cmd.arg("-drive")
+                        .arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", path));
+                } else {
+                    // Try to download
+                    if let Some(url) = cfg.system.arch.uefi_firmware_url() {
+                        let local = std::env::current_dir()?.join(&candidates[0]);
+                        crate::util::download(url, &local)?;
+                        cmd.arg("-drive").arg(format!(
+                            "if=pflash,format=raw,unit=0,file={},readonly=on",
+                            local.display()
+                        ));
+                    } else {
+                        return Err(anyhow::anyhow!(
+                        "[ ERROR ] No UEFI firmware found for {}. Please install edk2/ovmf or specify `bios` in config.toml.",
+                        cfg.system.arch.as_str()
+                    ));
+                    }
+                }
+            }
         }
     }
 
@@ -95,7 +142,8 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     }
 
     // Use vvfat for the boot device
-    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw", fsroot.display()));
+    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
+    cmd.arg("-device").arg("virtio-blk-device,drive=boot");
 
     Ok(cmd)
 }

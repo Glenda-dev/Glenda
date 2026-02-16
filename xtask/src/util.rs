@@ -17,6 +17,32 @@ pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn download(url: &str, dest: &Path) -> anyhow::Result<()> {
+    if dest.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let is_bz2 = url.ends_with(".bz2");
+    let download_path = if is_bz2 { dest.with_extension("bz2") } else { dest.to_path_buf() };
+
+    eprintln!("[ INFO ] Downloading {} -> {}", url, download_path.display());
+    let mut cmd = Command::new("curl");
+    cmd.args(["-L", "-o", download_path.to_str().unwrap(), url]);
+    run(&mut cmd)?;
+
+    if is_bz2 {
+        eprintln!("[ INFO ] Decompressing {}...", download_path.display());
+        let mut cmd = Command::new("bunzip2");
+        cmd.arg(download_path.to_str().unwrap());
+        run(&mut cmd)?;
+    }
+
+    Ok(())
+}
+
 pub fn objdump(cfg: &Config) -> anyhow::Result<()> {
     let elf = PathBuf::from("target")
         .join(cfg.system.arch.target_triple())
