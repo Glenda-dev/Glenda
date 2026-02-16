@@ -26,13 +26,13 @@ pub unsafe fn init() {
         return;
     }
 
-    let boot_info =
-        unsafe { multiboot2::load(info_pa) }.expect("multiboot2: Failed to load boot info");
+    let boot_info = unsafe { multiboot2::BootInformation::load(info_pa as *const _) }
+        .expect("multiboot2: Failed to load boot info");
 
     // Parse memory map
     let mut count = 0;
     if let Some(mmap_tag) = boot_info.memory_map_tag() {
-        for entry in mmap_tag.all_memory_areas() {
+        for entry in mmap_tag.memory_areas() {
             if count >= MAX_MEM_ENTRIES {
                 break;
             }
@@ -40,9 +40,10 @@ pub unsafe fn init() {
                 MEM_MAP[count] = MemoryMapEntry {
                     base: PhysAddr::from(entry.start_address() as usize),
                     length: entry.size() as usize,
-                    kind: match entry.typ() {
-                        multiboot2::MemoryAreaType::Available => MemoryType::Ram,
-                        _ => MemoryType::Reserved,
+                    kind: if u32::from(entry.typ()) == 1 {
+                        MemoryType::Ram
+                    } else {
+                        MemoryType::Reserved
                     },
                 };
                 count += 1;
@@ -57,7 +58,9 @@ pub unsafe fn init() {
     let kernel_size = pend - pbase;
 
     // Command line
-    let cmdline = boot_info.command_line_tag().and_then(|t| t.cmdline().ok());
+    let cmdline = boot_info.command_line_tag().and_then(|t| {
+        t.cmdline().ok().map(|s| unsafe { core::mem::transmute::<&str, &'static str>(s) })
+    });
 
     // Initrd
     let mut initrd_addr = None;
@@ -69,16 +72,23 @@ pub unsafe fn init() {
     }
 
     // RSDP (ACPI)
-    let rsdp_addr =
-        boot_info.rsdp_v2_tag().map(|t| VirtAddr::from(t.signature().as_ptr() as usize)).or_else(
-            || boot_info.rsdp_v1_tag().map(|t| VirtAddr::from(t.signature().as_ptr() as usize)),
-        );
+    let rsdp_addr = boot_info
+        .rsdp_v2_tag()
+        .and_then(|t| t.signature().ok().map(|s| VirtAddr::from(s.as_ptr() as usize)))
+        .or_else(|| {
+            boot_info
+                .rsdp_v1_tag()
+                .and_then(|t| t.signature().ok().map(|s| VirtAddr::from(s.as_ptr() as usize)))
+        });
 
     // DTB (Device Tree)
-    let dtb_addr = boot_info.device_tree_tag().map(|t| {
+    let dtb_addr = None;
+    /*
+    let dtb_addr = boot_info.dtb_tag().map(|t| {
         let dtb_data = t.device_tree();
         (VirtAddr::from(dtb_data.as_ptr() as usize), dtb_data.len())
     });
+    */
 
     BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
         dtb_addr,
@@ -137,4 +147,15 @@ pub unsafe fn bootstrap_kernel(magic: usize, info_pa: usize) -> ! {
     }
 
     crate::glenda_boot();
+}
+
+#[unsafe(no_mangle)]
+pub unsafe fn multiboot2_secondary_bootstrap(hartid: usize) -> ! {
+    // 复用主核建立的 BOOT_PAGE_TABLE
+    let root_pa = PhysAddr::from(&raw const hal::mem::BOOT_PAGE_TABLE as usize);
+    let satp = hal::mem::get_mmu_register(root_pa, 0);
+    unsafe {
+        hal::mem::activate_vspace(satp);
+    }
+    crate::glenda_secondary(hartid);
 }

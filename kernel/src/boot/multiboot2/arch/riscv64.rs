@@ -33,6 +33,22 @@ _start:
     mv a1, s1
     call multiboot2_bootstrap
 
+    .global secondary_start
+secondary_start:
+    /* Disable interrupts */
+    csrw sie, zero
+
+    /* Set up stack */
+    mv s0, a0
+    la sp, boot_stack_top
+    li t0, 4096 * 4
+    mul t1, s0, t0
+    sub sp, sp, t1
+
+    /* Jump to multiboot2_secondary_bootstrap */
+    mv a0, s0
+    call multiboot2_secondary_bootstrap
+
 loop:
     j loop
 

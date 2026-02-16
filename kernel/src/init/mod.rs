@@ -23,7 +23,7 @@ pub fn init(is_primary: bool) {
 
 fn init_primary() {
     // 0. 启动协议固化
-    crate::boot::init();
+    unsafe { crate::boot::init() };
     // 1. 全局配置与硬件发现
     cpu::init();
     trap::init();
