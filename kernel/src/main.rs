@@ -62,7 +62,7 @@ pub fn glenda_main(is_primary: bool) -> ! {
 
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
-    printk_unsynced!("{}PANIC{}: {}\n", ANSI_RED, ANSI_RESET, info);
+    printk_unsynced!("{}PANIC{}(cpu {}): {}\n", ANSI_RED, ANSI_RESET, hal::cpu::cpu_id(), info);
     hal::runtime::backtrace();
     unsafe {
         hal::mem::deactivate_vspace();

@@ -54,6 +54,14 @@ impl PmemManager {
     fn init(&mut self, kernel_end: PhysAddr) {
         let mut available = 0;
         let mmap = crate::boot::get_mem_map();
+        let initrd = crate::boot::get_initrd();
+        let (initrd_start, initrd_end) = if let Some((vaddr, size)) = initrd {
+            let paddr = PhysAddr::from(vaddr.as_usize());
+            (paddr, paddr + size)
+        } else {
+            (PhysAddr::null(), PhysAddr::null())
+        };
+
         log!(
             "pmem: Initializing pmem regions. Kernel end at {}, found {} regions in bootloader map",
             kernel_end,
@@ -82,9 +90,46 @@ impl PmemManager {
                     r_start
                 };
 
-                if effective_start < r_end {
-                    self.add_region(effective_start, r_end);
-                    available += r_end.as_usize() - effective_start.as_usize();
+                let mut current_start = effective_start;
+                let mut current_end = r_end;
+
+                if initrd_start != PhysAddr::null() {
+                    // Initrd within this region
+                    if initrd_start >= current_start && initrd_end <= current_end {
+                        log!(
+                            "pmem: Splitting region for initrd [{}, {})",
+                            initrd_start,
+                            initrd_end
+                        );
+                        // Add region before initrd
+                        if initrd_start > current_start {
+                            self.add_region(current_start, initrd_start);
+                            available += initrd_start.as_usize() - current_start.as_usize();
+                        }
+                        // Start next region after initrd
+                        current_start = initrd_end;
+                    } else if initrd_start < current_start && initrd_end > current_start {
+                        // Overlaps start
+                        log!(
+                            "pmem: Adjusting region start due to initrd overlap [{}, {})",
+                            initrd_start,
+                            initrd_end
+                        );
+                        current_start = initrd_end;
+                    } else if initrd_start < current_end && initrd_end > current_end {
+                        // Overlaps end (initrd starts inside, ends outside)
+                        log!(
+                            "pmem: Adjusting region end due to initrd overlap [{}, {})",
+                            initrd_start,
+                            initrd_end
+                        );
+                        current_end = initrd_start;
+                    }
+                }
+
+                if current_start < current_end {
+                    self.add_region(current_start, current_end);
+                    available += current_end.as_usize() - current_start.as_usize();
                 }
             }
         }

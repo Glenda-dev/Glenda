@@ -22,6 +22,10 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
 
     cmd.arg("-machine").arg("virt,acpi=on");
 
+    // Use vvfat for the boot device, place it BEFORE other drives so it's virtio 0
+    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
+    cmd.arg("-device").arg("virtio-blk-device,drive=boot");
+
     match cfg.system.bootloader {
         crate::arch::Bootloader::Uboot => {
             // Use U-Boot as the primary "kernel" (payload for OpenSBI)
@@ -118,8 +122,11 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         }
     }
     if let Some(drive) = &cfg.qemu.drive {
-        cmd.arg("-drive").arg(format!("file={drive},if=none,format=raw,id=x0"));
-        cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
+        // Skip if drive is already disk.img which might be same as boot
+        if drive != "disk.img" {
+            cmd.arg("-drive").arg(format!("file={drive},if=none,format=raw,id=x0"));
+            cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
+        }
     }
 
     if cfg.qemu.net {
@@ -142,9 +149,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     }
 
     // Use vvfat for the boot device
-    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
-    cmd.arg("-device").arg("virtio-blk-device,drive=boot");
-
+    // Removed duplicate boot drive addition
     Ok(cmd)
 }
 

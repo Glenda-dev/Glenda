@@ -67,9 +67,113 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
         } else {
             eprintln!("[ WARN ] config/uEnv.txt not found, skipping copy");
         }
+        // Generate FIT image if bootloader is uboot
+        generate_fit_image(cfg)?;
     }
 
     eprintln!("[ INFO ] Preparation complete. Files copied to {}", fsroot.display());
+    Ok(())
+}
+
+fn generate_fit_image(cfg: &Config) -> anyhow::Result<()> {
+    eprintln!("[ INFO ] Generating FIT image (glenda.itb)...");
+    // 1. kernel binary
+    let objcopy = format!("{}objcopy", cfg.system.arch.binutils_prefix());
+    let status = Command::new(objcopy)
+        .args(&["-O", "binary", "target/kernel", "target/kernel.bin"])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("objcopy failed to generate kernel.bin");
+    }
+
+    // 2. generate ITS file
+    let arch = match cfg.system.arch {
+        crate::arch::Arch::Riscv64 => "riscv",
+        crate::arch::Arch::X86_64 => "x86_64",
+        crate::arch::Arch::Aarch64 => "arm64",
+        crate::arch::Arch::Loongarch64 => "loongarch",
+    };
+
+    let its_content = format!(
+        r#"/dts-v1/;
+
+/ {{
+    description = "Glenda OS FIT image";
+    #address-cells = <1>;
+
+    images {{
+        kernel {{
+            description = "Glenda Kernel";
+            data = /incbin/("kernel.bin");
+            type = "kernel";
+            arch = "{arch}";
+            os = "linux";
+            compression = "none";
+            load = <0x80200000>;
+            entry = <0x80200000>;
+        }};
+        ramdisk {{
+            description = "Glenda Initrd";
+            data = /incbin/("modules.bin");
+            type = "ramdisk";
+            arch = "{arch}";
+            os = "linux";
+            compression = "none";
+            load = <0x88000000>;
+        }};
+    }};
+
+    configurations {{
+        default = "conf-1";
+        conf-1 {{
+            description = "Glenda Default Configuration";
+            kernel = "kernel";
+            ramdisk = "ramdisk";
+        }};
+    }};
+}};"#
+    );
+    fs::write("target/glenda.its", its_content)?;
+
+    // 3. run mkimage
+    let status =
+        Command::new("mkimage").args(&["-f", "target/glenda.its", "target/glenda.itb"]).status()?;
+    if !status.success() {
+        eprintln!("[ WARN ] mkimage failed. Make sure u-boot-tools is installed.");
+        return Ok(());
+    }
+
+    // 4. copy to fsroot
+    fs::copy("target/glenda.itb", "target/fsroot/boot/glenda.itb")?;
+
+    // 5. generate boot.scr
+    // Although conf-1 loads kernel and ramdisk, we MUST pass FDT address as the 3rd argument
+    // otherwise U-Boot resets the working FDT to 0 before jumping.
+    let boot_script_content = "fdt addr ${fdtcontroladdr}; fdt resize; fatload ${devtype} ${devnum}:${distro_bootpart} 0x84000000 boot/glenda.itb; bootm 0x84000000:kernel 0x84000000:ramdisk ${fdtcontroladdr}\n";
+    let boot_txt_path = "target/boot.txt";
+    fs::write(boot_txt_path, boot_script_content)?;
+
+    let status = Command::new("mkimage")
+        .args(&[
+            "-A",
+            "riscv",
+            "-T",
+            "script",
+            "-C",
+            "none",
+            "-n",
+            "Glenda Boot Script",
+            "-d",
+            boot_txt_path,
+            "target/boot.scr",
+        ])
+        .status()?;
+
+    if status.success() {
+        fs::copy("target/boot.scr", "target/fsroot/boot.scr")?;
+        eprintln!("[ INFO ] boot.scr generated and copied to fsroot.");
+    }
+
     Ok(())
 }
 

@@ -1,0 +1,1 @@
+bootcmd=fdt addr ${fdtcontroladdr}; fdt resize; fatload virtio 0:1 0x84000000 boot/glenda.itb; bootm 0x84000000:kernel 0x84000000:ramdisk ${fdtcontroladdr}

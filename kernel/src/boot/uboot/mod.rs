@@ -1,29 +1,32 @@
+pub mod arch;
+
 use crate::boot::BOOT_LOADER_INFO;
-use crate::boot::BootLoaderInfo;
-use crate::boot::MemoryMapEntry;
+use crate::boot::{BootLoaderInfo, MemoryMapEntry};
 use crate::hal;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
 
-mod boot;
-
-static mut MEM_MAP: [MemoryMapEntry; 64] =
-    [MemoryMapEntry { base: PhysAddr::null(), length: 0, kind: MemoryType::Ram }; 64];
-static mut MEM_MAP_COUNT: usize = 0;
-static mut OPENSBI_DTB_ADDR: usize = 0;
-static mut OPENSBI_HARTID: usize = 0;
+#[unsafe(no_mangle)]
+static mut UBOOT_DTB_ADDR: usize = 0;
 
 unsafe extern "C" {
     static __kernel_pbase: u8;
     static __alloc_start: u8;
 }
 
+pub const MAX_MEM_ENTRIES: usize = 256;
+static mut MEM_MAP: [MemoryMapEntry; MAX_MEM_ENTRIES] =
+    [MemoryMapEntry { base: PhysAddr::null(), length: 0, kind: MemoryType::Reserved };
+        MAX_MEM_ENTRIES];
+static mut MEM_MAP_COUNT: usize = 0;
+
 pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
-    let dtb_pa = unsafe { OPENSBI_DTB_ADDR };
+    let dtb_pa = unsafe { UBOOT_DTB_ADDR };
     if dtb_pa == 0 {
         return &[];
     }
-    let fdt = unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("sbi: Failed to parse FDT");
+    let fdt =
+        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("uboot: Failed to parse FDT");
     // 解析内存映射 (仅在第一次调用时)
     unsafe {
         if MEM_MAP_COUNT == 0 {
@@ -52,10 +55,15 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
 }
 
 pub fn init() {
-    let dtb_pa = unsafe { OPENSBI_DTB_ADDR };
-    let hartid = unsafe { OPENSBI_HARTID };
+    let dtb_pa = unsafe { UBOOT_DTB_ADDR };
+    if dtb_pa == 0 {
+        return;
+    }
 
-    let fdt = unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("sbi: Failed to parse FDT");
+    // 解析设备树
+    let fdt =
+        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8).expect("uboot: Failed to parse FDT") };
+
     // 确定 CPU 数量
     let cpu_count = fdt.cpus().count();
 
@@ -85,16 +93,14 @@ pub fn init() {
                 // Currently identity mapping
                 initrd_addr = Some((VirtAddr::from(start_val), size));
                 log!(
-                    "sbi: Found initrd in DTB: {:#x} - {:#x} ({} KB)",
+                    "uboot: Found initrd in DTB: {:#x} - {:#x} ({} bytes)",
                     start_val,
                     end_val,
-                    size / 1024
+                    size
                 );
             }
         }
     }
-
-    hal::cpu::set_cpuid(hartid);
 
     let pbase = &raw const __kernel_pbase as usize;
     let pend = &raw const __alloc_start as usize;
@@ -113,13 +119,60 @@ pub fn init() {
     });
 }
 
-pub fn set_boot_info(hartid: usize, dtb_pa: usize) {
-    unsafe {
-        OPENSBI_HARTID = hartid;
-        OPENSBI_DTB_ADDR = dtb_pa;
-    }
-}
-
 pub fn bootstrap() {
     hal::platform::bootstrap_cpus();
+}
+
+pub unsafe fn bootstrap_kernel(hartid: usize, dtb_pa: usize) -> ! {
+    // 0. 清零 BSS (主核负责)
+    unsafe {
+        unsafe extern "C" {
+            static mut __bss_start: u8;
+            static mut __bss_end: u8;
+        }
+        let start = &raw mut __bss_start;
+        let end = &raw mut __bss_end;
+        let len = (end as usize).saturating_sub(start as usize);
+        if len > 0 {
+            core::ptr::write_bytes(start, 0, len);
+        }
+    }
+
+    // 0. 设置当前核 ID 到 tp 寄存器
+    hal::cpu::set_cpuid(hartid);
+
+    // 1. 保存 DTB 物理地址
+    unsafe {
+        UBOOT_DTB_ADDR = dtb_pa;
+    }
+
+    // 2. 通过 HAL 构造初始页表并开启 MMU
+    log!("uboot: Setting up boot page tables...");
+
+    let regions = unsafe { init_mem_map() };
+    let satp = unsafe { hal::mem::setup_boot_pagetable(regions) };
+
+    log!("uboot: Enabling MMU...");
+    unsafe {
+        hal::mem::activate_vspace(satp);
+    }
+
+    // 3. 跳转到内核入口
+    log!("uboot: Jumping to kernel main...");
+    crate::glenda_boot();
+}
+
+#[unsafe(no_mangle)]
+pub unsafe fn uboot_secondary_bootstrap(hartid: usize) -> ! {
+    // 复用主核建立的 BOOT_PAGE_TABLE
+    let root_pa = PhysAddr::from(&raw const hal::mem::BOOT_PAGE_TABLE as usize);
+    let satp = hal::mem::get_mmu_register(root_pa, 0);
+    unsafe {
+        hal::mem::activate_vspace(satp);
+    }
+    crate::glenda_secondary(hartid);
+}
+
+pub fn get_dtb_addr() -> Option<VirtAddr> {
+    unsafe { if UBOOT_DTB_ADDR != 0 { Some(VirtAddr::from(UBOOT_DTB_ADDR)) } else { None } }
 }

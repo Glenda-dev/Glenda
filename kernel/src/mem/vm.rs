@@ -23,7 +23,6 @@ pub static KERNEL_PAGE_TABLE: Once<&mut PageTable> = Once::new();
 pub fn init_kernel_vm() {
     let mut kpt = hal::mem::get_pt();
     hal::mem::kpt_setup(&mut kpt);
-    log!("vm: Root page table built");
     KERNEL_PAGE_TABLE.call_once(|| kpt);
 }
 
