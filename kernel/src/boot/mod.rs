@@ -28,7 +28,7 @@ pub struct MemoryMapEntry {
 }
 
 pub struct BootLoaderInfo {
-    pub dtb_addr: Option<VirtAddr>,
+    pub dtb_addr: Option<(VirtAddr, usize)>,
     pub rsdp_addr: Option<VirtAddr>,
     pub hhdm_offset: usize,
     pub memory_map: &'static [MemoryMapEntry],
@@ -41,7 +41,7 @@ pub struct BootLoaderInfo {
 
 pub static BOOT_LOADER_INFO: Once<BootLoaderInfo> = Once::new();
 
-pub fn get_dtb() -> Option<VirtAddr> {
+pub fn get_dtb() -> Option<(VirtAddr, usize)> {
     BOOT_LOADER_INFO.get().and_then(|info| info.dtb_addr)
 }
 

@@ -123,10 +123,10 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
         bootinfo.platform_type = PlatformType::ACPI;
         bootinfo.addr = virt_to_phys(rsdp).as_usize();
         bootinfo.size = 0x1000;
-    } else if let Some(dtb) = boot::get_dtb() {
+    } else if let Some((dtb, size)) = boot::get_dtb() {
         bootinfo.platform_type = PlatformType::DTB;
         bootinfo.addr = virt_to_phys(dtb).as_usize();
-        bootinfo.size = 0x10000;
+        bootinfo.size = size;
     }
 
     if let Some(cmdline) = boot::get_cmdline() {

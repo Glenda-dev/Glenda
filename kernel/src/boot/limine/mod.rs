@@ -96,7 +96,7 @@ pub fn init() {
                         EntryType::USABLE => MemoryType::Ram,
                         EntryType::RESERVED => MemoryType::Reserved,
                         EntryType::BAD_MEMORY => MemoryType::Reserved,
-                        EntryType::ACPI_RECLAIMABLE => MemoryType::Mmio,
+                        EntryType::ACPI_RECLAIMABLE => MemoryType::Reclaimable,
                         EntryType::BOOTLOADER_RECLAIMABLE => MemoryType::Reclaimable,
                         EntryType::ACPI_NVS => MemoryType::Mmio,
                         EntryType::FRAMEBUFFER => MemoryType::Mmio,
@@ -124,7 +124,7 @@ pub fn init() {
     let cpu_count = mp_response.map(|res| res.cpus().len()).unwrap_or(1);
 
     BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
-        dtb_addr: DTB_REQUEST.get_response().map(|res| VirtAddr::from(res.dtb_ptr() as usize)),
+        dtb_addr: DTB_REQUEST.get_response().map(|res| (VirtAddr::from(res.dtb_ptr() as usize), 0)), // Limine doesn't provide size?
         rsdp_addr: RSDP_REQUEST.get_response().map(|res| VirtAddr::from(res.address() as usize)),
         hhdm_offset,
         memory_map: unsafe { &MEM_MAP[..MEM_MAP_COUNT] },

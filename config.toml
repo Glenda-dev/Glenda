@@ -1,10 +1,10 @@
 [system]
 arch = "riscv64"
 profile = "relwithdebuginfo"
-bootloader = "uboot"
+bootloader = "opensbi"
 
 [qemu]
-cpus = 4
+cpus = 1
 mem = "2G"
 display = "nographic"
 drive = "disk.img"

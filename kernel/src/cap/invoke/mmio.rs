@@ -19,7 +19,7 @@ pub fn invoke_mmio(_cap: &mut Capability, method: usize, cptr: usize) -> Result<
             let pages = utcb.mrs_regs[1];
             let dest_cptr = CapPtr::from(utcb.mrs_regs[2]);
 
-            if pages == 0 {
+            if pages == 0 || paddr.as_usize() % PGSIZE != 0 {
                 return Err(Error::InvalidArgs);
             }
 
@@ -34,10 +34,7 @@ pub fn invoke_mmio(_cap: &mut Capability, method: usize, cptr: usize) -> Result<
 
                 // 检查重叠
                 if start < r_end && end > r_start {
-                    if entry.kind == MemoryType::Ram
-                        || entry.kind == MemoryType::Reserved
-                        || entry.kind == MemoryType::Reclaimable
-                    {
+                    if entry.kind == MemoryType::Ram || entry.kind == MemoryType::Reserved {
                         error!(
                             "Mmio::GET_FRAME: Requested range [{}, {}) overlaps with {:?} region [{}, {})",
                             start, end, entry.kind, r_start, r_end

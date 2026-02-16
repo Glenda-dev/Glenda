@@ -27,7 +27,7 @@ pub enum MemoryType {
 pub fn init() {
     if let Some(rsdp_pa) = boot::get_rsdp() {
         self::acpi::parse(rsdp_pa.as_usize());
-    } else if let Some(dtb_pa) = crate::boot::get_dtb() {
+    } else if let Some((dtb_pa, _)) = crate::boot::get_dtb() {
         self::dtb::parse(dtb_pa.as_usize());
     } else {
         log!("platform: No DTB or ACPI found. Continuing anyway...");
@@ -35,7 +35,7 @@ pub fn init() {
 }
 
 pub fn get_dtb() -> Option<VirtAddr> {
-    boot::get_dtb()
+    boot::get_dtb().map(|(pa, _)| pa)
 }
 
 pub fn get_rsdp() -> Option<VirtAddr> {
