@@ -80,7 +80,7 @@ pub fn clear_notification(irq: usize) -> Result<(), Error> {
 pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
     // 1. Mask interrupt
     hal::irq::mask(id, cpuid);
-    // hal::irq::complete(id, cpuid);
+    hal::irq::complete(id, cpuid);
 
     let tbl = IRQ_TABLE.read();
     if id >= MAX_IRQS {
@@ -107,8 +107,6 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
 }
 
 pub fn ack_irq(cpuid: usize, irq: usize) -> Result<(), Error> {
-    // TODO: Move to handle_claimed
-    hal::irq::complete(irq, cpuid);
     // Only unmask. Completion was done in handle_claimed.
     hal::irq::unmask(irq, cpuid);
     Ok(())
