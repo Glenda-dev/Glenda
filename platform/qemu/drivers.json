@@ -16,13 +16,6 @@
             ]
         },
         {
-            "name": "goldfish-rtc",
-            "binary": "goldfish-rtc",
-            "compatible": [
-                "google,goldfish-rtc"
-            ]
-        },
-        {
             "name": "virtio-net",
             "binary": "virtio-net",
             "compatible": [
@@ -41,13 +34,6 @@
             "binary": "acpi",
             "compatible": [
                 "acpi"
-            ]
-        },
-        {
-            "name": "virtio-mmio",
-            "binary": "virtio-mmio",
-            "compatible": [
-                "virtio,mmio"
             ]
         }
     ]

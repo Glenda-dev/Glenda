@@ -8,7 +8,6 @@ use crate::hal::trap::{trap_user_handler, trap_user_return};
 use crate::ipc::{MsgArgs, UTCB};
 use crate::mem::PageTable;
 use crate::mem::VirtAddr;
-use crate::mem::pmem;
 use core::fmt::Display;
 use core::sync::atomic::AtomicUsize;
 
@@ -34,6 +33,7 @@ pub struct TCB {
     pub timeslice: usize,     // 剩余时间片
     pub state: ThreadState,   // 当前状态
     pub affinity: usize,      // CPU 亲和性
+    pub cpu_id: usize,        // 当前存在的CPU调度队列（用于remove）
 
     // --- Kernel Stack ---
     pub kstack: Option<Capability>, // 内核栈的物理帧 (以 Capability 形式存储)
@@ -85,12 +85,13 @@ pub static mut ALL_THREADS: Option<*mut TCB> = None;
 impl TCB {
     pub const fn new() -> Self {
         Self {
-            ref_count: AtomicUsize::new(1),
+            ref_count: AtomicUsize::new(0),
             context: ProcContext::new(),
             priority: 0,
             timeslice: 0,
             state: ThreadState::Inactive,
             affinity: usize::MAX,
+            cpu_id: 0,
             kstack: None,
             trapframe: None,
             cspace_root: None,
@@ -155,21 +156,6 @@ impl TCB {
             id = asid::alloc();
         }
         hal::mem::get_mmu_register(paddr, id.id as usize)
-    }
-
-    /// 创建一个内核线程
-    /// 内核线程运行在 S-Mode，共享内核地址空间
-    pub fn new_kthread(entry: usize) -> Self {
-        let mut tcb = Self::new();
-        tcb.privileged = true;
-        tcb.kstack = pmem::alloc_frame_cap(KSTACK_PAGES);
-        let sp = tcb.get_kstack_top().as_usize();
-        // 设置上下文以跳转到入口函数
-        tcb.context.configure(entry, sp);
-        // s0 (fp) 设为 0，方便调试回溯终止
-        tcb.context.set_fp(0);
-        tcb.native = true;
-        unimplemented!();
     }
 
     /// 配置线程的核心资源

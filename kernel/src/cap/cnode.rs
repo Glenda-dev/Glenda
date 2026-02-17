@@ -175,7 +175,7 @@ impl CNode {
     }
 
     /// 辅助函数：获取槽位指针
-    unsafe fn get_slot_ptr(&self, index: usize) -> *mut Slot {
+    pub unsafe fn get_slot_ptr(&self, index: usize) -> *mut Slot {
         unsafe { (self.slots.get() as *mut Slot).add(index) }
     }
 
@@ -347,9 +347,15 @@ impl CNode {
 
         // 3. 检查状态
         if src_slot.cap.cap_type() == CapType::Empty {
+            error!("cnode: Move failed, source slot is empty src_cptr={}", src_cptr);
             return Err(Error::InvalidCapability);
         }
         if dest_slot.cap.cap_type() != CapType::Empty {
+            error!(
+                "cnode: Move failed, destination slot not empty dest_cptr={}, dest_cap={:?}",
+                dest_cptr,
+                dest_slot.cap.cap_type()
+            );
             return Err(Error::AlreadyExists);
         }
 
@@ -404,16 +410,21 @@ impl CNode {
         let _self_lock_guard = self.metadata().lock.lock();
 
         if cptr.is_null() {
+            error!("CNode::insert_child failed: null CPtr");
             return Err(Error::InvalidSlot);
         }
         // Unsafe lookup without lock is fine because we hold lock
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
-            None => return Err(Error::InvalidSlot),
+            None => {
+                error!("CNode::insert_child failed: lookup_slot_ptr returned None cptr={}", cptr);
+                return Err(Error::InvalidSlot);
+            }
             Some(ptr) => unsafe { &mut *ptr },
         };
 
         // 必须确保目标槽位为空，否则会破坏 CDT
         if slot.cap.cap_type() != CapType::Empty {
+            error!("CNode::insert_child failed: target slot not empty cptr={}", cptr);
             return Err(Error::AlreadyExists);
         }
 
@@ -465,6 +476,30 @@ impl CNode {
         };
         revoke_recursive(slot);
         Ok(())
+    }
+
+    pub fn recycle(&mut self, cptr: CapPtr) -> Result<usize, Error> {
+        let _guard = self.metadata().lock.lock();
+        let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
+            None => return Err(Error::InvalidSlot),
+            Some(ptr) => unsafe { &mut *ptr },
+        };
+
+        // 1. Revoke children first to ensure no one else is using derived caps
+        revoke_recursive(slot);
+
+        // 2. Try to recycle current cap
+        if let Some(new_cap) = slot.cap.recycle() {
+            let pages = match new_cap.cap_type() {
+                CapType::Untyped => new_cap.get_data() & 0x1FFFFFF,
+                _ => 0,
+            };
+            slot.cap = new_cap;
+            slot.cdt.first_child = VirtAddr::null();
+            Ok(pages)
+        } else {
+            Err(Error::InvalidCapability)
+        }
     }
 
     pub fn delete(&mut self, cptr: CapPtr) -> Result<(), Error> {
@@ -551,17 +586,35 @@ impl CNode {
 }
 
 fn revoke_recursive(slot: &mut Slot) {
+    log!("cap: Revoking slot {:p} with cap {:?}, CDT: {:?}", slot as *mut Slot, slot.cap, slot.cdt);
     let mut child_addr = slot.cdt.first_child;
     slot.cdt.first_child = VirtAddr::null();
+
+    // The caller (or parent recursion level) guarantees that `slot`'s CNode is locked.
+    let current_cnode_lock = slot.cnode_lock;
 
     while child_addr != VirtAddr::null() {
         let child_slot = unsafe { &mut *child_addr.as_mut::<Slot>() };
 
         let next_sibling = child_slot.cdt.next_sibling;
 
-        // Decouple lifetime for recursion
-        let lock_ref = unsafe { child_slot.cnode_lock.as_ref::<SpinLock<()>>() };
-        let _guard = lock_ref.lock();
+        let child_cnode_lock = child_slot.cnode_lock;
+
+        // If the child is in a different CNode, we must lock it.
+        // If it's in the same CNode, simply proceeding is fine because we already hold the lock.
+        // WARNING: This assumes a strict tree hierarchy with no cycles, which CDT guarantees.
+        // It also assumes we don't hold any OTHER locks that could cause AB-BA deadlocks if the tree spans multiple CNodes
+        // in a weird way. But CDT is strictly hierarchical.
+
+        let _guard = if child_cnode_lock != current_cnode_lock {
+            let lock_ref = unsafe { child_cnode_lock.as_ref::<SpinLock<()>>() };
+            // Check if we already hold this lock (re-entrancy check)
+            // This can happen if the tree loops back to a parent CNode (should not happen in CDT)
+            // OR if we hold it from a higher level operation (e.g. Move between two CNodes)
+            if lock_ref.holding() { None } else { Some(lock_ref.lock()) }
+        } else {
+            None
+        };
 
         revoke_recursive(child_slot);
 
@@ -573,9 +626,6 @@ fn revoke_recursive(slot: &mut Slot) {
 }
 
 fn delete_recursive(slot: &mut Slot) {
-    // 1. 递归撤销所有子能力
-    revoke_recursive(slot);
-
     // 2. 从 CDT 兄弟链表中移除
     let prev = slot.cdt.prev_sibling;
     let next = slot.cdt.next_sibling;
@@ -589,7 +639,8 @@ fn delete_recursive(slot: &mut Slot) {
         // Lock Prev
         let lock_ptr = prev_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
+            let lock_ref = unsafe { lock_ptr.as_ref::<SpinLock<()>>() };
+            if lock_ref.holding() { None } else { Some(lock_ref.lock()) }
         } else {
             None
         };
@@ -600,7 +651,8 @@ fn delete_recursive(slot: &mut Slot) {
         // Lock Parent
         let lock_ptr = parent_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
+            let lock_ref = unsafe { lock_ptr.as_ref::<SpinLock<()>>() };
+            if lock_ref.holding() { None } else { Some(lock_ref.lock()) }
         } else {
             None
         };
@@ -613,7 +665,8 @@ fn delete_recursive(slot: &mut Slot) {
         // Lock Next
         let lock_ptr = next_slot.cnode_lock;
         let _guard = if lock_ptr != self_lock_ptr {
-            unsafe { Some((lock_ptr.as_mut::<SpinLock<()>>()).lock()) }
+            let lock_ref = unsafe { lock_ptr.as_ref::<SpinLock<()>>() };
+            if lock_ref.holding() { None } else { Some(lock_ref.lock()) }
         } else {
             None
         };

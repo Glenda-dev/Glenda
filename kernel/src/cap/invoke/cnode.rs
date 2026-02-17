@@ -109,6 +109,19 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
             cnode.debug_print();
             Ok(())
         }
+        cnodemethod::RECYCLE => {
+            let cptr = CapPtr::from(utcb.mrs_regs[0]);
+            match cnode.recycle(cptr) {
+                Ok(pages) => {
+                    utcb.mrs_regs[0] = pages;
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("CNode::Recycle failed: cptr={:?} error={:?}", cptr, e);
+                    Err(e)
+                }
+            }
+        }
         _ => {
             error!("CNode::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)

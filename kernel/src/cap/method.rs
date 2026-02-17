@@ -33,6 +33,7 @@ pub mod cnodemethod {
     pub const REVOKE: usize = 4;
     pub const MOVE: usize = 5;
     pub const DEBUG_PRINT: usize = 6;
+    pub const RECYCLE: usize = 7;
 }
 
 pub mod untypedmethod {

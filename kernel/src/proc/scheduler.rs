@@ -52,26 +52,38 @@ impl TcbQueue {
             None
         }
     }
+
+    pub fn remove(&mut self, tcb: &mut TCB) {
+        unsafe {
+            let ptr = tcb as *mut _;
+
+            // Check prev
+            if let Some(prev) = tcb.prev {
+                (*prev).next = tcb.next;
+            } else {
+                // Is head
+                if self.head == Some(ptr) {
+                    self.head = tcb.next;
+                }
+            }
+
+            // Check next
+            if let Some(next) = tcb.next {
+                (*next).prev = tcb.prev;
+            } else {
+                // Is tail
+                if self.tail == Some(ptr) {
+                    self.tail = tcb.prev;
+                }
+            }
+
+            tcb.next = None;
+            tcb.prev = None;
+        }
+    }
 }
 
 static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
-
-fn kick_harts() {
-    // 发送 IPI 给所有其他核心，唤醒它们或触发抢占
-    // 这里的 mask 应该根据实际启用的 cpu 计算，暂时广播给所有
-    // 忽略错误
-    let _ = hal::irq::send_ipi(0, 0); // mask=0, base=0 usually means all? No.
-    // SBI v0.2: hart_mask, hart_mask_base.
-    // To send to all harts: mask pointer? No, it's a bitmask if < XLEN.
-    // But sbi_send_ipi takes a pointer in newer spec?
-    // The implementation in sbi uses legacy/v0.1 style or v0.2 direct value?
-    // sbi: sbi_call(SBI_EXT_IPI, 0, hart_mask, hart_mask_base, 0)
-    // If we want to broadcast, we usually need to know the topology.
-    // For now, let's assume a small number of harts and use a mask.
-    // Assuming MAX_HARTS <= 64.
-    let mask = (1 << MAX_CPUS) - 1;
-    let _ = hal::irq::send_ipi(mask, 0);
-}
 
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
@@ -80,6 +92,9 @@ pub fn add_thread(tcb: &mut TCB) {
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_CPUS，则表示不绑定，默认使用当前核心
     let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
+
+    tcb.cpu_id = target_hart_id;
+
     // 获取目标 CPU 的运行队列
     // 注意：访问全局 HARTS 数组需要 unsafe，且要小心死锁（这里只持有一个锁，是安全的）
     let target_hart = unsafe { &cpu::CPUS[target_hart_id] };
@@ -100,6 +115,67 @@ pub fn add_thread(tcb: &mut TCB) {
     }
 }
 
+pub fn remove_thread(tcb: &mut TCB) {
+    // 只有 Ready 或 Running 状态的线程才在调度器管辖范围内
+    // Blocked/Queue 状态在其他结构中 (如 Endpoint)
+
+    // Ensure atomic operation regarding interrupts
+    // Use push_off to nest correctly with SpinLocks
+    cpu::push_off();
+
+    match tcb.state {
+        ThreadState::Running => {
+            // 如果是 Running 状态，我们需要根据是否是当前 CPU 来处理
+            let current_hart_id = hal::cpu::cpu_id();
+            if tcb.cpu_id == current_hart_id {
+                // 如果是当前 CPU 正在运行的线程（也就是自己），将其设为 Inactive
+                // 下一次 yield 或 schedule 时会切换走
+                // 但 recycle 是同步调用，调用者可能是此线程（自杀）或另一线程（monitor 杀子线程）
+                // 如果是自杀，recycle 返回后，系统调用处理逻辑可能会让其继续运行？
+                // 不，recycle 会将 Slot 变回 Untyped。后续对 Capability 的访问会失败。
+                // 但 TCB 结构依然在内存中（如果未立即被复用）。
+                // 为了安全，设为 Inactive 是必须的。
+                tcb.state = ThreadState::Inactive;
+            } else {
+                // 运行在其他 CPU
+                // 需要发送 IPI 强制重新调度 / 停止该线程
+                // 简单实现：设为 Inactive，并发送 IPI
+                tcb.state = ThreadState::Inactive;
+                let mask = 1 << tcb.cpu_id;
+                let _ = hal::irq::send_ipi(mask, 0);
+            }
+        }
+        ThreadState::Ready => {
+            // 在 Ready 队列中，移除它
+            // 使用 tcb.cpu_id 找到对应队列
+            let cpu_id = tcb.cpu_id;
+            // Bound check for safety
+            if cpu_id < MAX_CPUS {
+                let cpu = unsafe { &cpu::CPUS[cpu_id] };
+                let mut queues = cpu.ready_queues.lock();
+                let prio = tcb.priority as usize;
+
+                // 确保 tcb 在队列中？
+                // TcbQueue::remove 会根据 pointers 移除。如果 pointers 乱了会很危险。
+                // 假设状态一致性由锁保证。
+                if prio < MAX_PRIORITY {
+                    queues[prio].remove(tcb);
+                }
+                drop(queues);
+            }
+            tcb.state = ThreadState::Inactive;
+        }
+        _ => {
+            // 其他状态下（如 BlockedRecv），它不在 Ready 队列，而在 Endpoint 等待队列
+            // Endpoint 的 cancel_badged_sends 等方法负责移除。
+            // 但如果仅仅是 simple recycle，我们至少要确保它标记为 Inactive。
+            tcb.state = ThreadState::Inactive;
+        }
+    }
+
+    cpu::pop_off();
+}
+
 /// 核心调度循环
 /// 永远不会返回
 pub fn scheduler() -> ! {
@@ -117,7 +193,20 @@ pub fn scheduler() -> ! {
             // 从最高优先级 (255) 向下遍历
             for prio in (0..MAX_PRIORITY).rev() {
                 if let Some(tcb_ptr) = queues[prio].pop_front() {
-                    // log!("scheduler: Selected thread with priority {}", prio);
+                    let tcb = unsafe { &*tcb_ptr };
+                    if tcb.state != ThreadState::Ready {
+                        // 这不应该发生，说明状态管理有问题
+                        warn!(
+                            "scheduler: Found thread {:p} in Ready queue but state is {:?}, skipping",
+                            tcb_ptr, tcb.state
+                        );
+                        continue;
+                    }
+                    log!(
+                        "scheduler: Selected thread {:p} with priority {} for running",
+                        tcb_ptr,
+                        prio
+                    );
                     next_thread = Some(tcb_ptr);
                     break;
                 }
@@ -150,6 +239,7 @@ pub fn scheduler() -> ! {
             // 当线程被抢占或主动 yield 后，会回到这里
         } else {
             // 没有可运行的线程，进入低功耗等待
+            log!("scheduler: No ready threads found, entering idle state");
             unsafe {
                 hal::irq::wfi();
                 hal::irq::enable();

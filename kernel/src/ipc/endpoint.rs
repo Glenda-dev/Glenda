@@ -27,7 +27,7 @@ struct EndpointInner {
 impl Endpoint {
     pub const fn new() -> Self {
         Self {
-            ref_count: AtomicUsize::new(1), // 初始引用计数为 1 (创建者持有)
+            ref_count: AtomicUsize::new(0), // 初始引用计数由 create_endpoint 增加到 1
             inner: SpinLock::new(EndpointInner {
                 send_queue_head: None,
                 send_queue_tail: None,
@@ -117,5 +117,26 @@ impl Endpoint {
         let word = inner.notification_word;
         inner.notification_word = 0;
         Badge::from(word)
+    }
+
+    pub fn destroy(&self) {
+        use crate::proc::scheduler;
+        use crate::proc::thread::ThreadState;
+        // Unblock all senders
+        while let Some(tcb_ptr) = self.dequeue_send() {
+            unsafe {
+                let tcb = &mut *tcb_ptr;
+                tcb.state = ThreadState::Ready;
+                scheduler::add_thread(tcb);
+            }
+        }
+        // Unblock all receivers
+        while let Some(tcb_ptr) = self.dequeue_recv() {
+            unsafe {
+                let tcb = &mut *tcb_ptr;
+                tcb.state = ThreadState::Ready;
+                scheduler::add_thread(tcb);
+            }
+        }
     }
 }

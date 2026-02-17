@@ -1,7 +1,7 @@
 use super::CapType;
 use super::Rights;
 use crate::cap::Badge;
-use crate::cap::cnode::CNode;
+use crate::cap::cnode::{CNODE_PAGES, CNODE_SLOTS, CNode};
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::PageTable;
@@ -9,6 +9,7 @@ use crate::mem::addr::{phys_to_virt, virt_to_phys};
 use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
+use crate::proc::scheduler;
 use core::fmt::Display;
 use core::sync::atomic::Ordering;
 use num_enum::FromPrimitive;
@@ -45,10 +46,12 @@ impl Display for Capability {
                 s.field("badge", &self.get_badge());
             }
             CapType::Reply => {
-                s.field("tcb_ptr", &VirtAddr::from(self.words[0]));
+                let tcb_ptr = VirtAddr::from(self.words[0]);
+                s.field("tcb_ptr", &tcb_ptr);
             }
             CapType::Frame => {
-                s.field("paddr", &PhysAddr::from(self.words[0]));
+                let paddr = PhysAddr::from(self.words[0]);
+                s.field("paddr", &paddr);
                 s.field("pages", &(self.words[1] >> DATA_SHIFT));
             }
             CapType::PageTable => {
@@ -81,7 +84,37 @@ impl Display for Capability {
 impl Clone for Capability {
     fn clone(&self) -> Self {
         self.inc_ref();
+        if self.cap_type() == CapType::CNode
+            || self.cap_type() == CapType::TCB
+            || self.cap_type() == CapType::Endpoint
+            || self.cap_type() == CapType::Reply
+        {
+            log!(
+                "cap: Cloning capability {:p}: type={:?}, ref_count={}",
+                self,
+                self.cap_type(),
+                self.get_ref()
+            );
+        }
         Self { words: self.words }
+    }
+}
+
+impl Drop for Capability {
+    fn drop(&mut self) {
+        if self.cap_type() == CapType::CNode
+            || self.cap_type() == CapType::TCB
+            || self.cap_type() == CapType::Endpoint
+            || self.cap_type() == CapType::Reply
+        {
+            log!(
+                "cap: Dropping capability {:p}: type={:?}, ref_count={}",
+                self,
+                self.cap_type(),
+                self.get_ref()
+            );
+        }
+        self.dec_ref();
     }
 }
 
@@ -106,7 +139,7 @@ impl Capability {
 
     fn inc_ref(&self) {
         match self.cap_type() {
-            CapType::TCB => {
+            CapType::TCB | CapType::Reply => {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
                 let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
                 tcb.ref_count.fetch_add(1, Ordering::Relaxed);
@@ -122,6 +155,48 @@ impl Capability {
                 header.ref_count().fetch_add(1, Ordering::Relaxed);
             }
             // 其他类型暂不引用计数
+            _ => {}
+        }
+    }
+
+    fn get_ref(&self) -> usize {
+        match self.cap_type() {
+            CapType::TCB | CapType::Reply => {
+                let tcb_ptr = VirtAddr::from(self.words[0]);
+                let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
+                tcb.ref_count.load(Ordering::Relaxed)
+            }
+            CapType::Endpoint => {
+                let ep_ptr = VirtAddr::from(self.words[0]);
+                let ep = unsafe { ep_ptr.as_ref::<Endpoint>() };
+                ep.ref_count.load(Ordering::Relaxed)
+            }
+            CapType::CNode => {
+                let vaddr = VirtAddr::from(self.words[0]);
+                let header = unsafe { vaddr.as_ref::<CNode>() };
+                header.ref_count().load(Ordering::Relaxed)
+            }
+            _ => 0,
+        }
+    }
+
+    fn dec_ref(&self) {
+        match self.cap_type() {
+            CapType::TCB | CapType::Reply => {
+                let tcb_ptr = VirtAddr::from(self.words[0]);
+                let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
+                tcb.ref_count.fetch_sub(1, Ordering::Relaxed);
+            }
+            CapType::Endpoint => {
+                let ep_ptr = VirtAddr::from(self.words[0]);
+                let ep = unsafe { ep_ptr.as_ref::<Endpoint>() };
+                ep.ref_count.fetch_sub(1, Ordering::Relaxed);
+            }
+            CapType::CNode => {
+                let vaddr = VirtAddr::from(self.words[0]);
+                let header = unsafe { vaddr.as_ref::<CNode>() };
+                header.ref_count().fetch_sub(1, Ordering::Relaxed);
+            }
             _ => {}
         }
     }
@@ -345,43 +420,111 @@ impl Capability {
     pub fn pt_level(&self) -> usize {
         if self.cap_type() == CapType::PageTable { self.words[1] >> DATA_SHIFT } else { 0 }
     }
-}
 
-impl Drop for Capability {
-    fn drop(&mut self) {
+    pub fn recycle(&self) -> Option<Self> {
+        self.dec_ref(); // 先递减引用计数，如果这是最后一个引用，才允许回收
         match self.cap_type() {
-            CapType::TCB => {
-                let tcb_ptr = VirtAddr::from(self.words[0]);
-                let tcb = unsafe { tcb_ptr.as_ref::<TCB>() };
-                if tcb.ref_count.fetch_sub(1, Ordering::Release) == 1 {
-                    core::sync::atomic::fence(Ordering::Acquire);
-                    // TODO: Destroy TCB
-                    // 由于 TCB 可能在调度队列中，需要将其移除
-                    // 但这里不能直接调用 scheduler::remove，因为可能导致死锁或递归
-                    // 通常做法是将 TCB 标记为 Zombie 或加入垃圾回收队列
-                    // 简单起见，我们假设 TCB 内存由 Untyped 管理，这里只做逻辑销毁
-                    log!("cap: Dropped TCB Cap at {}", tcb_ptr);
-                }
+            CapType::Frame => {
+                let paddr = PhysAddr::from(self.words[0]);
+                let pages = self.words[1] >> DATA_SHIFT;
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages, watermark: 0 },
+                    Rights::all(),
+                ))
             }
-            CapType::Endpoint => {
-                let ep_ptr = VirtAddr::from(self.words[0]);
-                let ep = unsafe { ep_ptr.as_ref::<Endpoint>() };
-                if ep.ref_count.fetch_sub(1, Ordering::Release) == 1 {
-                    core::sync::atomic::fence(Ordering::Acquire);
-                    // TODO: Destroy Endpoint
-                    log!("cap: Dropped Endpoint Cap at {}", ep_ptr);
-                }
+            CapType::PageTable | CapType::VSpace => {
+                let paddr = PhysAddr::from(self.words[0]);
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
+                    Rights::all(),
+                ))
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let header = unsafe { vaddr.as_ref::<CNode>() };
-                if header.ref_count().fetch_sub(1, Ordering::Release) == 1 {
-                    core::sync::atomic::fence(Ordering::Acquire);
-                    // TODO: Destroy CNode
-                    log!("cap: Dropped CNode Cap at {}", vaddr);
+                let cnode = unsafe { vaddr.as_ref::<CNode>() };
+                if cnode.ref_count().load(Ordering::Relaxed) > 1 {
+                    warn!(
+                        "cap_recycle: Cannot recycle CNode {:p}: still has {} references",
+                        cnode,
+                        cnode.ref_count().load(Ordering::Relaxed)
+                    );
+                    return None;
                 }
+
+                // Manually drop slots 1..255 to decrement ref counts of contained caps
+                for i in 1..CNODE_SLOTS {
+                    unsafe { core::ptr::drop_in_place(cnode.get_slot_ptr(i)) };
+                }
+
+                let paddr = virt_to_phys(vaddr);
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages: CNODE_PAGES, watermark: 0 },
+                    Rights::all(),
+                ))
             }
-            _ => {}
+            CapType::TCB => {
+                let vaddr = VirtAddr::from(self.words[0]);
+                let tcb = unsafe { vaddr.as_ref::<TCB>() };
+                if tcb.ref_count.load(Ordering::Relaxed) > 1 {
+                    warn!(
+                        "cap_recycle: Cannot recycle TCB {:p}: still has {} references",
+                        tcb,
+                        tcb.ref_count.load(Ordering::Relaxed)
+                    );
+                    return None;
+                }
+
+                // Remove from scheduler if present
+                let tcb_mut = unsafe { vaddr.as_mut::<TCB>() };
+                scheduler::remove_thread(tcb_mut);
+
+                // Drop TCB to decrement ref counts of its internal capabilities (CSpace, VSpace, etc.)
+                unsafe { core::ptr::drop_in_place(tcb_mut) };
+
+                let paddr = virt_to_phys(vaddr);
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
+                    Rights::all(),
+                ))
+            }
+            CapType::Endpoint => {
+                let vaddr = VirtAddr::from(self.words[0]);
+                let ep = unsafe { vaddr.as_ref::<Endpoint>() };
+
+                // If this is a badged endpoint (client), it might be shared with the server (unbadged).
+                // Recycling is only allowed if this is the last reference to the Endpoint object.
+                // Note: The caller (CNode::recycle) has already revoked all children of this capability.
+
+                if ep.ref_count.load(Ordering::Relaxed) > 1 {
+                    warn!(
+                        "cap_recycle: Cannot recycle Endpoint {:p}: still has {} references. (is_badged: {})",
+                        ep,
+                        ep.ref_count.load(Ordering::Relaxed),
+                        self.is_badged()
+                    );
+                    return None;
+                }
+
+                // If we are here, we are the last owner.
+                // We must unblock any pending threads before reclaiming memory.
+                ep.destroy();
+
+                let paddr = virt_to_phys(vaddr);
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
+                    Rights::all(),
+                ))
+            }
+            CapType::Untyped => {
+                let paddr = PhysAddr::from(self.words[0]);
+                let data = self.get_data();
+                let pages = data & 0x1FFFFFF;
+                Some(Self::create_untyped(
+                    &UntypedRegion { start: paddr, pages, watermark: 0 },
+                    Rights::all(),
+                ))
+            }
+            _ => None,
         }
     }
 }

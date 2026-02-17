@@ -29,6 +29,10 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("IPC::Send failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
+            if !cap.is_badged() {
+                error!("IPC::Send failed: badge must be set for send");
+                return Err(Error::InvalidCapability);
+            }
             let cap_to_send = ipc::transfer_cap(tcb);
             ipc::send(tcb, ep, badge, cap_to_send)
         }
@@ -37,12 +41,20 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("IPC::Recv failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
+            if cap.is_badged() {
+                error!("IPC::Recv failed: badge must be null for recv");
+                return Err(Error::InvalidCapability);
+            }
             ipc::recv(tcb, ep)
         }
         ipcmethod::CALL => {
             if !cap.has_rights(Rights::CALL) {
                 error!("IPC::Call failed: permission denied");
                 return Err(Error::PermissionDenied);
+            }
+            if !cap.is_badged() {
+                error!("IPC::Call failed: badge must be set for call");
+                return Err(Error::InvalidCapability);
             }
             let cap_to_send = ipc::transfer_cap(tcb);
             ipc::call(tcb, ep, badge, cap_to_send)
@@ -51,6 +63,10 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
             if !cap.has_rights(Rights::SEND) {
                 error!("IPC::Notify failed: permission denied");
                 return Err(Error::PermissionDenied);
+            }
+            if !cap.is_badged() {
+                error!("IPC::Notify failed: badge must be set for notify");
+                return Err(Error::InvalidCapability);
             }
             ipc::notify(ep, badge)
         }

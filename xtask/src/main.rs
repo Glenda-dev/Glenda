@@ -72,7 +72,6 @@ fn main() -> anyhow::Result<()> {
             qemu::qemu_run(&cfg)?;
         }
         Cmd::Gdb { port } => {
-            build::build(&cfg)?;
             qemu::qemu_gdb(&cfg, port)?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,
