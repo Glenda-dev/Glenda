@@ -49,7 +49,7 @@ pub fn glenda_main(is_primary: bool) -> ! {
         let bootargs = crate::boot::get_cmdline().unwrap_or("");
         printk!("bootargs: {}\n", bootargs);
         if !bootargs.contains("-v") {
-            printk::set_verbose(true);
+            printk::set_verbose(false);
         }
         if bootargs.contains("-s") {
             run_shell();
