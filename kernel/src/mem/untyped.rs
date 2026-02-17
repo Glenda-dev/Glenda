@@ -3,7 +3,6 @@ use crate::cap::CNODE_PAGES;
 use crate::cap::{CNode, CapType, Capability, Rights};
 use crate::hal::mem::PGSIZE;
 use crate::ipc;
-// use crate::log;
 use crate::mem::PageTable;
 use crate::mem::PhysFrame;
 use crate::mem::addr::phys_to_virt;

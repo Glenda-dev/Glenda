@@ -3,7 +3,7 @@ use super::super::{asm, cpu};
 use super::kernel_vector;
 use super::vector::user_return;
 use super::vector::user_vector;
-use crate::mem::{TRAMPOLINE_VA, TRAPFRAME_VA};
+use crate::mem::TRAMPOLINE_VA;
 use crate::proc::scheduler;
 use crate::trap::handler::trap_kernel_handler;
 use core::mem::transmute;
@@ -60,7 +60,8 @@ pub fn trap_user_return() {
     );
 
     // sscratch 指向 TrapFrame 的虚拟地址
-    let user_tf_va = TRAPFRAME_VA;
+    let user_tf_va = tcb.trapframe_va;
+    assert!(user_tf_va != 0, "TCB's trapframe_va should be set before returning to user mode");
     unsafe {
         asm::write_sscratch(user_tf_va);
     }

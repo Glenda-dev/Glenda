@@ -3,8 +3,6 @@ use bitflags::bitflags;
 use core::fmt::Display;
 
 pub const TRAMPOLINE_VA: usize = VA_MAX - PGSIZE; // Trampoline 映射地址
-pub const TRAPFRAME_VA: usize = TRAMPOLINE_VA - PGSIZE; // Trapframe 映射地址
-pub const UTCB_VA: usize = TRAPFRAME_VA - PGSIZE; // UTCB 映射地址 0x3FFFFFD000
 
 pub use addr::{PPN, PhysAddr, VPN, VirtAddr};
 pub use pagetable::PageTable;

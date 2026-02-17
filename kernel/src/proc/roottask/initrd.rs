@@ -6,7 +6,7 @@ use crate::mem::{PageTable, Perms, VirtAddr};
 // use crate::printk;
 use crate::printk::{ANSI_RESET, ANSI_YELLOW};
 use crate::proc::ElfFile;
-use crate::proc::roottask::STACK_VA;
+use crate::proc::roottask::STACK_BASE;
 use crate::sync::Once;
 
 /*
@@ -247,8 +247,8 @@ impl ProcPayload {
             0x10000 // Default for flat binary
         };
 
-        // 默认栈顶 (BootInfo 下方)
-        let stack_top = STACK_VA;
+        // 默认栈起始地址 (BootInfo 下方)
+        let stack_top = STACK_BASE;
         (entry, stack_top)
     }
 

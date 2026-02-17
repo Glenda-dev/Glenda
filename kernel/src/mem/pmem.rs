@@ -154,6 +154,7 @@ impl PmemManager {
                     let vaddr = phys_to_virt(paddr);
                     core::ptr::write_bytes(vaddr.as_mut_ptr::<u8>(), 0, size);
                 }
+                //log!("pmem: Allocated [{}, {}) in region {}", paddr, paddr + size, i);
                 return Some(paddr);
             }
         }

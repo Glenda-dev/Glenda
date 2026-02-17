@@ -31,6 +31,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let utcb_cptr = CapPtr::from(utcb.mrs_regs[2]);
             let tf_cptr = CapPtr::from(utcb.mrs_regs[3]);
             let kstack_cptr = CapPtr::from(utcb.mrs_regs[4]);
+
             // 查找并验证能力
             let cspace_cap = current_tcb.cap_lookup(cspace_cptr);
             let vspace_cap = current_tcb.cap_lookup(vspace_cptr);
@@ -38,18 +39,14 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let tf_cap = current_tcb.cap_lookup(tf_cptr);
             let kstack_cap = current_tcb.cap_lookup(kstack_cptr);
             if cspace_cap.is_none()
-                && vspace_cap.is_none()
-                && utcb_cap.is_none()
-                && tf_cap.is_none()
-                && kstack_cap.is_none()
+                || vspace_cap.is_none()
+                || utcb_cap.is_none()
+                || tf_cap.is_none()
+                || kstack_cap.is_none()
             {
                 error!(
                     "TCB::Configure failed: missing caps {} {} {} {} {}",
-                    cspace_cptr,
-                    vspace_cptr,
-                    utcb_cptr,
-                    tf_cptr,
-                    kstack_cptr
+                    cspace_cptr, vspace_cptr, utcb_cptr, tf_cptr, kstack_cptr
                 );
                 return Err(Error::InvalidCapability);
             }
@@ -78,6 +75,13 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let sp = utcb.mrs_regs[1];
             let tp = utcb.mrs_regs[2];
             tcb.set_entrypoint(entry, sp, tp);
+            Ok(())
+        }
+        tcbmethod::SET_ADDRESS => {
+            // SetAddress: (utcb_va, trapframe_va)
+            let utcb_va = utcb.mrs_regs[0];
+            let trapframe_va = utcb.mrs_regs[1];
+            tcb.set_address(utcb_va, trapframe_va);
             Ok(())
         }
         tcbmethod::SET_FAULT_HANDLER => {

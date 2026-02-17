@@ -3,8 +3,6 @@ use crate::cap::Capability;
 use crate::hal;
 use crate::mem;
 use crate::mem::{PageTable, VirtAddr};
-use crate::platform;
-use crate::printk;
 use crate::proc;
 use crate::proc::TCB;
 
@@ -95,7 +93,7 @@ fn print_platform_info() {
         printk!("ACPI RSDP: {}\n", rsdp);
     }
     if let Some(dtb) = crate::boot::get_dtb() {
-        printk!("DTB: {}\n", dtb);
+        printk!("DTB: {}\n", dtb.0);
     }
 }
 

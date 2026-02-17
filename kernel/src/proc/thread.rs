@@ -66,6 +66,8 @@ pub struct TCB {
 
     // --- UTCB (User Thread Control Block) ---
     pub utcb_frame: Option<Capability>, // UTCB 所在的物理帧 (以 Capability 形式存储)
+    pub utcb_va: usize,                 // UTCB VA
+    pub trapframe_va: usize,            // TrapFrame VA
 
     // Priveleged Thread Indicator
     pub privileged: bool, // 是否为内核线程
@@ -102,6 +104,8 @@ impl TCB {
             ipc_badge: Badge::null(),
             ipc_cap: None,
             utcb_frame: None,
+            utcb_va: 0,
+            trapframe_va: 0,
             privileged: false,
             native: true,
             global_prev: None,
@@ -211,13 +215,18 @@ impl TCB {
         self.context.configure(ra, kstack_top);
     }
 
+    pub fn set_address(&mut self, utcb_va: usize, trapframe_va: usize) {
+        self.utcb_va = utcb_va;
+        self.trapframe_va = trapframe_va;
+    }
+
     pub fn set_fault_handler(&mut self, ep: Capability, native: bool) {
         self.fault_handler = Some(ep);
         self.native = native;
     }
 
-    pub fn set_affinity(&mut self, hart_id: usize) {
-        self.affinity = hart_id;
+    pub fn set_affinity(&mut self, cpuid: usize) {
+        self.affinity = cpuid;
     }
 
     pub fn set_registers(&mut self, regs: &MsgArgs) {

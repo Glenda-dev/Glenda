@@ -2,7 +2,6 @@ mod buffer;
 mod cmd;
 
 use crate::hal;
-use crate::printk;
 use buffer::ShellBuffer;
 
 pub fn run() {

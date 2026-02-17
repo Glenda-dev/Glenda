@@ -9,7 +9,6 @@ mod vspace;
 
 use crate::cap::{CapType, Capability};
 use crate::error::Error;
-// use crate::log;
 
 pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), Error> {
     if method == 0 {

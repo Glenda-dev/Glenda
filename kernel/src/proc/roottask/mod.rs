@@ -4,7 +4,7 @@ pub mod initrd;
 pub mod layout;
 
 pub use bootinfo::BootInfo;
-pub use layout::STACK_VA;
+pub use layout::STACK_BASE;
 
 use super::scheduler;
 use super::{TCB, ThreadState};
@@ -70,6 +70,7 @@ fn spawn_payload(root_task: ProcPayload) -> Result<(), Error> {
     tcb.configure(&caps.cspace, &caps.vspace, &caps.utcb, &caps.tf, &caps.kstack);
     tcb.set_priority(ROOT_TASK_PRIORITY);
     tcb.set_entrypoint(entry_point, stack_top, 0);
+    tcb.set_address(UTCB_VA, TRAPFRAME_VA);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
     log!("proc: Root Task created. Entry: {:#x}, SP: {:#x}", entry_point, stack_top);
@@ -81,9 +82,10 @@ fn spawn_payload(root_task: ProcPayload) -> Result<(), Error> {
 /*
 用户地址空间布局：
 trampoline  (1 page) 映射在最高地址
-trapframe   (1 page)
-UTCB        (1 page)
 ustack      (N pages)
+------------
+utcb                  0x70000000
+trapframe
 ------------
 Initrd      (N pages) 0x50000000
 ————————————

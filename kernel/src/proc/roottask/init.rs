@@ -2,17 +2,16 @@ use super::bootinfo::BOOTINFO_PAGES;
 use super::bootinfo::BootInfo;
 use super::bootinfo::PlatformType;
 use super::layout::*;
+use super::layout::{STACK_BASE, TRAPFRAME_VA, UTCB_VA};
 use crate::boot;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
 use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
-// use crate::log;
 use crate::mem::PageTable;
 use crate::mem::addr::virt_to_phys;
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
-use crate::mem::{TRAPFRAME_VA, UTCB_VA};
 
 pub struct RootCaps {
     pub vspace: Capability,
@@ -87,11 +86,13 @@ pub fn init_vspace(
     }
 
     // 映射用户栈
-    let stack_va_start = STACK_VA;
+    // 栈向下生长：[STACK_BASE - STACK_SIZE, STACK_BASE)
+    // 映射时从高地址开始向下分配
+    let stack_base = STACK_BASE;
     let stack_pages = STACK_PAGES;
     for i in 1..=stack_pages {
         let frame_pa = pmem::alloc_page().ok_or(Error::OutOfMemory)?;
-        let va = VirtAddr::from(stack_va_start - i * PGSIZE);
+        let va = VirtAddr::from(stack_base - i * PGSIZE);
         vspace.map_with_alloc(va, frame_pa, PGSIZE, Perms::USER | Perms::READ | Perms::WRITE);
     }
 

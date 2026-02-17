@@ -17,8 +17,9 @@ pub mod tcbmethod {
     pub const SET_FAULT_HANDLER: usize = 4;
     pub const SET_AFFINITY: usize = 5;
     pub const SET_REGISTERS: usize = 6;
-    pub const RESUME: usize = 7;
-    pub const SUSPEND: usize = 8;
+    pub const SET_ADDRESS: usize = 7;
+    pub const RESUME: usize = 8;
+    pub const SUSPEND: usize = 9;
 }
 
 pub mod pagetablemethod {
