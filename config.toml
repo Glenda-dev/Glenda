@@ -49,12 +49,6 @@ build = "cargo"
 output = "build/goldfish-rtc.elf"
 kind = "service"
 [[services]]
-name = "virtio-net"
-path = "drivers/virtio/net"
-build = "cargo"
-output = "build/virtio-net.elf"
-kind = "service"
-[[services]]
 name = "dtb"
 path = "drivers/platform/dtb"
 build = "cargo"

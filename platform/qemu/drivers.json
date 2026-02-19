@@ -9,17 +9,17 @@
             ]
         },
         {
+            "name": "virtio-mmio",
+            "binary": "virtio-mmio",
+            "compatible": [
+                "virtio,mmio"
+            ]
+        },
+        {
             "name": "virtio-blk",
             "binary": "virtio-blk",
             "compatible": [
                 "virtio-block"
-            ]
-        },
-        {
-            "name": "virtio-net",
-            "binary": "virtio-net",
-            "compatible": [
-                "virtio-net"
             ]
         },
         {

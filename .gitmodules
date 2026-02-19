@@ -31,9 +31,6 @@
 [submodule "service/warren"]
 	path = service/warren
 	url = https://github.com/Glenda-dev/warren.git
-[submodule "service/fossil"]
-	path = service/fossil
-	url = https://github.com/Glenda-dev/fossil.git
 [submodule "service/gopher"]
 	path = service/gopher
 	url = https://github.com/Glenda-dev/gopher.git
@@ -43,3 +40,6 @@
 [submodule "fs"]
 	path = fs
 	url = https://github.com/Glenda-dev/Glenda-filesystem.git
+[submodule "lib/libglenda_drivers-rs"]
+	path = lib/libglenda_drivers-rs
+	url = https://github.com/Glenda-dev/libglenda_drivers-rs.git

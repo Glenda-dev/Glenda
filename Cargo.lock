@@ -9,6 +9,7 @@ dependencies = [
  "acpi 6.1.0",
  "aml",
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -199,9 +200,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.58"
+version = "4.5.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63be97961acde393029492ce0be7a1af7e323e6bae9511ebfac33751be5e6806"
+checksum = "c5caf74d17c3aec5495110c34cc3f78644bfa89af6c8993ed4de2790e49b6499"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -209,9 +210,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.58"
+version = "4.5.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f13174bda5dfd69d7e947827e5af4b0f2f94a4a3ee92912fba07a66150f21e2"
+checksum = "370daa45065b80218950227371916a1633217ae42b2715b2287b606dcd618e24"
 dependencies = [
  "anstream",
  "anstyle",
@@ -228,7 +229,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -287,7 +288,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -307,7 +308,7 @@ checksum = "6edb4b64a43d977b8e99788fe3a04d483834fba1215a7e02caa415b626497f7f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -323,6 +324,7 @@ version = "0.1.0"
 dependencies = [
  "fdt",
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -364,6 +366,7 @@ name = "extfs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -421,6 +424,7 @@ name = "goldfish-rtc"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -428,6 +432,7 @@ name = "gopher"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "managed",
  "smoltcp",
 ]
@@ -600,6 +605,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libglenda_drivers-rs"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+]
+
+[[package]]
 name = "limine"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,6 +706,7 @@ name = "ns16550a"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -723,7 +736,7 @@ checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -743,6 +756,7 @@ name = "pci"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "log",
 ]
 
@@ -775,7 +789,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -797,7 +811,7 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -893,6 +907,7 @@ name = "sdhci"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -937,7 +952,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -973,6 +988,7 @@ name = "sifive-gpio"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -1038,9 +1054,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.115"
+version = "2.0.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e614ed320ac28113fa64972c4262d5dbc89deacdfd00c34a3e4cea073243c12"
+checksum = "3df424c70518695237746f84cede799c9c58fcb37450d7b23716568cc8bc69cb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1083,7 +1099,7 @@ checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -1139,9 +1155,9 @@ checksum = "0c8352f8c05e47892e7eaf13b34abd76a7f4aeaf817b716e88789381927f199c"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537dd038a89878be9b64dd4bd1b260315c1bb94f4d784956b81e27a088d9a09e"
+checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-xid"
@@ -1154,10 +1170,10 @@ name = "unicorn"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "postcard",
  "serde",
  "serde_json",
- "virtio-common",
 ]
 
 [[package]]
@@ -1171,6 +1187,7 @@ name = "virtio-blk"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "virtio-common",
 ]
 
@@ -1188,6 +1205,7 @@ name = "virtio-mmio"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "virtio-common",
 ]
 
@@ -1196,6 +1214,7 @@ name = "virtio-net"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "virtio-common",
 ]
 
@@ -1262,7 +1281,7 @@ dependencies = [
  "bumpalo",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wasm-bindgen-shared",
 ]
 
@@ -1342,7 +1361,7 @@ checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -1353,7 +1372,7 @@ checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
 ]
 
 [[package]]
@@ -1507,7 +1526,7 @@ dependencies = [
  "heck",
  "indexmap",
  "prettyplease",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wasm-metadata",
  "wit-bindgen-core",
  "wit-component",
@@ -1523,7 +1542,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.115",
+ "syn 2.0.116",
  "wit-bindgen-core",
  "wit-bindgen-rust",
 ]
