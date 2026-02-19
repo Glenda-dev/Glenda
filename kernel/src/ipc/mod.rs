@@ -113,10 +113,15 @@ pub fn send(
     badge: Badge,
     cap: Option<Capability>,
 ) -> Result<(), Error> {
-    log!("ipc: Send current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
     // 1. 检查是否有接收者在等待 (Rendezvous)
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: Send matched receiver={:p}", receiver_ptr);
+        log!(
+            "ipc: Send current={:p} ep={:p} badge={:?} matched receiver={:p}",
+            current,
+            ep as *const _,
+            badge,
+            receiver_ptr
+        );
         let receiver = unsafe { &mut *receiver_ptr };
 
         // --- 快速路径: 匹配成功 ---
@@ -125,7 +130,7 @@ pub fn send(
         // 唤醒接收者
         scheduler::wake_up(receiver);
     } else {
-        log!("ipc: Send blocking");
+        log!("ipc: Send current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedSend;
         current.ipc_badge = badge;
@@ -148,10 +153,16 @@ pub fn call(
     badge: Badge,
     cap: Option<Capability>,
 ) -> Result<(), Error> {
-    log!("ipc: Call current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
+    log!("",);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: Call matched receiver={:p}", receiver_ptr);
+        log!(
+            "ipc: Call current={:p} ep={:p} badge={:?} matched receiver={:p}",
+            current,
+            ep as *const _,
+            badge,
+            receiver_ptr
+        );
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
@@ -173,7 +184,7 @@ pub fn call(
             scheduler::block_current_thread();
         }
     } else {
-        log!("ipc: Call blocking");
+        log!("ipc: Call current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
         // --- 慢速路径: 阻塞在发送队列 ---
         current.state = ThreadState::BlockedCall;
         current.ipc_badge = badge;
@@ -188,10 +199,9 @@ pub fn call(
 /// Reply 操作
 /// 向指定的 TCB 发送回复消息
 pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
-    log!("ipc: Reply current={:p} target={:p}", current, target);
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
     if target.state == ThreadState::BlockedCall {
-        log!("ipc: Reply success");
+        log!("ipc: Reply current={:p} target={:p} success", current, target);
         // Reply 不产生新的 Reply Cap
         unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
 
@@ -199,16 +209,23 @@ pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Re
         scheduler::wake_up(target);
         Ok(())
     } else {
-        error!("ipc: Reply failed target state {:?}", target.state);
+        error!(
+            "ipc: Reply current={:p} target={:p} failed target state {:?}",
+            current, target, target.state
+        );
         Err(Error::InvalidCapability)
     }
 }
 
 /// 内核层面的通知（用于 IRQ 等），仅传递 badge
 pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
-    log!("ipc: Notify ep={:p} badge={:?}", ep as *const _, badge);
     if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!("ipc: Notify matched receiver={:p}", receiver_ptr);
+        log!(
+            "ipc: Notify ep={:p} badge={:?} matched receiver={:p}",
+            ep as *const _,
+            badge,
+            receiver_ptr
+        );
         let receiver = unsafe { &mut *receiver_ptr };
 
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
@@ -220,7 +237,7 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
 
         scheduler::wake_up(receiver);
     } else {
-        log!("ipc: Notify pending");
+        log!("ipc: Notify ep={:p} badge={:?} pending", ep as *const _, badge,);
         ep.notify(badge);
     }
     Ok(())
@@ -231,11 +248,10 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
 /// * `current`: 当前正在执行的线程 (接收者)
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
-    log!("ipc: Recv current={:p} ep={:p}", current, ep as *const _);
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
     let pending = ep.poll_notification();
     if !pending.is_null() {
-        log!("ipc: Recv matched notification");
+        log!("ipc: Recv current={:p} ep={:p} matched notification", current, ep as *const _);
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
@@ -249,7 +265,12 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 
     // 1. 检查是否有发送者在等待
     if let Some(sender_ptr) = ep.dequeue_send() {
-        log!("ipc: Recv matched sender={:p}", sender_ptr);
+        log!(
+            "ipc: Recv current={:p} ep={:p} matched sender={:p}",
+            current,
+            ep as *const _,
+            sender_ptr
+        );
         let sender = unsafe { &mut *sender_ptr };
         let badge = sender.ipc_badge;
         let cap = sender.ipc_cap.take();
@@ -275,7 +296,7 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 
         // 接收者收到数据，继续运行 (不阻塞)
     } else {
-        log!("ipc: Recv blocking");
+        log!("ipc: Recv current={:p} ep={:p} blocking", current, ep as *const _);
         // --- 慢速路径: 阻塞 ---
         current.state = ThreadState::BlockedRecv;
 
@@ -294,8 +315,6 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 ///
 /// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
 pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Result<(), Error> {
-    log!("ipc: Proxy current={:p} ep={:p}", current, ep as *const _);
-
     // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
     let badge = if let Some(utcb_ptr) = get_utcb_ptr(current) {
         unsafe { (*utcb_ptr).badge }
@@ -303,7 +322,7 @@ pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Resul
         Badge::null()
     };
 
-    log!("ipc: Proxy spoofing badge {:?}", badge);
+    log!("ipc: Proxy current={:p} ep={:p} spoofing badge {:?}", current, ep as *const _, badge);
 
     // 2. 复用 Call 逻辑
     // 发送消息并设置状态为 BlockedCall，等待 Reply

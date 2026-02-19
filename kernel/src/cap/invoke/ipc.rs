@@ -52,10 +52,6 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("IPC::Call failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
-            if !cap.is_badged() {
-                error!("IPC::Call failed: badge must be set for call");
-                return Err(Error::InvalidCapability);
-            }
             let cap_to_send = ipc::transfer_cap(tcb);
             ipc::call(tcb, ep, badge, cap_to_send)
         }

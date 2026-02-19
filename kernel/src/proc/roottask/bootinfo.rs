@@ -20,7 +20,7 @@ pub enum PlatformType {
 #[derive(Debug, Clone, Copy)]
 pub struct BootInfo {
     //// Initrd memory region
-    pub initrd_offset: usize,
+    pub initrd_paddr: usize,
     pub initrd_size: usize,
 
     pub platform_type: PlatformType,
@@ -46,7 +46,7 @@ impl BootInfo {
         Self {
             untyped_count: 0,
             untyped_list: [UntypedRegion::empty(); MAX_UNTYPED_REGIONS],
-            initrd_offset: 0,
+            initrd_paddr: 0,
             initrd_size: 0,
             platform_type: PlatformType::NULL,
             addr: 0,

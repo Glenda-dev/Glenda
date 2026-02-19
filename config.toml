@@ -43,6 +43,12 @@ build = "cargo"
 output = "build/virtio-blk.elf"
 kind = "service"
 [[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
+kind = "service"
+[[services]]
 name = "goldfish-rtc"
 path = "drivers/timer/goldfish-rtc"
 build = "cargo"
@@ -61,17 +67,11 @@ build = "cargo"
 output = "build/virtio-mmio.elf"
 kind = "service"
 [[services]]
-name = "acpi"
-path = "drivers/platform/acpi"
+name = "ramdisk"
+path = "drivers/sys/ramdisk"
 build = "cargo"
-output = "build/acpi.elf"
+output = "build/ramdisk.elf"
 kind = "service"
-
-[[libraries]]
-name = "libglenda-rs"
-path = "lib/libglenda-rs"
-build = "cargo"
-output = ""
 
 [[files]]
 name = "init.json"

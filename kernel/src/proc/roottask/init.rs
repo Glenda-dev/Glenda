@@ -114,8 +114,7 @@ pub fn init_vspace(
 pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
     // 设置 Initrd 信息
     if let Some((start, size)) = boot::get_initrd() {
-        let initrd_offset = start.as_usize() % PGSIZE;
-        bootinfo.initrd_offset = initrd_offset;
+        bootinfo.initrd_paddr = crate::mem::addr::virt_to_phys(start).as_usize();
         bootinfo.initrd_size = size;
     }
 

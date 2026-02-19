@@ -9,13 +9,6 @@
             ]
         },
         {
-            "name": "virtio-mmio",
-            "binary": "virtio-mmio",
-            "compatible": [
-                "virtio,mmio"
-            ]
-        },
-        {
             "name": "virtio-blk",
             "binary": "virtio-blk",
             "compatible": [
@@ -34,6 +27,13 @@
             "binary": "acpi",
             "compatible": [
                 "acpi"
+            ]
+        },
+        {
+            "name": "ramdisk",
+            "binary": "ramdisk",
+            "compatible": [
+                "ramdisk"
             ]
         }
     ]
