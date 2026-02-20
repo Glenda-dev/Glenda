@@ -325,6 +325,8 @@ dependencies = [
  "fdt",
  "libglenda-rs",
  "libglenda_drivers-rs",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -609,6 +611,7 @@ name = "libglenda_drivers-rs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "serde",
 ]
 
 [[package]]

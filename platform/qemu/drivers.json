@@ -28,13 +28,6 @@
             "compatible": [
                 "acpi"
             ]
-        },
-        {
-            "name": "ramdisk",
-            "binary": "ramdisk",
-            "compatible": [
-                "ramdisk"
-            ]
         }
     ]
 }
