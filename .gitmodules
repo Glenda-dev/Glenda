@@ -43,3 +43,6 @@
 [submodule "lib/libglenda_drivers-rs"]
 	path = lib/libglenda_drivers-rs
 	url = https://github.com/Glenda-dev/libglenda_drivers-rs.git
+[submodule "service/fossil"]
+	path = service/fossil
+	url = https://github.com/Glenda-dev/fossil.git

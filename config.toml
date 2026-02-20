@@ -49,6 +49,12 @@ build = "cargo"
 output = "build/virtio-net.elf"
 kind = "service"
 [[services]]
+name = "fossil"
+path = "service/fossil"
+build = "cargo"
+output = "build/fossil.elf"
+kind = "service"
+[[services]]
 name = "goldfish-rtc"
 path = "drivers/timer/goldfish-rtc"
 build = "cargo"

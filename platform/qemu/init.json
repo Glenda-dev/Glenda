@@ -5,6 +5,14 @@
             "path": "unicorn",
             "auto_start": true,
             "dependencies": []
+        },
+        {
+            "name": "fossil",
+            "path": "fossil",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn"
+            ]
         }
     ]
 }

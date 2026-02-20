@@ -26,6 +26,7 @@ members = [
     "drivers/bus/pci",
     "drivers/virtio/mmio",
     "drivers/sys/ramdisk",
+    "service/fossil",
 ]
 resolver = "2"
 
