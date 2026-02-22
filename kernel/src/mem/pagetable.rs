@@ -78,6 +78,7 @@ impl PageTable {
         size: usize,
         flags: Perms,
     ) -> Result<(), Error> {
+        log!("mem: PageTable::map: va={:?} pa={:?} size={} flags={:?}", va, pa, size, flags);
         assert!(va.is_aligned(PGSIZE));
         assert!(pa.is_aligned(PGSIZE));
 
@@ -97,7 +98,7 @@ impl PageTable {
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
                     error!(
-                        "PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}\n",
+                        "PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}",
                         current_va,
                         old_pte.pa(),
                         current_pa
@@ -164,7 +165,7 @@ impl PageTable {
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
                 error!(
-                    "PageTable::map_table failed: parent missing/huge at level {} va={:?}\n",
+                    "PageTable::map_table failed: parent missing/huge at level {} va={:?}",
                     l, va
                 );
                 return Err(Error::MappingFailed); // 父级页表不存在或已被大页占用

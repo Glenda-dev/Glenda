@@ -84,36 +84,12 @@ impl Display for Capability {
 impl Clone for Capability {
     fn clone(&self) -> Self {
         self.inc_ref();
-        if self.cap_type() == CapType::CNode
-            || self.cap_type() == CapType::TCB
-            || self.cap_type() == CapType::Endpoint
-            || self.cap_type() == CapType::Reply
-        {
-            log!(
-                "cap: Cloning capability {:p}: type={:?}, ref_count={}",
-                self,
-                self.cap_type(),
-                self.get_ref()
-            );
-        }
         Self { words: self.words }
     }
 }
 
 impl Drop for Capability {
     fn drop(&mut self) {
-        if self.cap_type() == CapType::CNode
-            || self.cap_type() == CapType::TCB
-            || self.cap_type() == CapType::Endpoint
-            || self.cap_type() == CapType::Reply
-        {
-            log!(
-                "cap: Dropping capability {:p}: type={:?}, ref_count={}",
-                self,
-                self.cap_type(),
-                self.get_ref()
-            );
-        }
         self.dec_ref();
     }
 }

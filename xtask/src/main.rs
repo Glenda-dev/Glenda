@@ -24,7 +24,10 @@ enum Cmd {
     /// Build the kernel
     Build,
     /// Build then boot the kernel in QEMU (via ISO image)
-    Run,
+    Run {
+        #[arg(long, default_value_t = 60)]
+        timeout: u64,
+    },
     /// Start QEMU paused and wait for GDB
     Gdb {
         #[arg(long, default_value_t = 1234)]
@@ -68,8 +71,8 @@ fn main() -> anyhow::Result<()> {
 
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
-        Cmd::Run => {
-            qemu::qemu_run(&cfg)?;
+        Cmd::Run { timeout } => {
+            qemu::qemu_run(&cfg, Some(timeout))?;
         }
         Cmd::Gdb { port } => {
             qemu::qemu_gdb(&cfg, port)?;

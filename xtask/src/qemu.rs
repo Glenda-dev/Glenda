@@ -153,9 +153,9 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     Ok(cmd)
 }
 
-pub fn qemu_run(cfg: &Config) -> anyhow::Result<()> {
+pub fn qemu_run(cfg: &Config, timeout: Option<u64>) -> anyhow::Result<()> {
     let mut cmd = qemu_cmd(cfg)?;
-    run(&mut cmd)
+    crate::util::run_with_timeout(&mut cmd, timeout)
 }
 
 pub fn qemu_gdb(cfg: &Config, port: u16) -> anyhow::Result<()> {

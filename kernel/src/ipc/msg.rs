@@ -12,7 +12,7 @@ impl MsgTag {
     }
 
     pub fn new(proto: usize, label: usize, flags: MsgFlags) -> Self {
-        Self((proto & 0xFFFF) << 24 | (label & 0xFFFF) << 16 | (flags.bits() & 0xFFFF))
+        Self((proto & 0xFFFFFFFF) << 32 | (label & 0xFFFF) << 16 | (flags.bits() & 0xFFFF))
     }
 
     pub fn as_usize(&self) -> usize {
@@ -20,7 +20,7 @@ impl MsgTag {
     }
 
     pub fn proto(&self) -> usize {
-        (self.0 >> 24) & 0xFFFF
+        (self.0 >> 32) & 0xFFFFFFFF
     }
 
     pub fn label(&self) -> usize {

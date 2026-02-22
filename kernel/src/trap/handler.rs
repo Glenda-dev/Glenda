@@ -28,7 +28,7 @@ pub extern "C" fn trap_kernel_handler(ctx: &mut TrapFrame) {
         }
         TrapCause::Unknown(code) => {
             panic!(
-                "Unhandled trap: {}, cause: 0x{:#x}, pc: 0x{:#x}, value: 0x{:#x}, status: 0x{:#x}",
+                "Unhandled trap: {}, cause: {:#x}, pc: {:#x}, value: {:#x}, status: {:#x}",
                 code, cause, pc, value, status
             );
         }
@@ -148,7 +148,7 @@ fn fault_handler(
 
         // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
         ipc::call(tcb, ep, badge, None).unwrap_or_else(|err| {
-            printk_unsynced!(
+            error!(
                 "Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}\n",
                 err,
                 e,

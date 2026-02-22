@@ -122,7 +122,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
             // 执行映射
             pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags).map_err(|_| {
                 error!(
-                    "vspace: VSpace map failed: pt.map failed vaddr={} pages={}\n",
+                    "vspace: VSpace map failed: pt.map failed vaddr={} pages={}",
                     vaddr, num_pages
                 );
                 Error::MappingFailed

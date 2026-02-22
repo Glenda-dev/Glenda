@@ -478,7 +478,7 @@ impl CNode {
         Ok(())
     }
 
-    pub fn recycle(&mut self, cptr: CapPtr) -> Result<usize, Error> {
+    pub fn recycle(&mut self, cptr: CapPtr) -> Result<(usize, usize), Error> {
         let _guard = self.metadata().lock.lock();
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return Err(Error::InvalidSlot),
@@ -490,13 +490,13 @@ impl CNode {
 
         // 2. Try to recycle current cap
         if let Some(new_cap) = slot.cap.recycle() {
-            let pages = match new_cap.cap_type() {
-                CapType::Untyped => new_cap.get_data() & 0x1FFFFFF,
-                _ => 0,
+            let (paddr, pages) = match new_cap.cap_type() {
+                CapType::Untyped => (new_cap.value(), new_cap.get_data() & 0x1FFFFFF),
+                _ => (0, 0),
             };
             slot.cap = new_cap;
             slot.cdt.first_child = VirtAddr::null();
-            Ok(pages)
+            Ok((paddr, pages))
         } else {
             Err(Error::InvalidCapability)
         }
@@ -586,7 +586,7 @@ impl CNode {
 }
 
 fn revoke_recursive(slot: &mut Slot) {
-    log!("cap: Revoking slot {:p} with cap {:?}, CDT: {:?}", slot as *mut Slot, slot.cap, slot.cdt);
+    //log!("cap: Revoking slot {:p} with cap {:?}, CDT: {:?}", slot as *mut Slot, slot.cap, slot.cdt);
     let mut child_addr = slot.cdt.first_child;
     slot.cdt.first_child = VirtAddr::null();
 

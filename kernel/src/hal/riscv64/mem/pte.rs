@@ -44,7 +44,16 @@ impl Pte {
 }
 
 const fn convert_flags(perms: Perms) -> usize {
-    perms.bits() & PTEFLAGS_MASK
+    let mut bits = perms.bits();
+    // For RISC-V leaf PTEs (where R/W/X is not 0), we should set A (Accessed)
+    // and D (Dirty) bits to avoid extra page fault traps during the first access.
+    if bits & (Perms::READ.bits() | Perms::WRITE.bits() | Perms::EXECUTE.bits()) != 0 {
+        bits |= Perms::ACCESSED.bits();
+        if bits & Perms::WRITE.bits() != 0 {
+            bits |= Perms::DIRTY.bits();
+        }
+    }
+    bits & PTEFLAGS_MASK
 }
 
 const fn convert_to_perms(flags: usize) -> Perms {

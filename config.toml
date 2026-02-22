@@ -4,7 +4,7 @@ profile = "relwithdebuginfo"
 bootloader = "opensbi"
 
 [qemu]
-cpus = 4
+cpus = 1
 mem = "2G"
 display = "nographic"
 drive = "disk.img"
@@ -81,13 +81,13 @@ kind = "service"
 
 [[files]]
 name = "init.json"
-path = "platform/qemu/init.json"
+path = "config/init.json"
 [[files]]
 name = "drivers.json"
-path = "platform/qemu/drivers.json"
+path = "config/drivers.json"
 [[files]]
 name = "fs.json"
-path = "platform/qemu/fs.json"
+path = "config/fs.json"
 
 [features]
 kernel = []

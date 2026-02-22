@@ -33,7 +33,7 @@ pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
     None
 }
 
-fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
+pub(crate) fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
         if cap.cap_type() == CapType::Frame {
             return Some(cap.obj_ptr().as_mut_ptr::<UTCB>());
@@ -217,8 +217,11 @@ pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Re
     }
 }
 
-/// 内核层面的通知（用于 IRQ 等），仅传递 badge
-pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
+/// 内核层面的通知（用于 IRQ 等），传递 badge 和可选的 MsgTag
+pub fn notify(ep: &Endpoint, badge: Badge, msg_tag: Option<MsgTag>) -> Result<(), Error> {
+    if badge.is_null() {
+        error!("ipc: Notify with null badge and no msg_tag on ep={:p}", ep as *const _);
+    }
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         log!(
             "ipc: Notify ep={:p} badge={:?} matched receiver={:p}",
@@ -231,14 +234,17 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
         // 修复：设置 Badge 的同时，必须更新 MsgTag 告知接收者这是通知
         if let Some(utcb_ptr) = get_utcb_ptr(receiver) {
             let utcb = unsafe { &mut *utcb_ptr };
-            utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
+            // 如果提供了 msg_tag，则使用它；否则使用默认的 KERNEL_PROTO::NOTIFY
+            utcb.msg_tag = msg_tag.unwrap_or_else(|| {
+                MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE)
+            });
             utcb.badge = badge;
         }
 
         scheduler::wake_up(receiver);
     } else {
         log!("ipc: Notify ep={:p} badge={:?} pending", ep as *const _, badge,);
-        ep.notify(badge);
+        ep.notify(badge, msg_tag);
     }
     Ok(())
 }
@@ -249,14 +255,15 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
 /// * `ep`: 目标 Endpoint 对象
 pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
     // 0. 检查是否有内核 pending 通知（例如 IRQ）
-    let pending = ep.poll_notification();
+    let (pending, tag) = ep.poll_notification();
     if !pending.is_null() {
         log!("ipc: Recv current={:p} ep={:p} matched notification", current, ep as *const _);
         // 修复：主动检查时也要设置 MsgTag
         if let Some(utcb_ptr) = get_utcb_ptr(current) {
             unsafe {
-                (*utcb_ptr).msg_tag =
-                    MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
+                (*utcb_ptr).msg_tag = tag.unwrap_or_else(|| {
+                    MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE)
+                });
                 (*utcb_ptr).badge = pending;
             };
         }

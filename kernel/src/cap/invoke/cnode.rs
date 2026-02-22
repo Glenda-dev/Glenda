@@ -112,8 +112,9 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
         cnodemethod::RECYCLE => {
             let cptr = CapPtr::from(utcb.mrs_regs[0]);
             match cnode.recycle(cptr) {
-                Ok(pages) => {
-                    utcb.mrs_regs[0] = pages;
+                Ok((paddr, pages)) => {
+                    utcb.mrs_regs[0] = paddr;
+                    utcb.mrs_regs[1] = pages;
                     Ok(())
                 }
                 Err(e) => {

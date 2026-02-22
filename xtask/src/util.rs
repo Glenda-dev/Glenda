@@ -4,17 +4,56 @@ use std::process::{Command, Stdio};
 use which::which;
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
+    run_with_timeout(cmd, None)
+}
+
+pub fn run_with_timeout(cmd: &mut Command, timeout: Option<u64>) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Running: $ {:?}", cmd);
-    let status = cmd
+    let mut child = cmd
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .status()
+        .spawn()
         .map_err(|e| anyhow::anyhow!("[ ERROR ] Failed to start command {:?}: {}", cmd, e))?;
-    if !status.success() {
-        return Err(anyhow::anyhow!("[ ERROR ] command failed with status {}: {:?}", status, cmd));
+
+    if let Some(timeout_secs) = timeout {
+        let start = std::time::Instant::now();
+        loop {
+            match child.try_wait()? {
+                Some(status) => {
+                    if !status.success() {
+                        return Err(anyhow::anyhow!(
+                            "[ ERROR ] command failed with status {}: {:?}",
+                            status,
+                            cmd
+                        ));
+                    }
+                    return Ok(());
+                }
+                None => {
+                    if start.elapsed().as_secs() >= timeout_secs {
+                        child.kill()?;
+                        return Err(anyhow::anyhow!(
+                            "[ ERROR ] command timed out after {} seconds: {:?}",
+                            timeout_secs,
+                            cmd
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    } else {
+        let status = child.wait()?;
+        if !status.success() {
+            return Err(anyhow::anyhow!(
+                "[ ERROR ] command failed with status {}: {:?}",
+                status,
+                cmd
+            ));
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 pub fn download(url: &str, dest: &Path) -> anyhow::Result<()> {

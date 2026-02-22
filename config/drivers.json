@@ -1,0 +1,40 @@
+{
+    "drivers": [
+        {
+            "name": "dtb",
+            "binary": "dtb",
+            "compatible": [
+                "dtb"
+            ]
+        },
+        {
+            "name": "virtio-mmio",
+            "binary": "virtio-mmio",
+            "compatible": [
+                "virtio,mmio"
+            ]
+        },
+        {
+            "name": "virtio-blk",
+            "binary": "virtio-blk",
+            "compatible": [
+                "virtio-block"
+            ]
+        },
+        {
+            "name": "virtio-net",
+            "binary": "virtio-net",
+            "compatible": [
+                "virtio-net"
+            ]
+        },
+        {
+            "name": "ns16550a",
+            "binary": "ns16550a",
+            "compatible": [
+                "ns16550a",
+                "snps,dw-apb-uart"
+            ]
+        }
+    ]
+}

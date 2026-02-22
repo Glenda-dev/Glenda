@@ -66,7 +66,13 @@ impl UntypedRegion {
         log!("untyped: Retyping paddr {:?} to {:?} (pages: {})", obj_paddr, obj_type, obj_pages);
         let obj_vaddr = phys_to_virt(obj_paddr);
         let obj_size_bytes = obj_pages * PGSIZE;
-        unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
+
+        // Security: Zero out memory before delegating to typed objects.
+        // Optimization: Defer zeroing when retyping into smaller Untyped blocks,
+        // it will be zeroed eventually when retyped into concrete objects.
+        if obj_type != CapType::Untyped {
+            unsafe { core::ptr::write_bytes(obj_vaddr.as_mut_ptr::<u8>(), 0, obj_size_bytes) };
+        }
 
         let new_cap = match obj_type {
             CapType::CNode => {
