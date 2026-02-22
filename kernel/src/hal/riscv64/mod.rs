@@ -1,4 +1,4 @@
-mod asm;
+pub mod asm;
 pub mod console;
 pub mod cpu;
 pub mod drivers;

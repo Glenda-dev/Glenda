@@ -185,6 +185,20 @@ pub unsafe fn sip_clear(intr: usize) {
 }
 
 #[inline(always)]
+pub unsafe fn write_senvcfg(value: usize) {
+    unsafe {
+        asm!("csrw 0x10A, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
+pub unsafe fn senvcfg_set(bit: usize) {
+    unsafe {
+        asm!("csrs 0x10A, {}", in(reg) 1 << bit);
+    }
+}
+
+#[inline(always)]
 pub fn rdcycle() -> usize {
     let cycle: usize;
     unsafe {

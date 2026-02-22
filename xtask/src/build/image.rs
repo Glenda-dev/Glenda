@@ -216,16 +216,20 @@ pub fn image_img(_cfg: &Config) -> anyhow::Result<()> {
 
     // 3. Populate using mtools
     // mcopy everything from fsroot to root of disk.
-    // Instead of using a wildcard which depends on a shell, we copy the contents of the directory.
-    let status = Command::new("mcopy")
-        .arg("-i")
+    let mut cmd = Command::new("mcopy");
+    cmd.arg("-i")
         .arg("target/disk.img")
         .arg("-s")
         .arg("-D")
-        .arg("o")
-        .arg("target/fsroot/.")
-        .arg("::/")
-        .status()?;
+        .arg("o");
+
+    for entry in std::fs::read_dir(fsroot)? {
+        let entry = entry?;
+        cmd.arg(entry.path());
+    }
+    cmd.arg("::/");
+
+    let status = cmd.status()?;
 
     if !status.success() {
         anyhow::bail!("mcopy failed to populate some files");

@@ -150,6 +150,13 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
 
     // Use vvfat for the boot device
     // Removed duplicate boot drive addition
+
+    // Add telnet for debugging
+    cmd.arg("-monitor").arg("telnet:127.0.0.1:45454,server,nowait");
+
+    // Force Modern VirtIOg
+    cmd.arg("-global").arg("virtio-mmio.force-legacy=false");
+
     Ok(cmd)
 }
 
