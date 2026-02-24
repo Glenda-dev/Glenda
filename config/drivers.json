@@ -22,18 +22,18 @@
             ]
         },
         {
-            "name": "virtio-net",
-            "binary": "virtio-net",
-            "compatible": [
-                "virtio-net"
-            ]
-        },
-        {
             "name": "ns16550a",
             "binary": "ns16550a",
             "compatible": [
                 "ns16550a",
                 "snps,dw-apb-uart"
+            ]
+        },
+        {
+            "name": "ramdisk",
+            "binary": "ramdisk",
+            "compatible": [
+                "ramdisk"
             ]
         }
     ]

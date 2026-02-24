@@ -13,6 +13,12 @@
             "dependencies": [
                 "unicorn"
             ]
+        },
+        {
+            "name": "nexus",
+            "path": "nexus",
+            "auto_start": true,
+            "dependencies": []
         }
     ]
 }

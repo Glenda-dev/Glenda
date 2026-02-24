@@ -46,3 +46,6 @@
 [submodule "service/fossil"]
 	path = service/fossil
 	url = https://github.com/Glenda-dev/fossil.git
+[submodule "service/nexus"]
+	path = service/nexus
+	url = https://github.com/Glenda-dev/nexus.git

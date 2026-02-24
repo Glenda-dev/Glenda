@@ -33,7 +33,7 @@ pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
     None
 }
 
-pub(crate) fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
+pub fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     if let Some(cap) = &tcb.utcb_frame {
         if cap.cap_type() == CapType::Frame {
             return Some(cap.obj_ptr().as_mut_ptr::<UTCB>());

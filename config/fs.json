@@ -1,22 +1,13 @@
 {
+    "buffer_size": 2097152,
     "filesystems": [
         {
-            "name": "extfs",
-            "binary": "extfs",
+            "name": "initrdfs",
+            "binary": "initrdfs",
             "compatible": [
-                "ext4",
-                "ext4",
-                "ext2"
-            ]
-        },
-        {
-            "name": "fatfs",
-            "binary": "fatfs",
-            "compatible": [
-                "vfat",
-                "exfat",
-                "msdos"
-            ]
+                "initrdfs"
+            ],
+            "autostart": true
         }
     ]
 }

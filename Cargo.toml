@@ -19,6 +19,7 @@ members = [
     "drivers/sdio/sdhci",
     "fs/fatfs",
     "fs/extfs",
+    "fs/initrdfs",
     "examples/hello",
     "service/gopher",
     "drivers/platform/acpi",
@@ -26,7 +27,9 @@ members = [
     "drivers/bus/pci",
     "drivers/virtio/mmio",
     "drivers/sys/ramdisk",
+    "drivers/sys/loop",
     "service/fossil",
+    "service/nexus",
 ]
 resolver = "2"
 

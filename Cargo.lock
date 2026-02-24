@@ -382,6 +382,7 @@ name = "fatfs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -549,6 +550,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "initrdfs"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "libglenda_drivers-rs",
+ "serde",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -671,6 +681,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "loop"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "libglenda_drivers-rs",
+ "serde",
+]
+
+[[package]]
 name = "managed"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -704,6 +723,15 @@ checksum = "891220b5305e3e8fe8eb192147e43ba6541148a9b4cfa8e36b28afa04736c8f1"
 dependencies = [
  "derive_more",
  "ptr_meta",
+]
+
+[[package]]
+name = "nexus"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
