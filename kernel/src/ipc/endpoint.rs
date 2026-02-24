@@ -1,5 +1,4 @@
 use crate::cap::Badge;
-use crate::ipc::MsgTag;
 use crate::proc::thread::TCB;
 use crate::sync::SpinLock;
 use core::sync::atomic::AtomicUsize;
@@ -23,8 +22,6 @@ struct EndpointInner {
 
     /// 内核层面的 pending 通知 (Bitwise OR of badges)
     notification_word: usize,
-    /// Pending 通知的标签
-    notification_tag: Option<MsgTag>,
 }
 
 impl Endpoint {
@@ -37,7 +34,6 @@ impl Endpoint {
                 recv_queue_head: None,
                 recv_queue_tail: None,
                 notification_word: 0,
-                notification_tag: None,
             }),
         }
     }
@@ -111,20 +107,16 @@ impl Endpoint {
         }
     }
 
-    pub fn notify(&self, badge: Badge, tag: Option<MsgTag>) {
+    pub fn notify(&self, badge: Badge) {
         let mut inner = self.inner.lock();
         inner.notification_word |= badge.get();
-        if tag.is_some() {
-            inner.notification_tag = tag;
-        }
     }
 
-    pub fn poll_notification(&self) -> (Badge, Option<MsgTag>) {
+    pub fn poll_notification(&self) -> Badge {
         let mut inner = self.inner.lock();
         let word = inner.notification_word;
-        let tag = inner.notification_tag.take();
         inner.notification_word = 0;
-        (Badge::from(word), tag)
+        Badge::from(word)
     }
 
     pub fn destroy(&self) {

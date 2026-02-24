@@ -17,12 +17,6 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let badge = cap.get_badge();
 
-    // 获取 UTCB 以读取参数 (msg_info)
-    if tcb.get_utcb().is_none() {
-        error!("IPC::invoke failed: no UTCB");
-        return Err(Error::MappingFailed);
-    }
-
     match method {
         ipcmethod::SEND => {
             if !cap.has_rights(Rights::SEND) {
@@ -52,13 +46,9 @@ pub fn invoke_ipc(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("IPC::Notify failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
-            let msg_tag = if let Some(utcb_ptr) = ipc::get_utcb_ptr(tcb) {
-                let utcb = unsafe { &*utcb_ptr };
-                Some(utcb.msg_tag)
-            } else {
-                None
-            };
-            ipc::notify(ep, badge, msg_tag)
+            let utcb = tcb.get_utcb().ok_or(Error::MappingFailed)?;
+            let badge = utcb.badge;
+            ipc::notify(ep, badge)
         }
         ipcmethod::PROXY => {
             if !cap.has_rights(Rights::CUSTOM) {

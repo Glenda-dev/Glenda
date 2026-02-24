@@ -92,7 +92,7 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
             let ep_ptr = cap.obj_ptr();
             let badge = cap.get_badge();
             let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
-            if let Err(e) = ipc::notify(ep, badge, None) {
+            if let Err(e) = ipc::notify(ep, badge) {
                 error!("irq: Notify failed for irq {}: {:?}", id, e);
                 return Err(e);
             }

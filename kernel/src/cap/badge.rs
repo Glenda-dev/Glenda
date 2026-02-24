@@ -20,4 +20,22 @@ impl Badge {
     pub const fn null() -> Self {
         Badge(0)
     }
+
+    pub fn bits(&self) -> usize {
+        self.0
+    }
+}
+
+impl core::ops::BitOr for Badge {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Badge::from(self.0 | rhs.0)
+    }
+}
+
+impl core::ops::BitAnd for Badge {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Badge::from(self.0 & rhs.0)
+    }
 }
