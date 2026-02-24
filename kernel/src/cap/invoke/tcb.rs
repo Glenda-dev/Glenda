@@ -62,11 +62,18 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             Ok(())
         }
         tcbmethod::SET_PRIORITY => {
-            // SetPriority: (prio)
-            let prio = utcb.mrs_regs[0] as u8;
-            tcb.set_priority(prio);
+            // SetPriority: (prio, incr)
+            let mut prio = utcb.mrs_regs[0] as u8;
+            let incr = utcb.mrs_regs[1] as i8;
+            if prio == 0 {
+                prio = tcb.priority; // 0 表示不修改优先级
+            }
+            prio = prio.saturating_add_signed(incr);
             // 如果修改了优先级，可能需要触发重新调度
-            scheduler::reschedule();
+            if prio != tcb.priority {
+                tcb.set_priority(prio);
+                scheduler::reschedule();
+            }
             Ok(())
         }
         tcbmethod::SET_ENTRYPOINT => {

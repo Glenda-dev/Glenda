@@ -176,7 +176,7 @@ impl TCB {
     }
 
     pub fn set_priority(&mut self, prio: u8) {
-        self.priority = prio;
+        self.priority = prio
     }
 
     pub fn set_entrypoint(&mut self, entry_point: usize, stack_top: usize, thread_pointer: usize) {
