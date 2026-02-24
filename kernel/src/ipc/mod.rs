@@ -313,16 +313,28 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 ///
 /// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
 pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Result<(), Error> {
+    let utcb = current.get_utcb().ok_or(Error::MappingFailed)?;
     // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
-    let badge = if let Some(utcb_ptr) = get_utcb_ptr(current) {
-        unsafe { (*utcb_ptr).badge }
-    } else {
-        Badge::null()
-    };
+    let badge = utcb.badge;
+    let reply_window = utcb.reply_window;
 
-    log!("ipc: Proxy current={:p} ep={:p} spoofing badge {:?}", current, ep as *const _, badge);
+    // 2. 获取并锁定 reply capability
+    let slot_ptr = current.lookup_slot(reply_window).ok_or(Error::InvalidCapability)?;
+    let slot = unsafe { &mut *slot_ptr };
+    let _guard = unsafe { slot.lock_cnode() };
+    let reply_cap = slot.cap.clone();
 
-    // 2. 复用 Call 逻辑
-    // 发送消息并设置状态为 BlockedCall，等待 Reply
-    call(current, ep, badge, cap)
+    // 3. 校验并在此刻转移出原有的回复权
+    // 如果不是 Reply 类型，说明没有可供转发的调用者
+    if reply_cap.cap_type() != CapType::Reply {
+        warn!("ipc: Proxy failed: No reply cap in reply_window!");
+        return Err(Error::InvalidCapability);
+    }
+    slot.cap = Capability::empty(); // 转移出 Reply Cap，防止被多次转发
+    // 获取原始调用者 TCB
+    let original_caller = unsafe { reply_cap.obj_ptr().as_mut::<TCB>() };
+    call(original_caller, ep, badge, cap)?;
+
+    // Proxy 进程直接返回 Ok，无需等待 Server 回复，实现了真正的尾调用
+    Ok(())
 }
