@@ -1,7 +1,8 @@
 use super::capability::DATA_SHIFT;
+use core::fmt::Debug;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Badge(usize);
 
 const BADGE_BITS: usize = 64 - DATA_SHIFT;
@@ -37,5 +38,11 @@ impl core::ops::BitAnd for Badge {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {
         Badge::from(self.0 & rhs.0)
+    }
+}
+
+impl Debug for Badge {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:#x}", self.0)
     }
 }
