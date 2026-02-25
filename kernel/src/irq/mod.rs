@@ -78,6 +78,7 @@ pub fn clear_notification(irq: usize) -> Result<(), Error> {
 
 /// 内核在 trap 中调用：处理 claim 到的 IRQ（mask + notify + complete）
 pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
+    log!("irq: Handling claimed irq: {} on cpu {}", id, cpuid);
     // 1. Mask interrupt
     hal::irq::mask(id, cpuid);
     hal::irq::complete(id, cpuid);
@@ -100,13 +101,14 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
         }
         Err(Error::InvalidCapability)
     } else {
-        warn!("irq: IRQ {} has no bound notification, completing directly", id);
+        log!("irq: IRQ {} has no bound notification, completing directly", id);
         hal::irq::unmask(id, cpuid);
         Ok(())
     }
 }
 
 pub fn ack_irq(cpuid: usize, irq: usize) -> Result<(), Error> {
+    log!("irq: Acknowledging irq: {} on cpu {}", irq, cpuid);
     // Only unmask. Completion was done in handle_claimed.
     hal::irq::unmask(irq, cpuid);
     Ok(())

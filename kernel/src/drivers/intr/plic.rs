@@ -1,17 +1,18 @@
 use crate::hal::mem::PGSIZE;
 use crate::mem::addr::phys_to_virt;
 use crate::mem::{PageTable, Perms, PhysAddr};
+use crate::sync::SpinLock;
 use core::ptr::{read_volatile, write_volatile};
 
-#[derive(Clone, Copy)]
 pub struct Plic {
     pub base: usize,
     pub size: usize,
+    lock: SpinLock<()>,
 }
 
 impl Plic {
     pub const fn new(base: usize, size: usize) -> Self {
-        Self { base, size }
+        Self { base, size, lock: SpinLock::new(()) }
     }
 }
 
@@ -39,6 +40,7 @@ impl super::InterruptController for Plic {
     }
 
     fn set_priority(&self, irq: usize, priority: usize) {
+        let _lock = self.lock.lock();
         unsafe {
             let addr = phys_to_virt(PhysAddr::from(self.base)).as_usize() + irq * 4;
             write_volatile(addr as *mut u32, priority as u32);
@@ -46,6 +48,7 @@ impl super::InterruptController for Plic {
     }
 
     fn set_enable(&self, hartid: usize, irq: usize, enable: bool) {
+        let _lock = self.lock.lock();
         unsafe {
             let context = ctx_index(hartid);
             let word_index = (irq / 32) * 4;
@@ -61,6 +64,7 @@ impl super::InterruptController for Plic {
     }
 
     fn set_threshold(&self, hartid: usize, threshold: usize) {
+        let _lock = self.lock.lock();
         unsafe {
             let context = ctx_index(hartid);
             let addr =
@@ -70,6 +74,7 @@ impl super::InterruptController for Plic {
     }
 
     fn claim(&self, hartid: usize) -> usize {
+        let _lock = self.lock.lock();
         unsafe {
             let context = ctx_index(hartid);
             let addr =
@@ -79,6 +84,7 @@ impl super::InterruptController for Plic {
     }
 
     fn complete(&self, hartid: usize, irq: usize) {
+        let _lock = self.lock.lock();
         unsafe {
             let context = ctx_index(hartid);
             let addr =

@@ -79,7 +79,7 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
             Ok(())
         }
         irqmethod::SET_THRESHOLD => {
-            // SetThreshold: args[0] = threshold
+            // SetThreshold: [cpu,threshold]
             if irq != 0 {
                 error!(
                     "IRQ::SetThreshold: only Root IRQ (0) can perform this action, current irq={}",
@@ -87,8 +87,8 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
                 );
                 return Err(Error::PermissionDenied);
             }
-            let threshold = utcb.mrs_regs[0];
-            let cpuid = utcb.mrs_regs[1];
+            let cpuid = utcb.mrs_regs[0];
+            let threshold = utcb.mrs_regs[1];
             hal::irq::set_threshold(threshold, cpuid);
             Ok(())
         }

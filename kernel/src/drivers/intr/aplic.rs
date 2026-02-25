@@ -2,18 +2,19 @@ use crate::hal::cpu::cpu_id;
 use crate::hal::mem::PGSIZE;
 use crate::mem::addr::phys_to_virt;
 use crate::mem::{PageTable, Perms, PhysAddr};
+use crate::sync::SpinLock;
 use core::arch::asm;
 use core::ptr::{read_volatile, write_volatile};
 
-#[derive(Clone, Copy)]
 pub struct Aplic {
     pub base: usize,
     pub size: usize,
+    lock: SpinLock<()>,
 }
 
 impl Aplic {
     pub const fn new(base: usize, size: usize) -> Self {
-        Self { base, size }
+        Self { base, size, lock: SpinLock::new(()) }
     }
 }
 
@@ -38,6 +39,7 @@ impl super::InterruptController for Aplic {
         if irq == 0 {
             return;
         }
+        let _lock = self.lock.lock();
         unsafe {
             let base_va = phys_to_virt(PhysAddr::from(self.base)).as_usize();
             let target_addr = (base_va + 0x3000 + irq * 4) as *mut u32;
@@ -54,6 +56,7 @@ impl super::InterruptController for Aplic {
         if irq == 0 {
             return;
         }
+        let _lock = self.lock.lock();
         unsafe {
             let base_va = phys_to_virt(PhysAddr::from(self.base)).as_usize();
             if enable {
