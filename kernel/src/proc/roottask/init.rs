@@ -23,7 +23,7 @@ pub struct RootCaps {
     pub bootinfo: Capability,
     pub kernel: Capability,
     pub untyped_cspace: Capability,
-    pub mmio: Capability,
+    pub console: Capability,
     pub irq_control: Capability,
 }
 
@@ -38,8 +38,8 @@ pub fn alloc_root_caps() -> Result<RootCaps, Error> {
         bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).ok_or(Error::OutOfMemory)?,
         kernel: Capability::create_kernel(Rights::ALL),
         untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
-        mmio: Capability::create_mmio(Rights::ALL),
-        irq_control: Capability::create_irqhandler(Rights::ALL),
+        console: Capability::create_console(Rights::ALL),
+        irq_control: Capability::create_irqhandler(0, Rights::ALL),
     })
 }
 
@@ -153,12 +153,12 @@ pub fn init_cspace(
     cspace.insert(KERNEL_CAP, &caps.kernel)?;
     cspace.insert(BOOTINFO_CAP, &caps.bootinfo)?;
     cspace.insert(UNTYPED_CAP, &caps.untyped_cspace)?;
-    cspace.insert(MMIO_CAP, &caps.mmio)?;
+    cspace.insert(CONSOLE_CAP, &caps.console)?;
     cspace.insert(IRQ_CAP, &caps.irq_control)?;
 
     // === 1. MMIO Caps (Deprecated old logic) ===
     // 内核现在不再在启动阶段探测 MMIO 内存并填充 CNode。
-    // 应用程序应使用 MMIO_CAP (Mmio 类型) 动态获取 Frame。
+    // 应用程序应使用 KERNEL_CAP 的 GET_MMIO 方法动态获取 Frame。
 
     // === 2. Untyped RAM Caps (Stored in Untyped CNode at slot 3) ===
     let (untyped_regions, count) = pmem::get_untyped();
@@ -176,6 +176,6 @@ pub fn init_cspace(
             bootinfo.untyped_count += 1;
         }
     }
-
+    bootinfo.cpus = boot::get_cpu_count();
     Ok(())
 }

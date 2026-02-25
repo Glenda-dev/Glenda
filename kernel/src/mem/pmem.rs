@@ -213,7 +213,7 @@ pub fn initialize_regions() {
 pub fn alloc_frame_cap(pages: usize) -> Option<Capability> {
     PMEM.lock()
         .alloc_addr(pages * PGSIZE, PGSIZE)
-        .map(|paddr| Capability::create_frame(&PhysFrame { paddr, pages }, Rights::ALL))
+        .map(|paddr| Capability::create_frame(&PhysFrame { paddr, pages }, Rights::ALL, false))
 }
 
 /// 分配一个 Untyped Capability

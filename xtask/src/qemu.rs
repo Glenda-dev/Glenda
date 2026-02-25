@@ -16,7 +16,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     let fsroot = std::env::current_dir()?.join("target/fsroot");
     if !fsroot.exists() {
         return Err(anyhow::anyhow!(
-            "[ ERROR ] target/fsroot not found. Run `cargo xtask image` first."
+            "[ ERROR ] target/fsroot not found. Run `cargo xtask build` first."
         ));
     }
 
@@ -57,7 +57,9 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
                 cmd.arg("-initrd").arg(initrd_path);
             }
         }
-        crate::arch::Bootloader::Limine | crate::arch::Bootloader::Multiboot2 | crate::arch::Bootloader::Uefi => {
+        crate::arch::Bootloader::Limine
+        | crate::arch::Bootloader::Multiboot2
+        | crate::arch::Bootloader::Uefi => {
             // BIOS/Firmware handling (OVMF/EDK2)
             if let Some(bios) = &cfg.qemu.bios {
                 // User provided specific BIOS path

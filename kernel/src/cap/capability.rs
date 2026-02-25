@@ -52,7 +52,8 @@ impl Display for Capability {
             CapType::Frame => {
                 let paddr = PhysAddr::from(self.words[0]);
                 s.field("paddr", &paddr);
-                s.field("pages", &(self.words[1] >> DATA_SHIFT));
+                s.field("pages", &((self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF));
+                s.field("device", &self.is_device());
             }
             CapType::PageTable => {
                 s.field("paddr", &PhysAddr::from(self.words[0]));
@@ -72,8 +73,8 @@ impl Display for Capability {
                 s.field("asid", &asid);
                 s.field("gen", &generation);
             }
-            CapType::Mmio => {
-                s.field("mmio", &"global");
+            CapType::Console => {
+                s.field("console", &"global");
             }
             _ => {}
         }
@@ -238,6 +239,11 @@ impl Capability {
         self.words[0]
     }
 
+    #[inline(always)]
+    pub fn set_value(&mut self, value: usize) {
+        self.words[0] = value;
+    }
+
     /// 检查是否拥有指定权限
     pub const fn has_rights(&self, required: Rights) -> bool {
         self.rights().contains(required)
@@ -253,8 +259,25 @@ impl Capability {
         self.has_rights(Rights::GRANT)
     }
 
+    pub const fn is_device(&self) -> bool {
+        (self.words[1] & TYPE_MASK) == (CapType::Frame as usize) && (self.words[1] & (1 << 63)) != 0
+    }
+
+    pub fn set_is_device(&mut self, is_device: bool) {
+        if is_device {
+            self.words[1] |= 1 << 63;
+        } else {
+            self.words[1] &= !(1 << 63);
+        }
+    }
+
     pub const fn get_data(&self) -> usize {
-        self.words[1] >> DATA_SHIFT
+        let mut data = self.words[1] >> DATA_SHIFT;
+        // 如果是 Frame 类型，需要排除第 63 位 (is_device)
+        if (self.words[1] & TYPE_MASK) == (CapType::Frame as usize) {
+            data &= 0x3FFFFFFFFFFFF;
+        }
+        data
     }
 
     pub fn set_data(&mut self, data: usize) {
@@ -300,12 +323,18 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_frame(frame: &PhysFrame, rights: Rights) -> Self {
+    pub fn create_frame(frame: &PhysFrame, rights: Rights, is_device: bool) -> Self {
         assert!(frame.paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
         let w0 = frame.paddr.as_usize();
-        let w1 = (CapType::Frame as usize) & TYPE_MASK
+        let pages = frame.pages & 0x3FFFFFFFFFFFF; // 50 bits (excluding bit 63)
+        let mut w1 = (CapType::Frame as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (frame.pages << DATA_SHIFT);
+            | (pages << DATA_SHIFT);
+
+        if is_device {
+            w1 |= 1 << 63;
+        }
+
         Self { words: [w0, w1] }
     }
 
@@ -327,8 +356,8 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_irqhandler(rights: Rights) -> Self {
-        let w0 = 0;
+    pub fn create_irqhandler(irq: usize, rights: Rights) -> Self {
+        let w0 = irq;
         let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
@@ -354,9 +383,9 @@ impl Capability {
         Self { words: [w0, w1] }
     }
 
-    pub fn create_mmio(rights: Rights) -> Self {
+    pub fn create_console(rights: Rights) -> Self {
         let w0 = 0;
-        let w1 = (CapType::Mmio as usize) & TYPE_MASK
+        let w1 = (CapType::Console as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         Self { words: [w0, w1] }
     }
@@ -389,6 +418,17 @@ impl Capability {
         (paddr, Asid::from(asid as u16, generation as u64))
     }
 
+    pub fn frame_info(&self) -> Option<(PhysAddr, usize, bool)> {
+        if self.cap_type() == CapType::Frame {
+            let paddr = PhysAddr::from(self.words[0]);
+            let pages = (self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF;
+            let is_device = self.is_device();
+            Some((paddr, pages, is_device))
+        } else {
+            None
+        }
+    }
+
     pub fn is_null(&self) -> bool {
         self.cap_type() == CapType::Empty
     }
@@ -401,8 +441,11 @@ impl Capability {
         self.dec_ref(); // 先递减引用计数，如果这是最后一个引用，才允许回收
         match self.cap_type() {
             CapType::Frame => {
+                if self.is_device() {
+                    return Some(Self::empty());
+                }
                 let paddr = PhysAddr::from(self.words[0]);
-                let pages = self.words[1] >> DATA_SHIFT;
+                let pages = (self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF;
                 Some(Self::create_untyped(
                     &UntypedRegion { start: paddr, pages, watermark: 0 },
                     Rights::all(),

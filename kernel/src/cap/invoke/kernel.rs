@@ -1,11 +1,13 @@
 use super::super::method::*;
-use crate::cap::{Capability, Rights};
+use crate::cap::{Badge, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
-// use crate::printk;
+use crate::hal::mem::PGSIZE;
+use crate::mem::{PhysAddr, PhysFrame};
+use crate::platform::MemoryType;
 use crate::proc::scheduler;
 
-pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
+pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), Error> {
     let tcb = unsafe { &mut *scheduler::current().expect("No current TCB") };
     let utcb = match tcb.get_utcb() {
         Some(u) => u,
@@ -16,70 +18,6 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
     };
 
     match method {
-        kernelmethod::CONSOLE_PUT_STR => {
-            if cap.has_rights(Rights::WRITE) == false {
-                error!("Kernel::ConsolePutStr failed: permission denied");
-                return Err(Error::PermissionDenied);
-            }
-
-            // Try to print as UTF-8 string for better display
-            let len = utcb.available_data();
-            if len > 0 {
-                let start = utcb.head;
-                if let Some(slice) = utcb.ipc_buffer.get(start..start + len) {
-                    match core::str::from_utf8(slice) {
-                        Ok(s) => printk!("{}", s),
-                        Err(_) => {
-                            warn!(
-                                "Kernel::ConsolePutStr warning: invalid UTF-8, printing as bytes"
-                            );
-                            for &b in slice {
-                                printk!("{}", b as char);
-                            }
-                        }
-                    }
-                    utcb.head += len;
-                }
-            }
-            Ok(())
-        }
-        kernelmethod::CONSOLE_GET_CHAR => {
-            if cap.has_rights(Rights::READ) == false {
-                error!("Kernel::ConsoleGetChar failed: permission denied");
-                return Err(Error::PermissionDenied);
-            }
-            let c = hal::console::read() as usize;
-            utcb.mrs_regs[0] = c;
-            Ok(())
-        }
-        kernelmethod::CONSOLE_GET_STR => {
-            if cap.has_rights(Rights::READ) == false {
-                error!("Kernel::ConsoleGetStr failed: permission denied");
-                return Err(Error::PermissionDenied);
-            }
-
-            // Implementation: loop read char until \n or \r
-            let mut buf = [0u8; 256];
-            let mut count = 0;
-            loop {
-                let c = hal::console::read();
-                let b = c as u8;
-
-                // Echo back
-                printk!("{}", c as char);
-
-                if b == b'\r' || b == b'\n' || count >= buf.len() {
-                    break;
-                }
-
-                buf[count] = b;
-                count += 1;
-            }
-
-            utcb.write(&buf[..count]);
-            utcb.mrs_regs[0] = count;
-            Ok(())
-        }
         kernelmethod::SHELL => {
             if !cap.has_rights(Rights::EXECUTE) {
                 error!("Kernel::Shell failed: permission denied");
@@ -96,6 +34,90 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize) -> Result<(), Error> {
             }
             let now = hal::timer::get_time();
             utcb.mrs_regs[0] = now;
+            Ok(())
+        }
+        kernelmethod::GET_IRQ => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                error!("Kernel::GET_IRQ failed: permission denied");
+                return Err(Error::PermissionDenied);
+            }
+            let irq = utcb.mrs_regs[0];
+            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
+
+            // 创建带有中断号作为值的 IRQ Cap
+            let mut new_cap = Capability::create_irqhandler(irq, Rights::all());
+            new_cap.set_badge(Badge::null()); // Badge 为空
+
+            // 存入目标 Slot
+            let root_cnode = tcb.get_cspace_mut().ok_or(Error::InvalidCapability)?;
+            // 这里我们使用当前 Kernel Cap 所在的 Slot 作为 Parent
+            let parent_slot = match tcb.lookup_slot(CapPtr::from(cptr)) {
+                Some(s) => s,
+                None => {
+                    error!("Kernel::GET_IRQ: parent slot not found");
+                    return Err(Error::InvalidCapability);
+                }
+            };
+
+            root_cnode.insert_child(dest_cptr, &new_cap, parent_slot).map_err(|e| {
+                error!("Kernel::GET_IRQ: insert failed at {:?}: {:?}", dest_cptr, e);
+                e
+            })?;
+            Ok(())
+        }
+        kernelmethod::GET_MMIO => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                error!("Kernel::GET_MMIO failed: permission denied");
+                return Err(Error::PermissionDenied);
+            }
+            let paddr = PhysAddr::from(utcb.mrs_regs[0]);
+            let pages = utcb.mrs_regs[1];
+            let dest_cptr = CapPtr::from(utcb.mrs_regs[2]);
+
+            if pages == 0 || paddr.as_usize() % PGSIZE != 0 {
+                return Err(Error::InvalidArgs);
+            }
+
+            let start = paddr;
+            let end = paddr + (pages * PGSIZE);
+
+            // 检查内存范围是否与 RAM 或 Reserved 重合
+            let mmap = crate::boot::get_mem_map();
+            for entry in mmap {
+                let r_start = entry.base;
+                let r_end = entry.base + entry.length;
+
+                // 检查重叠
+                if start < r_end && end > r_start {
+                    if entry.kind == MemoryType::Ram || entry.kind == MemoryType::Reserved {
+                        error!(
+                            "Kernel::GET_MMIO: Requested range [{}, {}) overlaps with {:?} region [{}, {})",
+                            start, end, entry.kind, r_start, r_end
+                        );
+                        return Err(Error::InvalidArgs);
+                    }
+                }
+            }
+
+            // 创建 Frame 能力 (标记为 is_device)
+            let frame = PhysFrame { paddr, pages };
+            let new_cap = Capability::create_frame(&frame, Rights::ALL, true);
+
+            // 插入到目标槽位
+            let root_cnode = tcb.get_cspace_mut().ok_or(Error::InvalidCapability)?;
+            let parent_slot = match tcb.lookup_slot(CapPtr::from(cptr)) {
+                Some(s) => s,
+                None => {
+                    error!("Kernel::GET_MMIO: parent slot not found");
+                    return Err(Error::InvalidCapability);
+                }
+            };
+
+            root_cnode.insert_child(dest_cptr, &new_cap, parent_slot).map_err(|e| {
+                error!("Kernel::GET_MMIO: insert failed at {:?}: {:?}", dest_cptr, e);
+                e
+            })?;
+
             Ok(())
         }
         _ => {

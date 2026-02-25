@@ -45,14 +45,20 @@ pub mod irqmethod {
     pub const CLEAR_NOTIFICATION: usize = 2;
     pub const ACK: usize = 3;
     pub const SET_PRIORITY: usize = 4;
+    pub const SET_THRESHOLD: usize = 5;
 }
 
-pub mod kernelmethod {
+pub mod consolemethod {
     pub const CONSOLE_PUT_STR: usize = 1;
     pub const CONSOLE_GET_CHAR: usize = 2;
     pub const CONSOLE_GET_STR: usize = 3;
-    pub const SHELL: usize = 4;
-    pub const GET_TIME: usize = 5;
+}
+
+pub mod kernelmethod {
+    pub const SHELL: usize = 1;
+    pub const GET_TIME: usize = 2;
+    pub const GET_IRQ: usize = 3;
+    pub const GET_MMIO: usize = 4;
 }
 
 pub mod vspacemethod {
@@ -61,8 +67,4 @@ pub mod vspacemethod {
     pub const MAP_TABLE: usize = 3;
     pub const SETUP: usize = 4;
     pub const DEBUG_PRINT: usize = 5;
-}
-
-pub mod mmiomethod {
-    pub const GET_FRAME: usize = 1;
 }

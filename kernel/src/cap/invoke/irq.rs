@@ -1,5 +1,5 @@
 use super::super::method::*;
-use crate::cap::{Badge, CapPtr, CapType, Capability};
+use crate::cap::{CapPtr, CapType, Capability};
 use crate::error::Error;
 use crate::hal;
 use crate::irq;
@@ -7,14 +7,8 @@ use crate::proc::scheduler;
 
 pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let irq = if cap.cap_type() == CapType::IrqHandler {
-        let badge = cap.get_badge().get();
-        if badge == 0 {
-            // 这是 Master IRQ Capability (IRQ Control)
-            // 只有 mint 操作有意义，这里应返回错误
-            error!("IRQ::invoke failed: IRQ control capability cannot be invoked directly");
-            return Err(Error::InvalidCapability);
-        }
-        badge
+        let irq_num = cap.value();
+        irq_num
     } else {
         error!("IRQ::invoke failed: invalid obj type {:?}", cap.cap_type());
         return Err(Error::InvalidType);
@@ -32,15 +26,16 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
     match method {
         irqmethod::SET_NOTIFICATION => {
             // SetNotification: args[0] = ep_cptr
+            if irq == 0 {
+                error!("IRQ::SetNotification: Root IRQ (0) is a control channel.");
+                return Err(Error::PermissionDenied);
+            }
             let ep_cptr = CapPtr::from(utcb.mrs_regs[0]);
 
             if let Some(ep_cap) = tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
-                    // 使用 IrqHandler 能力携带的 Badge 作为通知时的标识
-                    let mut badged_ep = ep_cap.clone();
-                    badged_ep.set_badge(Badge::from(irq));
-                    irq::bind_notification(irq, &badged_ep)
+                    irq::bind_notification(irq, &ep_cap)
                 } else {
                     error!(
                         "IRQ::SetNotification failed: invalid target cap type {:?}",
@@ -55,17 +50,46 @@ pub fn invoke_irq_handler(cap: &mut Capability, method: usize) -> Result<(), Err
         }
         irqmethod::ACK => {
             // Ack: acknowledge handled IRQ and unmask
+            if irq == 0 {
+                error!("IRQ::Ack: Root IRQ (0) is a control channel.");
+                return Err(Error::PermissionDenied);
+            }
             let cpuid = hal::cpu::cpu_id();
             irq::ack_irq(cpuid, irq)
         }
         irqmethod::CLEAR_NOTIFICATION => {
             // Clear binding
+            if irq == 0 {
+                error!("IRQ::ClearNotification: Root IRQ (0) is a control channel.");
+                return Err(Error::PermissionDenied);
+            }
             irq::clear_notification(irq)
         }
         irqmethod::SET_PRIORITY => {
-            // SetPriority: args[0] = priority
-            let priority = utcb.mrs_regs[0];
+            if irq != 0 {
+                error!(
+                    "IRQ::SetPriority: only Root IRQ (0) can perform this action, current irq={}",
+                    irq
+                );
+                return Err(Error::PermissionDenied);
+            }
+            let irq = utcb.mrs_regs[0];
+            let priority = utcb.mrs_regs[1];
             hal::irq::set_priority(irq, priority);
+            Ok(())
+        }
+        irqmethod::SET_THRESHOLD => {
+            // SetThreshold: args[0] = threshold
+            if irq != 0 {
+                error!(
+                    "IRQ::SetThreshold: only Root IRQ (0) can perform this action, current irq={}",
+                    irq
+                );
+                return Err(Error::PermissionDenied);
+            }
+            let threshold = utcb.mrs_regs[0];
+            let cpuid = utcb.mrs_regs[1];
+            hal::irq::set_threshold(threshold, cpuid);
             Ok(())
         }
         _ => {

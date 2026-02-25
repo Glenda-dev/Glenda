@@ -1,8 +1,8 @@
 mod cnode;
+mod console;
 mod ipc;
 mod irq;
 mod kernel;
-mod mmio;
 mod tcb;
 mod untyped;
 mod vspace;
@@ -25,8 +25,8 @@ pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), 
         CapType::IrqHandler => irq::invoke_irq_handler(cap, method),
         CapType::VSpace => vspace::invoke_vspace(cap, method),
         CapType::Reply => ipc::invoke_reply(cap, method),
-        CapType::Kernel => kernel::invoke_kernel(cap, method),
-        CapType::Mmio => mmio::invoke_mmio(cap, method, cptr),
+        CapType::Kernel => kernel::invoke_kernel(cap, method, cptr),
+        CapType::Console => console::invoke_console(cap, method, cptr),
         _ => {
             log!("Invoke: Invalid capability: {}", cap);
             Err(Error::InvalidType)

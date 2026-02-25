@@ -94,7 +94,7 @@ impl UntypedRegion {
             }
             CapType::Frame => {
                 let frame = PhysFrame { paddr: obj_paddr, pages: obj_pages };
-                Capability::create_frame(&frame, Rights::ALL)
+                Capability::create_frame(&frame, Rights::ALL, false)
             }
             CapType::PageTable => {
                 let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();

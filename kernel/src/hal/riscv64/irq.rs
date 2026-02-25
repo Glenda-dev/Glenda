@@ -1,5 +1,4 @@
 use super::asm;
-use super::cpu;
 use super::drivers::INTC;
 use crate::hal::riscv64::sbi;
 
@@ -29,9 +28,6 @@ pub fn init_cpu() {
         asm::sie_set(9); // sext
         asm::sie_set(1); // ssoft
         asm::sie_set(5); // stimer
-        if let Some(intc) = INTC.get() {
-            intc.set_threshold(cpu::cpu_id(), 0);
-        }
     };
 }
 pub fn claim(cpuid: usize) -> Option<u32> {

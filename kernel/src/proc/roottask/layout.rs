@@ -5,10 +5,10 @@ use crate::mem::TRAMPOLINE_VA;
 pub const CSPACE_CAP: CapPtr = CapPtr::from(1);
 pub const VSPACE_CAP: CapPtr = CapPtr::from(2);
 pub const TCB_CAP: CapPtr = CapPtr::from(3);
-pub const KERNEL_CAP: CapPtr = CapPtr::from(5);
+pub const CONSOLE_CAP: CapPtr = CapPtr::from(5);
 pub const BOOTINFO_CAP: CapPtr = CapPtr::from(9);
 pub const UNTYPED_CAP: CapPtr = CapPtr::from(10);
-pub const MMIO_CAP: CapPtr = CapPtr::from(11);
+pub const KERNEL_CAP: CapPtr = CapPtr::from(11);
 pub const IRQ_CAP: CapPtr = CapPtr::from(12);
 
 pub const STACK_BASE: usize = TRAMPOLINE_VA; // 用户栈最高地址（起始地址，向低地址生长）

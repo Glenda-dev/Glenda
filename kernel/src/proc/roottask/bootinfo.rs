@@ -31,6 +31,8 @@ pub struct BootInfo {
     pub build: [u8; 64],
     pub git_hash: [u8; 8],
 
+    pub cpus: usize,
+
     /// Number of valid entries in `untyped_list`
     pub untyped_count: usize,
 
@@ -51,6 +53,7 @@ impl BootInfo {
             platform_type: PlatformType::NULL,
             addr: 0,
             size: 0,
+            cpus: 0,
             version: 0,
             build: [0; 64],
             git_hash: [0; 8],
