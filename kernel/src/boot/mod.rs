@@ -5,6 +5,9 @@ use crate::sync::Once;
 #[cfg(feature = "bl-limine")]
 pub mod limine;
 
+#[cfg(feature = "bl-uefi")]
+pub mod uefi;
+
 #[cfg(feature = "bl-uboot")]
 pub mod uboot;
 
@@ -16,6 +19,9 @@ pub mod multiboot2;
 
 #[cfg(feature = "bl-limine")]
 pub use limine::{bootstrap, init};
+
+#[cfg(feature = "bl-uefi")]
+pub use uefi::{bootstrap, init};
 
 #[cfg(feature = "bl-uboot")]
 pub use uboot::{bootstrap, init};

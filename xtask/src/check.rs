@@ -37,7 +37,8 @@ fn check_kernel(cfg: &Config, args: &[String]) -> anyhow::Result<()> {
     // But typically `cargo check [args]` works.
     cmd.args(args);
 
-    cmd.arg("--target").arg(cfg.system.arch.target_triple());
+    let target = cfg.system.arch.target_triple();
+    cmd.arg("--target").arg(target);
     cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
         cmd.arg("--features").arg(features);
@@ -52,7 +53,8 @@ fn check_crate(cfg: &Config, path: &Path, name: &str, args: &[String]) -> anyhow
     cmd.current_dir(path);
     cmd.arg("check");
     cmd.args(args);
-    cmd.arg("--target").arg(cfg.system.arch.target_triple());
+    let target = cfg.system.arch.target_triple();
+    cmd.arg("--target").arg(target);
     cmd.arg("--profile").arg(&cfg.system.profile);
 
     let features = cfg.features.get(name).map(|arr| arr.join(",")).unwrap_or_default();

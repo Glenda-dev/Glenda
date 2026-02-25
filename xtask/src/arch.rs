@@ -105,6 +105,7 @@ pub enum Bootloader {
     Uboot,
     Opensbi,
     Multiboot2,
+    Uefi,
 }
 
 impl Bootloader {
@@ -114,6 +115,7 @@ impl Bootloader {
             Bootloader::Uboot => "uboot",
             Bootloader::Opensbi => "opensbi",
             Bootloader::Multiboot2 => "multiboot2",
+            Bootloader::Uefi => "uefi",
         }
     }
 }

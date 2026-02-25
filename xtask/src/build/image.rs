@@ -60,6 +60,18 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
         fs::copy(limine_conf_path, fsroot.join("boot/limine.conf"))?;
     }
 
+    if cfg.system.bootloader == crate::arch::Bootloader::Uefi {
+        let arch = cfg.system.arch;
+        let efi_name = arch.limine_efi_file();
+        let src = if Path::new("target/kernel.efi").exists() {
+            "target/kernel.efi"
+        } else {
+            "target/kernel"
+        };
+        fs::copy(src, fsroot.join("EFI/BOOT").join(efi_name))?;
+        eprintln!("[ INFO ] UEFI EFI Stub installed to /EFI/BOOT/{}", efi_name);
+    }
+
     if cfg.system.bootloader == crate::arch::Bootloader::Multiboot2 {
         let grub_conf_path = Path::new("config/grub.cfg");
         if grub_conf_path.exists() {
@@ -217,11 +229,7 @@ pub fn image_img(_cfg: &Config) -> anyhow::Result<()> {
     // 3. Populate using mtools
     // mcopy everything from fsroot to root of disk.
     let mut cmd = Command::new("mcopy");
-    cmd.arg("-i")
-        .arg("target/disk.img")
-        .arg("-s")
-        .arg("-D")
-        .arg("o");
+    cmd.arg("-i").arg("target/disk.img").arg("-s").arg("-D").arg("o");
 
     for entry in std::fs::read_dir(fsroot)? {
         let entry = entry?;

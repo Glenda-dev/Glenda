@@ -83,10 +83,11 @@ pub fn download(url: &str, dest: &Path) -> anyhow::Result<()> {
 }
 
 pub fn objdump(cfg: &Config) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target")
-        .join(cfg.system.arch.target_triple())
-        .join(cfg.system.profile.as_str())
-        .join("kernel");
+    let is_uefi = cfg.system.bootloader == crate::arch::Bootloader::Uefi;
+    let target = cfg.system.arch.target_triple();
+    let kernel_name = if is_uefi { "kernel.efi" } else { "kernel" };
+    let elf =
+        PathBuf::from("target").join(target).join(cfg.system.profile.as_str()).join(kernel_name);
     let bin = format!("{}objdump", cfg.system.arch.binutils_prefix());
     let tool = which(&bin).map_err(|_| anyhow::anyhow!("[ ERROR ] install {} first", bin))?;
     let mut cmd = Command::new(tool);
@@ -95,10 +96,11 @@ pub fn objdump(cfg: &Config) -> anyhow::Result<()> {
 }
 
 pub fn size(cfg: &Config) -> anyhow::Result<()> {
-    let elf = PathBuf::from("target")
-        .join(cfg.system.arch.target_triple())
-        .join(cfg.system.profile.as_str())
-        .join("kernel");
+    let is_uefi = cfg.system.bootloader == crate::arch::Bootloader::Uefi;
+    let target = cfg.system.arch.target_triple();
+    let kernel_name = if is_uefi { "kernel.efi" } else { "kernel" };
+    let elf =
+        PathBuf::from("target").join(target).join(cfg.system.profile.as_str()).join(kernel_name);
     let bin = format!("{}size", cfg.system.arch.binutils_prefix());
     let tool = which(&bin).map_err(|_| anyhow::anyhow!("[ ERROR ] install {} first", bin))?;
     let mut cmd = Command::new(tool);

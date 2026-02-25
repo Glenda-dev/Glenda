@@ -7,8 +7,9 @@ edition = "2024"
 acpi = { version = "6.1.0", default-features = false }
 bitflags = "2.10.0"
 fdt = "0.1.5"
-limine = "0.5.0"
-multiboot2 = { version = "0.22.0", default-features = false }
+limine = { version = "0.5.0", optional = true }
+multiboot2 = { version = "0.22.0", default-features = false, optional = true }
+uefi = { version = "0.33.0", default-features = false, optional = true }
 num_enum = { version = "0.7.5", default-features = false }
 
 [build-dependencies]
@@ -19,8 +20,8 @@ default = ["logging"]
 logging = []
 shell = []
 gdb = []
-bl-limine = []
+bl-limine = ["limine"]
 bl-uboot = []
-bl-multiboot2 = []
-bl-uefi = []
+bl-multiboot2 = ["multiboot2"]
+bl-uefi = ["uefi"]
 bl-opensbi = []

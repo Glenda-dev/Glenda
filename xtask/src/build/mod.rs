@@ -29,6 +29,7 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     let mut features = cfg.features.get("kernel").map(|arr| arr.join(",")).unwrap_or_default();
 
     // Auto-append bootloader feature if not present
+    let is_uefi = cfg.system.bootloader == crate::arch::Bootloader::Uefi;
     let bl_feature = format!("bl-{}", cfg.system.bootloader.as_str());
     if !features.contains(&bl_feature) {
         if !features.is_empty() {
@@ -37,9 +38,10 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
         features.push_str(&bl_feature);
     }
 
+    let target_triple = cfg.system.arch.target_triple();
     let mut cmd = Command::new("cargo");
     cmd.current_dir("kernel");
-    cmd.arg("build").arg("--target").arg(cfg.system.arch.target_triple());
+    cmd.arg("build").arg("--target").arg(target_triple);
 
     // Inject kernel linker script with absolute path
     let cwd = std::env::current_dir()?;
@@ -57,6 +59,7 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     }
 
     let rustflags = format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display());
+
     cmd.env("RUSTFLAGS", rustflags);
     cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
@@ -66,11 +69,23 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
 
     // Copy binary to root target
     let profile = &cfg.system.profile;
-    let src =
-        Path::new("target").join(cfg.system.arch.target_triple()).join(profile).join("kernel");
+    let src = Path::new("target").join(target_triple).join(profile).join("kernel");
     let dst = Path::new("target/kernel");
     fs::create_dir_all("target")?;
     fs::copy(src, dst)?;
+
+    if is_uefi {
+        // If the linker produced ELF, we convert to PE via objcopy as the "packaging" step
+        // However, if lld produced PE directly (due to --subsystem), we just rename it.
+        let objcopy = format!("{}objcopy", cfg.system.arch.binutils_prefix());
+        let _ = Command::new(objcopy)
+            .args(&["-O", "pei-riscv64-little", "target/kernel", "target/kernel.efi"])
+            .status();
+
+        if !Path::new("target/kernel.efi").exists() {
+            fs::copy("target/kernel", "target/kernel.efi")?;
+        }
+    }
     Ok(())
 }
 

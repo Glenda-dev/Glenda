@@ -8,7 +8,8 @@ pub fn build(cfg: &Config, path: &Path, features: &str, flags: &str) -> anyhow::
     let mut cmd = Command::new("cargo");
     cmd.current_dir(path);
     cmd.arg("build");
-    cmd.arg("--target").arg(cfg.system.arch.target_triple());
+    let target = cfg.system.arch.target_triple();
+    cmd.arg("--target").arg(target);
     cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
         cmd.arg("--features").arg(features);
