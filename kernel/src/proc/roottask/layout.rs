@@ -21,6 +21,6 @@ pub const HEAP_VA: usize = 0x2000_0000; // 用户堆地址
 pub const BOOTINFO_VA: usize = 0x4000_0000; // Bootinfo映射地址
 pub const INITRD_VA: usize = 0x5000_0000; // Initrd 映射地址 (Root Task)
 pub const ROOT_TASK_PRIORITY: u8 = 253; // Root Task 优先级
-pub const THREAD_AREA_BASE: usize = 0x7000_0000;
+pub const THREAD_AREA_BASE: usize = 0x3F_0000_0000;
 pub const UTCB_VA: usize = THREAD_AREA_BASE; // UTCB 映射地址
 pub const TRAPFRAME_VA: usize = THREAD_AREA_BASE + PGSIZE; // Trapframe 映射地址
