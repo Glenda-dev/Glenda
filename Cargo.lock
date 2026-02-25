@@ -454,6 +454,8 @@ dependencies = [
  "libglenda-rs",
  "libglenda_drivers-rs",
  "managed",
+ "serde",
+ "serde_json",
  "smoltcp",
 ]
 

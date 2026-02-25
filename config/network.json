@@ -1,0 +1,18 @@
+{
+    "buffer_size": 2097152,
+    "interfaces": [
+        {
+            "name": "net0",
+            "ipv4": "10.0.2.15",
+            "mask": 24,
+            "gateway": "10.0.2.2"
+        }
+    ],
+    "routes": [
+        {
+            "dest": "0.0.0.0",
+            "mask": 0,
+            "via": "10.0.2.2"
+        }
+    ]
+}

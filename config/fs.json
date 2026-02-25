@@ -8,6 +8,26 @@
                 "initrdfs"
             ],
             "autostart": true
+        },
+        {
+            "name": "fatfs",
+            "binary": "fatfs",
+            "compatible": [
+                "fat16",
+                "fat32",
+                "exfat"
+            ],
+            "autostart": false
+        },
+        {
+            "name": "extfs",
+            "binary": "extfs",
+            "compatible": [
+                "ext2",
+                "ext3",
+                "ext4"
+            ],
+            "autostart": false
         }
     ]
 }

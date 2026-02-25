@@ -15,6 +15,14 @@
             ]
         },
         {
+            "name": "gopher",
+            "path": "gopher",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn"
+            ]
+        },
+        {
             "name": "nexus",
             "path": "nexus",
             "auto_start": true,

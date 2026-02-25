@@ -2,7 +2,7 @@ use clap::ValueEnum;
 use serde::Deserialize;
 use std::fmt::{self, Display, Formatter};
 
-#[derive(ValueEnum, Clone, Copy, Debug, Deserialize, Default)]
+#[derive(ValueEnum, Clone, Copy, Debug, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Arch {
     #[default]
