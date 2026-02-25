@@ -8,12 +8,14 @@ use crate::hal::trap::{trap_user_handler, trap_user_return};
 use crate::ipc::{MsgArgs, UTCB};
 use crate::mem::PageTable;
 use crate::mem::VirtAddr;
+use crate::sync::spinlock::SpinLock;
 use core::fmt::Display;
 use core::sync::atomic::AtomicUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Inactive,
+    Suspended,
     Ready,
     Running,
     BlockedSend,
@@ -24,16 +26,21 @@ pub enum ThreadState {
 #[repr(C)]
 #[derive(Debug)]
 pub struct TCB {
+    /// 锁，保护 TCB 内部状态
+    pub lock: SpinLock<()>,
+
     /// 引用计数
     pub ref_count: AtomicUsize,
 
     // --- Core Execution State ---
-    pub context: ProcContext, // 架构相关寄存器 (IP, SP, etc.)
-    pub priority: u8,         // 调度优先级 (0-255)
-    pub timeslice: usize,     // 剩余时间片
-    pub state: ThreadState,   // 当前状态
-    pub affinity: usize,      // CPU 亲和性
-    pub cpu_id: usize,        // 当前存在的CPU调度队列（用于remove）
+    pub context: ProcContext,   // 架构相关寄存器 (IP, SP, etc.)
+    pub base_priority: u8,      // 基础优先级
+    pub priority: u8,           // 当前优先级 (可能因优先级继承而提升)
+    pub timeslice: usize,       // 剩余时间片
+    pub timeslice_limit: usize, // 时间片限制 (Refill 值)
+    pub state: ThreadState,     // 当前状态
+    pub affinity: usize,        // CPU 亲和性
+    pub cpu_id: usize,          // 当前存在的CPU调度队列（用于remove）
 
     // --- Kernel Stack ---
     pub kstack: Option<Capability>, // 内核栈的物理帧 (以 Capability 形式存储)
@@ -85,10 +92,13 @@ pub static mut ALL_THREADS: Option<*mut TCB> = None;
 impl TCB {
     pub const fn new() -> Self {
         Self {
+            lock: SpinLock::new(()),
             ref_count: AtomicUsize::new(0),
             context: ProcContext::new(),
+            base_priority: 0,
             priority: 0,
             timeslice: 0,
+            timeslice_limit: 0,
             state: ThreadState::Inactive,
             affinity: usize::MAX,
             cpu_id: 0,
@@ -176,7 +186,11 @@ impl TCB {
     }
 
     pub fn set_priority(&mut self, prio: u8) {
-        self.priority = prio
+        let _guard = self.lock.lock();
+        self.base_priority = prio;
+        if prio > self.priority {
+            self.priority = prio;
+        }
     }
 
     pub fn set_entrypoint(&mut self, entry_point: usize, stack_top: usize, thread_pointer: usize) {
@@ -220,14 +234,17 @@ impl TCB {
         tf.set_registers(regs);
     }
 
-    pub fn resume(&mut self) {
-        if self.state == ThreadState::Inactive {
+    pub fn resume(&mut self) -> bool {
+        if self.state == ThreadState::Suspended || self.state == ThreadState::Inactive {
             self.state = ThreadState::Ready;
+            true
+        } else {
+            false
         }
     }
 
     pub fn suspend(&mut self) {
-        self.state = ThreadState::Inactive;
+        self.state = ThreadState::Suspended;
     }
 
     pub fn get_utcb(&self) -> Option<&mut UTCB> {

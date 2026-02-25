@@ -18,8 +18,10 @@ pub mod tcbmethod {
     pub const SET_AFFINITY: usize = 5;
     pub const SET_REGISTERS: usize = 6;
     pub const SET_ADDRESS: usize = 7;
-    pub const RESUME: usize = 8;
-    pub const SUSPEND: usize = 9;
+    pub const SET_TIMESLICE: usize = 8;
+    pub const RESUME: usize = 9;
+    pub const SUSPEND: usize = 10;
+    pub const YIELD: usize = 11;
 }
 
 pub mod pagetablemethod {
@@ -56,9 +58,9 @@ pub mod consolemethod {
 
 pub mod kernelmethod {
     pub const SHELL: usize = 1;
-    pub const GET_TIME: usize = 2;
-    pub const GET_IRQ: usize = 3;
-    pub const GET_MMIO: usize = 4;
+    pub const GET_IRQ: usize = 2;
+    pub const GET_MMIO: usize = 3;
+    pub const SET_ALARM: usize = 4;
 }
 
 pub mod vspacemethod {

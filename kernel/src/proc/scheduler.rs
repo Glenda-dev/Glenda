@@ -3,8 +3,8 @@ use super::thread::{TCB, ThreadState};
 use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
-// use crate::printk;
 
+pub const DEFAULT_TIMESLICE: usize = 100;
 // 最大优先级数量 (0-255)
 pub const MAX_PRIORITY: usize = 256;
 
@@ -53,16 +53,16 @@ impl TcbQueue {
         }
     }
 
-    pub fn remove(&mut self, tcb: &mut TCB) {
+    pub fn remove(&mut self, tcb_ptr: *mut TCB) {
         unsafe {
-            let ptr = tcb as *mut _;
+            let tcb = &mut *tcb_ptr;
 
             // Check prev
             if let Some(prev) = tcb.prev {
                 (*prev).next = tcb.next;
             } else {
                 // Is head
-                if self.head == Some(ptr) {
+                if self.head == Some(tcb_ptr) {
                     self.head = tcb.next;
                 }
             }
@@ -72,7 +72,7 @@ impl TcbQueue {
                 (*next).prev = tcb.prev;
             } else {
                 // Is tail
-                if self.tail == Some(ptr) {
+                if self.tail == Some(tcb_ptr) {
                     self.tail = tcb.prev;
                 }
             }
@@ -88,6 +88,8 @@ static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
     let current_hart_id = hal::cpu::cpu_id();
+    let ptr = tcb as *mut TCB;
+    let _tcb_guard = tcb.lock.lock();
 
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_CPUS，则表示不绑定，默认使用当前核心
@@ -103,7 +105,7 @@ pub fn add_thread(tcb: &mut TCB) {
 
     // 确保状态正确
     if tcb.state == ThreadState::Ready {
-        queues[prio].push_back(tcb as *mut _);
+        queues[prio].push_back(ptr);
     }
 
     drop(queues);
@@ -122,6 +124,8 @@ pub fn remove_thread(tcb: &mut TCB) {
     // Ensure atomic operation regarding interrupts
     // Use push_off to nest correctly with SpinLocks
     cpu::push_off();
+    let ptr = tcb as *mut TCB;
+    let _tcb_guard = tcb.lock.lock();
 
     match tcb.state {
         ThreadState::Running => {
@@ -159,7 +163,7 @@ pub fn remove_thread(tcb: &mut TCB) {
                 // TcbQueue::remove 会根据 pointers 移除。如果 pointers 乱了会很危险。
                 // 假设状态一致性由锁保证。
                 if prio < MAX_PRIORITY {
-                    queues[prio].remove(tcb);
+                    queues[prio].remove(ptr);
                 }
                 drop(queues);
             }
@@ -189,40 +193,101 @@ pub fn scheduler() -> ! {
         // 2. 寻找最高优先级的 Ready 线程
         {
             let cpu = cpu::get();
-            let mut queues = cpu.ready_queues.lock();
             // 从最高优先级 (255) 向下遍历
-            for prio in (0..MAX_PRIORITY).rev() {
-                if let Some(tcb_ptr) = queues[prio].pop_front() {
-                    let tcb = unsafe { &*tcb_ptr };
-                    if tcb.state != ThreadState::Ready {
-                        // 这不应该发生，说明状态管理有问题
-                        warn!(
-                            "scheduler: Found thread {:p} in Ready queue but state is {:?}, skipping",
-                            tcb_ptr, tcb.state
+            'outer: for prio in (0..MAX_PRIORITY).rev() {
+                loop {
+                    let mut queues = cpu.ready_queues.lock();
+                    if let Some(tcb_ptr) = queues[prio].pop_front() {
+                        drop(queues); // 释放队列锁，避免与 TCB 锁产生 ABBA 死锁
+
+                        let tcb = unsafe { &mut *tcb_ptr };
+                        let _guard = tcb.lock.lock();
+                        if tcb.state != ThreadState::Ready {
+                            // 队列中扫描到 inactive 线程就直接移除
+                            // 已经在 pop_front 中移除了
+                            warn!(
+                                "scheduler: Skipping thread {:p} with state {:?}",
+                                tcb_ptr, tcb.state
+                            );
+                            continue; // 继续 loop 查找当前优先级下一个线程
+                        }
+                        log!(
+                            "scheduler: Selected thread {:p} with priority {} for running",
+                            tcb_ptr,
+                            prio
                         );
-                        continue;
+                        next_thread = Some(tcb_ptr);
+                        break 'outer;
+                    } else {
+                        drop(queues);
+                        break; // 此优先级队列为空，尝试下一个优先级
                     }
-                    log!(
-                        "scheduler: Selected thread {:p} with priority {} for running",
-                        tcb_ptr,
-                        prio
-                    );
-                    next_thread = Some(tcb_ptr);
+                }
+            }
+        }
+
+        // 3. Work Stealing: 如果本地队列为空，尝试从其他 CPU 偷取
+        if next_thread.is_none() {
+            for i in 0..MAX_CPUS {
+                if i == hal::cpu::cpu_id() {
+                    continue;
+                }
+                let target_cpu = unsafe { &cpu::CPUS[i] };
+                if let Some(mut queues) = target_cpu.ready_queues.try_lock() {
+                    for prio in (0..MAX_PRIORITY).rev() {
+                        if let Some(tcb_ptr) = queues[prio].pop_front() {
+                            let tcb = unsafe { &mut *tcb_ptr };
+                            // 尝试锁定 TCB，避免死锁
+                            if let Some(_guard) = tcb.lock.try_lock() {
+                                if tcb.state == ThreadState::Ready {
+                                    log!("scheduler: Stole thread {:p} from CPU {}", tcb_ptr, i);
+                                    tcb.cpu_id = hal::cpu::cpu_id();
+                                    next_thread = Some(tcb_ptr);
+                                    break;
+                                }
+                            } else {
+                                // 如果锁不住，放回对方队列前面？或者就由它去
+                                queues[prio].push_back(tcb_ptr);
+                            }
+                        }
+                    }
+                }
+                if next_thread.is_some() {
                     break;
                 }
             }
         }
 
         if let Some(tcb_ptr) = next_thread {
+            // Lock TCB to ensure atomic transition to Running
+            unsafe {
+                let _tcb_guard = (*tcb_ptr).lock.lock();
+
+                // 如果在此期间线程状态变了（极罕见），则不运行并重新开始调度
+                if (*tcb_ptr).state != ThreadState::Ready {
+                    warn!("scheduler: Thread {:p} state changed while selecting!", tcb_ptr);
+                    continue;
+                }
+
+                // 如果时间片用完了，重新分配
+                if (*tcb_ptr).timeslice == 0 {
+                    (*tcb_ptr).timeslice = if (*tcb_ptr).timeslice_limit > 0 {
+                        (*tcb_ptr).timeslice_limit
+                    } else {
+                        DEFAULT_TIMESLICE
+                    };
+                }
+
+                // Update kernel_hartid in TrapFrame to ensure correct CPU ID upon trap/syscall
+                // This is critical for SMP!
+                let cpuid = cpu::get().id;
+                (*tcb_ptr).get_tf().set_cpuid(cpuid);
+
+                // 更新状态
+                (*tcb_ptr).state = ThreadState::Running;
+            } // _tcb_guard drops here
+
             let tcb = unsafe { &mut *tcb_ptr };
-
-            // Update kernel_hartid in TrapFrame to ensure correct CPU ID upon trap/syscall
-            // This is critical for SMP!
-            let cpuid = cpu::get().id;
-            tcb.get_tf().set_cpuid(cpuid);
-
-            // 更新状态
-            tcb.state = ThreadState::Running;
 
             // 获取当前 CPU 的 CPU 结构
             let cpu = cpu::get();
@@ -259,10 +324,15 @@ pub fn yield_proc() {
 
     let tcb = unsafe { &mut *tcb_ptr };
 
+    // 锁定以防状态变迁不一致
+    let _tcb_guard = tcb.lock.lock();
     // 只有 Running 状态的线程才能 yield
     if tcb.state == ThreadState::Running {
         tcb.state = ThreadState::Ready;
+        drop(_tcb_guard); // add_thread will re-lock
         add_thread(tcb); // 放回队列末尾
+    } else {
+        drop(_tcb_guard);
     }
 
     // 切换回调度器 (context)
@@ -282,11 +352,14 @@ pub fn block_current_thread() {
 
     let tcb = unsafe { &mut *tcb_ptr };
 
+    // 锁定并断言
+    let _tcb_guard = tcb.lock.lock();
     // 确保线程不再是 Running 状态
     assert!(
         tcb.state != ThreadState::Running,
         "Thread must set block state before calling block()"
     );
+    drop(_tcb_guard);
 
     // 直接切换回调度器，不加入 Ready 队列
     unsafe {
@@ -297,8 +370,15 @@ pub fn block_current_thread() {
 /// 唤醒指定线程
 /// 将线程状态设置为 Ready 并加入调度队列
 pub fn wake_up(tcb: &mut TCB) {
-    if tcb.state != ThreadState::Ready && tcb.state != ThreadState::Running {
+    let _tcb_guard = tcb.lock.lock();
+    // 只有处于阻塞状态的线程才能被唤醒。
+    // 如果是 Suspended 状态，它保持 Suspended，直到被 Resume 系统调用显式恢复。
+    if tcb.state == ThreadState::BlockedSend
+        || tcb.state == ThreadState::BlockedRecv
+        || tcb.state == ThreadState::BlockedCall
+    {
         tcb.state = ThreadState::Ready;
+        drop(_tcb_guard);
         add_thread(tcb);
 
         // 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
@@ -365,6 +445,7 @@ pub fn ps() {
 
             let state_str = match tcb.state {
                 ThreadState::Inactive => "Inactive   ",
+                ThreadState::Suspended => "Suspended  ",
                 ThreadState::Ready => "Ready      ",
                 ThreadState::Running => "Running    ",
                 ThreadState::BlockedSend => "BlockedSend",

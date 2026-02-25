@@ -232,6 +232,11 @@ fn timer_ssip(status: usize) {
 fn timer_stip(status: usize) {
     irq::timer::program_next_tick();
     if hal::trap::is_user_mode(status) {
-        scheduler::yield_proc();
+        if let Some(tcb_ptr) = scheduler::current() {
+            let tcb = unsafe { &*tcb_ptr };
+            if tcb.timeslice == 0 {
+                scheduler::yield_proc();
+            }
+        }
     }
 }

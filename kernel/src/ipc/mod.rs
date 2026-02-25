@@ -42,16 +42,72 @@ pub fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     None
 }
 
+/// 检查 IPC 调用是否会导致循环等待死锁
+fn check_deadlock(sender: &TCB, receiver: &TCB) -> bool {
+    let mut curr = receiver;
+    loop {
+        if curr as *const TCB == sender as *const TCB {
+            return true;
+        }
+        if let Some(partner_ptr) = curr.ipc_partner {
+            curr = unsafe { &*partner_ptr };
+        } else {
+            break;
+        }
+    }
+    false
+}
+
+/// 传播优先级，实现完整的优先级继承链
+fn propagate_priority(priority: u8, target_ptr: *mut TCB) {
+    let mut curr_ptr = target_ptr;
+    loop {
+        let curr = unsafe { &mut *curr_ptr };
+        if priority > curr.priority {
+            curr.priority = priority;
+            if let Some(partner_ptr) = curr.ipc_partner {
+                let partner = unsafe { &mut *partner_ptr };
+                // 递归加锁可能会死锁，这里使用 try_lock
+                if let Some(_guard) = partner.lock.try_lock() {
+                    curr_ptr = partner_ptr;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+}
+
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文，并可选地传递一个 Capability
 unsafe fn copy_msg(
-    sender: &TCB,
+    sender: &mut TCB,
     receiver: &mut TCB,
     badge: Badge,
     cap: Option<Capability>,
     reply_cap: Option<Capability>,
 ) -> Result<(), Error> {
     log!("ipc: Copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
+
+    // 优先级继承与时间片捐赠 (避免 ABBA 死锁，按地址顺序加锁)
+    {
+        let src_addr = sender as *const TCB as usize;
+        let dst_addr = receiver as *const TCB as usize;
+        let receiver_ptr = receiver as *mut TCB;
+        if src_addr < dst_addr {
+            let _g1 = sender.lock.lock();
+            let _g2 = receiver.lock.lock();
+            propagate_priority(sender.priority, receiver_ptr);
+            receiver.timeslice += sender.timeslice;
+            sender.timeslice = 0; // Donated
+        } else {
+            let _g1 = receiver.lock.lock();
+            let _g2 = sender.lock.lock();
+            propagate_priority(sender.priority, receiver_ptr);
+            receiver.timeslice += sender.timeslice;
+            sender.timeslice = 0; // Donated
+        }
+    }
     let src_ptr = get_utcb_ptr(sender).ok_or(Error::MappingFailed)?;
     let dst_ptr = get_utcb_ptr(receiver).ok_or(Error::MappingFailed)?;
     let src = unsafe { &mut *src_ptr };
@@ -156,6 +212,15 @@ pub fn call(
     log!("",);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
+        let receiver = unsafe { &mut *receiver_ptr };
+
+        // 检查死锁
+        if check_deadlock(current, receiver) {
+            error!("ipc: Deadlock detected in call!");
+            ep.enqueue_recv(receiver_ptr); // 放回队列
+            return Err(Error::InvalidCapability);
+        }
+
         log!(
             "ipc: Call current={:p} ep={:p} badge={:?} matched receiver={:p}",
             current,
@@ -163,13 +228,15 @@ pub fn call(
             badge,
             receiver_ptr
         );
-        let receiver = unsafe { &mut *receiver_ptr };
 
         // 生成 Reply Capability 指向当前线程
         let reply_cap = Capability::create_reply(current, Rights::ALL);
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap))? };
+
+        // 设置通信伙伴，用于死锁检查
+        current.ipc_partner = Some(receiver as *mut _);
 
         // 当前线程进入 BlockedCall 状态，等待回复
         // 必须在 wake_up 之前设置，否则如果 wake_up 导致抢占，当前线程会被错误地置为 Ready
@@ -183,6 +250,9 @@ pub fn call(
         if current.state == ThreadState::BlockedCall {
             scheduler::block_current_thread();
         }
+
+        // 返回后清空通信伙伴
+        current.ipc_partner = None;
     } else {
         log!("ipc: Call current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
         // --- 慢速路径: 阻塞在发送队列 ---
@@ -204,6 +274,12 @@ pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Re
         log!("ipc: Reply current={:p} target={:p} success", current, target);
         // Reply 不产生新的 Reply Cap
         unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
+
+        // 任务完成，当前线程恢复基础优先级
+        {
+            let _guard = current.lock.lock();
+            current.priority = current.base_priority;
+        }
 
         // 唤醒目标线程
         scheduler::wake_up(target);

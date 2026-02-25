@@ -1,7 +1,6 @@
 use super::super::method::*;
-use crate::cap::{Badge, CapPtr, Capability, Rights};
+use crate::cap::{Badge, CapPtr, CapType, Capability, Rights};
 use crate::error::Error;
-use crate::hal;
 use crate::hal::mem::PGSIZE;
 use crate::mem::{PhysAddr, PhysFrame};
 use crate::platform::MemoryType;
@@ -25,15 +24,6 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
             }
             #[cfg(feature = "shell")]
             crate::shell::run();
-            Ok(())
-        }
-        kernelmethod::GET_TIME => {
-            if !cap.has_rights(Rights::READ) {
-                error!("Kernel::TimeNow failed: permission denied");
-                return Err(Error::PermissionDenied);
-            }
-            let now = hal::timer::get_time();
-            utcb.mrs_regs[0] = now;
             Ok(())
         }
         kernelmethod::GET_IRQ => {
@@ -118,6 +108,32 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
                 e
             })?;
 
+            Ok(())
+        }
+        kernelmethod::SET_ALARM => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                error!("Kernel::SET_ALARM failed: permission denied");
+                return Err(Error::PermissionDenied);
+            }
+            let ms = utcb.mrs_regs[0];
+            let ntfn_cptr = CapPtr::from(utcb.mrs_regs[1]);
+
+            // 查找通知能力
+            let ntfn_cap = match tcb.cap_lookup(ntfn_cptr) {
+                Some(c) => {
+                    if c.cap_type() != CapType::Endpoint {
+                        error!("Kernel::SET_ALARM: capability is not an endpoint");
+                        return Err(Error::InvalidCapability);
+                    }
+                    c
+                }
+                None => {
+                    error!("Kernel::SET_ALARM: endpoint not found");
+                    return Err(Error::InvalidCapability);
+                }
+            };
+
+            crate::irq::timer::set_alarm(ms, ntfn_cap);
             Ok(())
         }
         _ => {

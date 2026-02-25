@@ -2,8 +2,8 @@ use super::super::method::*;
 use crate::cap::{CapPtr, CapType, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
-use crate::proc::TCB;
 use crate::proc::scheduler;
+use crate::proc::{TCB, ThreadState};
 
 pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let tcb_ptr = if cap.cap_type() == CapType::TCB {
@@ -66,12 +66,21 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             let mut prio = utcb.mrs_regs[0] as u8;
             let incr = utcb.mrs_regs[1] as i8;
             if prio == 0 {
-                prio = tcb.priority; // 0 表示不修改优先级
+                prio = tcb.base_priority;
             }
             prio = prio.saturating_add_signed(incr);
+
             // 如果修改了优先级，可能需要触发重新调度
-            if prio != tcb.priority {
+            if prio != tcb.base_priority {
+                let was_ready = tcb.state == ThreadState::Ready;
+                if was_ready {
+                    scheduler::remove_thread(tcb);
+                }
                 tcb.set_priority(prio);
+                if was_ready {
+                    tcb.state = ThreadState::Ready;
+                    scheduler::add_thread(tcb);
+                }
                 scheduler::reschedule();
             }
             Ok(())
@@ -120,40 +129,62 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             tcb.set_registers(&utcb.mrs_regs);
             Ok(())
         }
+        tcbmethod::YIELD => {
+            if tcb as *mut TCB == current_tcb as *mut TCB {
+                scheduler::yield_proc();
+                Ok(())
+            } else {
+                Err(Error::InvalidArgs)
+            }
+        }
         tcbmethod::RESUME => {
             if !cap.has_rights(Rights::EXECUTE) {
                 error!("TCB::Resume failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
             // Resume
-            tcb.resume();
-            // 将线程加入调度队列
-            scheduler::add_thread(tcb);
-            // 2. 抢占检查
-            // 如果目标核心是当前核心，且优先级高于当前线程，则触发重新调度
-            let current_cpu = hal::cpu::cpu_id();
-            let target_cpu =
-                if tcb.affinity < hal::cpu::MAX_CPUS { tcb.affinity } else { current_cpu };
+            if tcb.resume() {
+                // 将线程加入调度队列
+                scheduler::add_thread(tcb);
+                // 2. 抢占检查
+                // 如果目标核心是当前核心，且优先级高于当前线程，则触发重新调度
+                let current_cpu = hal::cpu::cpu_id();
+                let target_cpu =
+                    if tcb.affinity < hal::cpu::MAX_CPUS { tcb.affinity } else { current_cpu };
 
-            if target_cpu == current_cpu {
-                if let Some(curr_ptr) = scheduler::current() {
-                    // SAFETY: current() 返回的指针在内核运行期间有效
-                    let curr = unsafe { &*curr_ptr };
-                    if tcb.priority >= curr.priority {
+                if target_cpu == current_cpu {
+                    if let Some(curr_ptr) = scheduler::current() {
+                        // SAFETY: current() 返回的指针在内核运行期间有效
+                        let curr = unsafe { &*curr_ptr };
+                        if tcb.priority >= curr.priority {
+                            scheduler::reschedule();
+                        }
+                    } else {
+                        // 当前没有运行线程（Idle），立即调度
                         scheduler::reschedule();
                     }
-                } else {
-                    // 当前没有运行线程（Idle），立即调度
-                    scheduler::reschedule();
                 }
             }
             Ok(())
         }
         tcbmethod::SUSPEND => {
             // Suspend
+            scheduler::remove_thread(tcb);
             tcb.suspend();
             if tcb as *const TCB == current_tcb as *const TCB {
                 scheduler::block_current_thread();
+            }
+            Ok(())
+        }
+        tcbmethod::SET_TIMESLICE => {
+            // SetTimeslice: (timeslice_ms)
+            let ts = utcb.mrs_regs[0];
+            tcb.timeslice_limit = ts;
+            // 如果希望立即生效，可以顺便更新当前剩余时间片？
+            // 还是仅仅设置下一次 refill 时的值？
+            // 为了直观，我们也将其当前剩余时间片一并更新（只要新值更大）。
+            if ts > tcb.timeslice {
+                tcb.timeslice = ts;
             }
             Ok(())
         }

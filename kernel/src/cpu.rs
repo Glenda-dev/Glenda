@@ -11,6 +11,7 @@ pub struct Cpu {
     pub intena: bool,
     pub enabled: bool,
     pub ready_queues: SpinLock<[TcbQueue; MAX_PRIORITY]>,
+    pub last_tick_time: usize,
 }
 
 impl Cpu {
@@ -22,6 +23,7 @@ impl Cpu {
             intena: false,
             enabled: false,
             ready_queues: SpinLock::new([const { TcbQueue::new() }; MAX_PRIORITY]),
+            last_tick_time: 0,
         }
     }
 }
