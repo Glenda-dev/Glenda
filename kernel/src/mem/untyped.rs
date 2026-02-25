@@ -56,6 +56,11 @@ impl UntypedRegion {
 
         let needed_pages = obj_pages;
         if self.watermark + needed_pages > self.pages {
+            error!(
+                "Untyped::Retype OOM: need {} pages, {} available",
+                needed_pages,
+                self.pages - self.watermark
+            );
             return None;
         }
 
@@ -110,7 +115,10 @@ impl UntypedRegion {
                 let untyped = UntypedRegion { start: obj_paddr, pages: obj_pages, watermark: 0 };
                 Capability::create_untyped(&untyped, Rights::ALL)
             }
-            _ => return None,
+            _ => {
+                error!("Untyped::Retype failed: unknown type");
+                return None;
+            }
         };
 
         self.watermark += needed_pages;

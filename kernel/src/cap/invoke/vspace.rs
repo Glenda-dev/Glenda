@@ -117,7 +117,11 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 return Err(Error::InvalidType);
             };
 
-            let num_pages = frame_cap.get_data();
+            let cap_pages = frame_cap.get_data();
+            let mut num_pages = utcb.mrs_regs[3];
+            if num_pages == 0 || num_pages > cap_pages {
+                num_pages = cap_pages;
+            }
 
             // 执行映射
             pt.map(vaddr, frame_paddr, num_pages * PGSIZE, flags).map_err(|_| {

@@ -20,7 +20,7 @@ use num_enum::FromPrimitive;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Capability {
-    words: [usize; 2],
+    pub words: [usize; 2],
 }
 
 impl Display for Capability {

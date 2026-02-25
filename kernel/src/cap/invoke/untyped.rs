@@ -46,10 +46,9 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
                     };
 
                     root_cnode.insert_child(full_dest, &new_cap, slot_ptr).map_err(|e| {
-                        log!(
+                        error!(
                             "Untyped::Retype failed: insert child failed at {:?}: {:?}",
-                            full_dest,
-                            e
+                            full_dest, e
                         );
                         e
                     })?;
@@ -59,12 +58,105 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
                     Ok(())
                 }
                 None => {
-                    log!(
+                    error!(
                         "Untyped::Retype failed: retype failed (OOM or invalid type) {:?}",
                         CapType::from(obj_type)
                     );
                     Err(Error::InvalidType)
                 }
+            }
+        }
+        untypedmethod::MERGE => {
+            let other_cptr = CapPtr::from(utcb.mrs_regs[0]);
+            let root_cnode = tcb.get_cspace_mut().ok_or(Error::InvalidCapability)?;
+
+            // 查找第二个能力
+            let other_slot_ptr = tcb.lookup_slot(other_cptr).ok_or(Error::InvalidCapability)?;
+            let other_cap = unsafe { &mut (*other_slot_ptr).cap };
+
+            // 检查类型
+            if cap.cap_type() != CapType::Untyped || other_cap.cap_type() != CapType::Untyped {
+                return Err(Error::InvalidType);
+            }
+
+            // 检查权限 - 必须有相同的权限位 (bits 5-12)
+            use crate::cap::capability::{RIGHTS_MASK, RIGHTS_SHIFT, TYPE_MASK};
+            let mask = TYPE_MASK | (RIGHTS_MASK << RIGHTS_SHIFT);
+            if (cap.words[1] & mask) != (other_cap.words[1] & mask) {
+                error!("Untyped::Merge failed: rights mismatch");
+                return Err(Error::PermissionDenied);
+            }
+
+            let u1 = UntypedRegion::from_cap(cap).unwrap();
+            let u2 = UntypedRegion::from_cap(other_cap).unwrap();
+
+            // 检查 watermark - 必须整洁 (没有子对象)
+            if u1.watermark != 0 || u2.watermark != 0 {
+                error!(
+                    "Untyped::Merge failed: watermark not zero ({}, {})",
+                    u1.watermark, u2.watermark
+                );
+                return Err(Error::ResourceBusy);
+            }
+
+            // 检查物理位置是否相邻
+            use crate::hal::mem::PGSIZE;
+            let start1 = u1.start.as_usize();
+            let end1 = start1 + u1.pages * PGSIZE;
+            let start2 = u2.start.as_usize();
+            let end2 = start2 + u2.pages * PGSIZE;
+
+            if end1 == start2 {
+                // u1 在前, u2 在后
+                let total_pages = u1.pages + u2.pages;
+                if total_pages > 0x1FFFFFF {
+                    return Err(Error::InvalidArgs);
+                }
+
+                // 更新当前能力的大小
+                cap.set_data(total_pages | (0 << 25));
+                // 删除第二个能力 (通过 CapPtr)
+                root_cnode.delete(other_cptr)?;
+
+                log!(
+                    "Untyped::MERGE: merged [0x{:x}, 0x{:x}) and [0x{:x}, 0x{:x}) into [0x{:x}, 0x{:x})",
+                    start1,
+                    end1,
+                    start2,
+                    end2,
+                    start1,
+                    start1 + total_pages * PGSIZE
+                );
+                Ok(())
+            } else if end2 == start1 {
+                // u2 在前, u1 在后
+                let total_pages = u1.pages + u2.pages;
+                if total_pages > 0x1FFFFFF {
+                    return Err(Error::InvalidArgs);
+                }
+
+                // 更新基址和大小
+                cap.words[0] = start2;
+                cap.set_data(total_pages | (0 << 25));
+                // 删除第二个能力
+                root_cnode.delete(other_cptr)?;
+
+                log!(
+                    "Untyped::MERGE: merged [0x{:x}, 0x{:x}) and [0x{:x}, 0x{:x}) into [0x{:x}, 0x{:x})",
+                    start2,
+                    end2,
+                    start1,
+                    end1,
+                    start2,
+                    start2 + total_pages * PGSIZE
+                );
+                Ok(())
+            } else {
+                error!(
+                    "Untyped::Merge failed: regions not adjacent: [0x{:x}, 0x{:x}) and [0x{:x}, 0x{:x})",
+                    start1, end1, start2, end2
+                );
+                Err(Error::InvalidAddress)
             }
         }
         _ => {

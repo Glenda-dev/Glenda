@@ -40,6 +40,7 @@ pub mod cnodemethod {
 
 pub mod untypedmethod {
     pub const RETYPE: usize = 1;
+    pub const MERGE: usize = 2;
 }
 
 pub mod irqmethod {
