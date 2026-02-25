@@ -30,7 +30,7 @@ pub fn init() {
     } else if let Some((dtb_pa, _)) = crate::boot::get_dtb() {
         self::dtb::parse(dtb_pa.as_usize());
     } else {
-        log!("platform: No DTB or ACPI found. Continuing anyway...");
+        panic!("platform: No DTB or ACPI found");
     }
 }
 

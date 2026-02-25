@@ -39,11 +39,21 @@ pub struct MemoryMapEntry {
     pub kind: MemoryType,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FrameBufferInfo {
+    pub address: VirtAddr,
+    pub width: u32,
+    pub height: u32,
+    pub pitch: u32,
+    pub bpp: u32,
+}
+
 pub struct BootLoaderInfo {
     pub dtb_addr: Option<(VirtAddr, usize)>,
     pub rsdp_addr: Option<VirtAddr>,
     pub hhdm_offset: usize,
     pub memory_map: &'static [MemoryMapEntry],
+    pub framebuffer: Option<FrameBufferInfo>,
     pub kernel_address: (PhysAddr, VirtAddr),
     pub kernel_size: usize,
     pub initrd_addr: Option<(VirtAddr, usize)>,
@@ -71,6 +81,10 @@ pub fn get_hhdm() -> usize {
 
 pub fn get_mem_map() -> &'static [MemoryMapEntry] {
     BOOT_LOADER_INFO.get().map(|info| info.memory_map).unwrap_or(&[])
+}
+
+pub fn get_framebuffer() -> Option<FrameBufferInfo> {
+    BOOT_LOADER_INFO.get().and_then(|info| info.framebuffer)
 }
 
 pub fn get_kernel_address() -> (PhysAddr, VirtAddr) {

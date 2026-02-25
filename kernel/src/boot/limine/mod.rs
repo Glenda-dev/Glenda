@@ -62,6 +62,10 @@ static MODULE_REQUEST: ModuleRequest = ModuleRequest::new();
 #[unsafe(link_section = ".requests")]
 static MP_REQUEST: MpRequest = MpRequest::new();
 
+#[used]
+#[unsafe(link_section = ".requests")]
+static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
+
 pub unsafe fn init() {
     let mp_response = MP_REQUEST.get_response().expect("limine: MP request failed!");
     let bsp_id = arch::bspid(mp_response);
@@ -123,11 +127,23 @@ pub unsafe fn init() {
     let mp_response = MP_REQUEST.get_response();
     let cpu_count = mp_response.map(|res| res.cpus().len()).unwrap_or(1);
 
+    let framebuffer = FRAMEBUFFER_REQUEST
+        .get_response()
+        .and_then(|res| res.framebuffers().next())
+        .map(|fb| crate::boot::FrameBufferInfo {
+            address: VirtAddr::from(fb.addr() as usize),
+            width: fb.width() as u32,
+            height: fb.height() as u32,
+            pitch: fb.pitch() as u32,
+            bpp: fb.bpp() as u32,
+        });
+
     BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
         dtb_addr: DTB_REQUEST.get_response().map(|res| (VirtAddr::from(res.dtb_ptr() as usize), 0)), // Limine doesn't provide size?
         rsdp_addr: RSDP_REQUEST.get_response().map(|res| VirtAddr::from(res.address() as usize)),
         hhdm_offset,
         memory_map: unsafe { &MEM_MAP[..MEM_MAP_COUNT] },
+        framebuffer,
         kernel_address: kernel_addr,
         kernel_size,
         initrd_addr,

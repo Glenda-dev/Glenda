@@ -6,6 +6,8 @@ use uefi::mem::memory_map::{MemoryMap, MemoryType as uefi_mem_type};
 use uefi::table::cfg::ACPI2_GUID;
 use uefi::{Handle, Status};
 
+use uefi::proto::console::gop::GraphicsOutput;
+
 pub mod arch;
 
 pub use arch::{bootstrap, init};
@@ -86,12 +88,39 @@ pub unsafe extern "efiapi" fn efi_main(
     // 3. 收集内存映射
     let _count = collect_memory_map();
 
-    // 4. 填充 BootLoaderInfo
+    // 4. 获取 Framebuffer
+    let framebuffer = (|| {
+        let handle = uefi::boot::get_handle_for_protocol::<GraphicsOutput>().ok()?;
+        let mut gop = unsafe {
+            uefi::boot::open_protocol::<GraphicsOutput>(
+                uefi::boot::OpenProtocolParams {
+                    handle,
+                    agent: uefi::boot::image_handle(),
+                    controller: None,
+                },
+                uefi::boot::OpenProtocolAttributes::GetProtocol,
+            )
+            .ok()?
+        };
+        let info = gop.current_mode_info();
+        let (width, height) = info.resolution();
+        let stride = info.stride();
+        Some(crate::boot::FrameBufferInfo {
+            address: VirtAddr::from(gop.frame_buffer().as_mut_ptr() as usize),
+            width: width as u32,
+            height: height as u32,
+            pitch: (stride * 4) as u32,
+            bpp: 32,
+        })
+    })();
+
+    // 5. 填充 BootLoaderInfo
     BOOT_LOADER_INFO.call_once(|| BootLoaderInfo {
         dtb_addr,
         rsdp_addr,
         hhdm_offset: 0,
         memory_map: unsafe { &MEM_MAP[..MEM_MAP_COUNT] },
+        framebuffer,
         kernel_address: (PhysAddr::from(0), VirtAddr::from(0)),
         kernel_size: 0,
         initrd_addr: None,

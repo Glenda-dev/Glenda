@@ -80,5 +80,31 @@ impl IntcDriver {
     }
 }
 
+pub enum FbDriver {
+    Framebuffer(crate::drivers::fb::FramebufferWriter),
+}
+
+impl FbDriver {
+    pub fn map_mmio(&self, _kpt: &mut PageTable) {
+        match self {
+            FbDriver::Framebuffer(fb) => {
+                let _info = fb.get_info();
+            }
+        }
+    }
+
+    pub fn write_fmt(&self, args: core::fmt::Arguments) -> core::fmt::Result {
+        match self {
+            FbDriver::Framebuffer(fb) => {
+                use core::fmt::Write;
+                crate::drivers::fb::FbWriter(fb).write_fmt(args)
+            }
+        }
+    }
+}
+
 pub static UART: Once<UartDriver> = Once::new();
 pub static INTC: Once<IntcDriver> = Once::new();
+pub static FB: Once<FbDriver> = Once::new();
+
+pub mod fb;

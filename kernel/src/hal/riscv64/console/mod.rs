@@ -9,6 +9,9 @@ pub fn init() {
 }
 
 pub fn print(args: core::fmt::Arguments) {
+    if let Some(fb) = hal_drivers::FB.get() {
+        let _ = fb.write_fmt(args);
+    }
     if let Some(driver) = hal_drivers::UART.get() {
         match driver {
             hal_drivers::UartDriver::Ns16550a(uart) => {

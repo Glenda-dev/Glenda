@@ -1,5 +1,5 @@
 use crate::drivers as generic_drivers;
-use crate::hal::riscv64::drivers::{INTC, IntcDriver, UART, UartDriver};
+use crate::hal::riscv64::drivers::{FB, FbDriver, INTC, IntcDriver, UART, UartDriver};
 use crate::platform::acpi::GlendaAcpiHandler;
 use acpi::AcpiTables;
 use acpi::sdt::spcr::SpcrInterfaceType;
@@ -86,5 +86,12 @@ pub fn parse(tables: &AcpiTables<GlendaAcpiHandler>) {
                 offset += entry_header.length as usize;
             }
         }
+    }
+
+    if let Some(info) = crate::boot::get_framebuffer() {
+        let writer = crate::drivers::fb::FramebufferWriter::new(info);
+        writer.clear();
+        FB.call_once(|| FbDriver::Framebuffer(writer));
+        log!("hal: framebuffer initialized at {:#x}", info.address.as_usize());
     }
 }

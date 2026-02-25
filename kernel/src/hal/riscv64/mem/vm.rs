@@ -39,4 +39,7 @@ pub fn setup_mmio(kpt: &mut PageTable) {
     if let Some(intc) = drivers::INTC.get() {
         intc.map_mmio(kpt);
     }
+    if let Some(fb) = drivers::FB.get() {
+        fb.map_mmio(kpt);
+    }
 }

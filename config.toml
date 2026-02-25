@@ -1,7 +1,7 @@
 [system]
 arch = "riscv64"
 profile = "relwithdebuginfo"
-bootloader = "uefi"
+bootloader = "opensbi"
 
 [qemu]
 cpus = 1

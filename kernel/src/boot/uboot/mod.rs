@@ -229,6 +229,7 @@ pub unsafe fn init() {
         rsdp_addr: None,
         hhdm_offset: 0,
         memory_map: unsafe { &MEM_MAP[..MEM_MAP_COUNT] },
+        framebuffer: None,
         kernel_address: (PhysAddr::from(pbase), VirtAddr::from(pbase)),
         kernel_size,
         initrd_addr,
