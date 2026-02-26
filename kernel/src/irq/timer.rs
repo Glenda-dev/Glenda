@@ -6,7 +6,12 @@ use crate::proc::scheduler;
 use crate::proc::scheduler::get_default_timeslice;
 use crate::sync::spinlock::SpinLock;
 
-static ALARM_LOCK: SpinLock<Option<(usize, Capability)>> = SpinLock::new(None);
+pub struct Alarm {
+    pub time: usize,
+    pub ep: Capability,
+}
+
+static ALARM_LOCK: SpinLock<Option<Alarm>> = SpinLock::new(None);
 
 pub fn init() {
     let now = hal::timer::get_time();
@@ -34,14 +39,16 @@ pub fn program_next_tick() {
     // 检查闹钟
     let alarm_due = {
         let mut alarm = ALARM_LOCK.lock();
-        if let Some((time, _)) = alarm.as_ref() {
-            if now >= *time { alarm.take() } else { None }
+        if let Some(alarm_data) = alarm.as_ref() {
+            let time = alarm_data.time;
+            if now >= time { alarm.take() } else { None }
         } else {
             None
         }
     };
 
-    if let Some((_, ntfn)) = alarm_due {
+    if let Some(alarm_data) = alarm_due {
+        let ntfn = alarm_data.ep;
         if ntfn.cap_type() == crate::cap::CapType::Endpoint {
             let ep = unsafe { ntfn.obj_ptr().as_mut::<ipc::Endpoint>() };
             let _ = ipc::notify(ep, ntfn.get_badge());
@@ -62,9 +69,10 @@ pub fn program_next_tick() {
     // 如果有闹钟，取最小者
     {
         let alarm = ALARM_LOCK.lock();
-        if let Some((time, _)) = alarm.as_ref() {
-            if *time > now && *time < next {
-                next = *time;
+        if let Some(alarm_data) = alarm.as_ref() {
+            let time = alarm_data.time;
+            if time > now && time < next {
+                next = time;
             }
         }
     }
@@ -72,10 +80,10 @@ pub fn program_next_tick() {
     hal::timer::set_next_event(next);
 }
 
-pub fn set_alarm(ticks: usize, notification: Capability) {
+pub fn set_alarm(time: usize, ep: Capability) {
     {
         let mut alarm = ALARM_LOCK.lock();
-        *alarm = Some((ticks, notification));
+        *alarm = Some(Alarm { time, ep });
     }
     program_next_tick();
 }

@@ -210,15 +210,14 @@ fn syscall_handler(ctx: &mut TrapFrame) {
     ctx.advance_pc();
 }
 
-// 外设中断处理 (基于PLIC)
+// 外设中断处理
 fn external_handler() {
     let cpuid = hal::cpu::cpu_id();
     let id = hal::irq::claim(cpuid);
     match id {
         None => return,
-        Some(id) => irq::handle_claimed(cpuid, id as usize).unwrap_or_else(|e| {
-            printk_unsynced!("trap: Failed to handle external interrupt: {:?}\n", e)
-        }),
+        Some(id) => irq::handle_claimed(cpuid, id as usize)
+            .unwrap_or_else(|e| error!("trap: Failed to handle external interrupt: {:?}\n", e)),
     }
 }
 
