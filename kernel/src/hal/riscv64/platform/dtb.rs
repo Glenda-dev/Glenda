@@ -17,7 +17,7 @@ pub fn parse(fdt: &fdt::Fdt) {
         })
         .unwrap_or(10_000_000);
 
-    crate::hal::timer::set_frequency(timer_frequency);
+    crate::hal::riscv64::timer::init(timer_frequency);
 
     for node in fdt.all_nodes() {
         if let Some(compatibles) = node.compatible() {

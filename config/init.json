@@ -17,6 +17,15 @@
         {
             "name": "gopher",
             "path": "gopher",
+            "auto_start": false,
+            "dependencies": [
+                "unicorn",
+                "march"
+            ]
+        },
+        {
+            "name": "march",
+            "path": "march",
             "auto_start": true,
             "dependencies": [
                 "unicorn"

@@ -62,6 +62,7 @@ pub mod kernelmethod {
     pub const GET_IRQ: usize = 2;
     pub const GET_MMIO: usize = 3;
     pub const SET_ALARM: usize = 4;
+    pub const GET_FREQ: usize = 5;
 }
 
 pub mod vspacemethod {

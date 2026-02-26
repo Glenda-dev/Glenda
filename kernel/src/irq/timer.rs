@@ -3,7 +3,7 @@ use crate::cpu;
 use crate::hal;
 use crate::ipc;
 use crate::proc::scheduler;
-use crate::proc::scheduler::DEFAULT_TIMESLICE;
+use crate::proc::scheduler::get_default_timeslice;
 use crate::sync::spinlock::SpinLock;
 
 static ALARM_LOCK: SpinLock<Option<(usize, Capability)>> = SpinLock::new(None);
@@ -52,9 +52,9 @@ pub fn program_next_tick() {
     // 默认下一个时间片结束
     let tcb_slice = if let Some(tcb_ptr) = scheduler::current() {
         let tcb = unsafe { &*tcb_ptr };
-        if tcb.timeslice > 0 { tcb.timeslice } else { DEFAULT_TIMESLICE }
+        if tcb.timeslice > 0 { tcb.timeslice } else { get_default_timeslice() }
     } else {
-        DEFAULT_TIMESLICE
+        get_default_timeslice()
     };
 
     let mut next = now + tcb_slice;
@@ -72,12 +72,10 @@ pub fn program_next_tick() {
     hal::timer::set_next_event(next);
 }
 
-pub fn set_alarm(ms: usize, notification: Capability) {
-    let now = hal::timer::get_time();
-    let time = now + ms;
+pub fn set_alarm(ticks: usize, notification: Capability) {
     {
         let mut alarm = ALARM_LOCK.lock();
-        *alarm = Some((time, notification));
+        *alarm = Some((ticks, notification));
     }
     program_next_tick();
 }

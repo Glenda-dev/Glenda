@@ -115,7 +115,7 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
                 error!("Kernel::SET_ALARM failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
-            let ms = utcb.mrs_regs[0];
+            let ticks = utcb.mrs_regs[0];
             let ntfn_cptr = CapPtr::from(utcb.mrs_regs[1]);
 
             // 查找通知能力
@@ -133,7 +133,15 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
                 }
             };
 
-            crate::irq::timer::set_alarm(ms, ntfn_cap);
+            crate::irq::timer::set_alarm(ticks, ntfn_cap);
+            Ok(())
+        }
+        kernelmethod::GET_FREQ => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                error!("Kernel::GET_FREQ failed: permission denied");
+                return Err(Error::PermissionDenied);
+            }
+            utcb.mrs_regs[0] = crate::hal::timer::get_freq();
             Ok(())
         }
         _ => {

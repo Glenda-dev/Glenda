@@ -16,7 +16,6 @@ pub fn init() {
 
 pub fn init_cpu() {
     hal::irq::init_cpu();
-    hal::timer::init();
     timer::init();
     let cpuid = hal::cpu::cpu_id();
     log!("irq: Initialized for cpu {}", cpuid);

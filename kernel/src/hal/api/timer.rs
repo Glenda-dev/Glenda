@@ -1,10 +1,15 @@
 /// 初始化时钟硬件
-pub fn init() {
+pub fn init(freq: usize) {
     unimplemented!()
 }
 
 /// 获取当前单调时钟的计数（毫秒级）
 pub fn get_time() -> usize {
+    unimplemented!()
+}
+
+/// 获取当前单调时钟的频率
+pub fn get_freq() -> usize {
     unimplemented!()
 }
 

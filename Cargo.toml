@@ -30,6 +30,7 @@ members = [
     "drivers/sys/loop",
     "service/fossil",
     "service/nexus",
+    "service/march",
 ]
 resolver = "2"
 

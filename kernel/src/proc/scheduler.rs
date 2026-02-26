@@ -4,9 +4,13 @@ use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
 
-pub const DEFAULT_TIMESLICE: usize = 100;
-// 最大优先级数量 (0-255)
+pub const DEFAULT_TIMESLICE_MS: usize = 100;
 pub const MAX_PRIORITY: usize = 256;
+
+#[inline]
+pub fn get_default_timeslice() -> usize {
+    hal::timer::get_freq() / (1000 / DEFAULT_TIMESLICE_MS)
+}
 
 #[derive(Debug)]
 pub struct TcbQueue {
@@ -274,7 +278,7 @@ pub fn scheduler() -> ! {
                     (*tcb_ptr).timeslice = if (*tcb_ptr).timeslice_limit > 0 {
                         (*tcb_ptr).timeslice_limit
                     } else {
-                        DEFAULT_TIMESLICE
+                        get_default_timeslice()
                     };
                 }
 

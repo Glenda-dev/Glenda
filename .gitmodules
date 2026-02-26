@@ -49,3 +49,6 @@
 [submodule "service/nexus"]
 	path = service/nexus
 	url = https://github.com/Glenda-dev/nexus.git
+[submodule "service/march"]
+	path = service/march
+	url = https://github.com/Glenda-dev/march.git

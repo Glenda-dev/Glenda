@@ -43,6 +43,12 @@ build = "cargo"
 output = "build/nexus.elf"
 kind = "service"
 [[services]]
+name = "march"
+path = "service/march"
+build = "cargo"
+output = "build/march.elf"
+kind = "service"
+[[services]]
 name = "initrdfs"
 path = "fs/initrdfs"
 build = "cargo"

@@ -7,7 +7,7 @@ use acpi::sdt::spcr::SpcrInterfaceType;
 pub fn parse(tables: &AcpiTables<GlendaAcpiHandler>) {
     // 0. Initialize platform info
     // Default RISC-V frequency is often 10MHz in QEMU.
-    crate::hal::timer::set_frequency(10_000_000);
+    crate::hal::riscv64::timer::init(10_000_000);
 
     // 1. Parse SPCR for UART
     // Serial Port Console Redirection Table
