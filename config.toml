@@ -43,6 +43,13 @@ build = "cargo"
 output = "build/nexus.elf"
 kind = "service"
 [[services]]
+name = "prism"
+path = "service/prism"
+build = "cargo"
+output = "build/prism.elf"
+kind = "service"
+
+[[services]]
 name = "march"
 path = "service/march"
 build = "cargo"
@@ -133,6 +140,9 @@ path = "config/fs.json"
 [[files]]
 name = "network.json"
 path = "config/network.json"
+[[files]]
+name = "tty.json"
+path = "config/tty.json"
 
 [features]
 kernel = []

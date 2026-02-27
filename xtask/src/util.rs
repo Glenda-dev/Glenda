@@ -112,6 +112,7 @@ pub fn strip(cfg: &Config, file: &Path) -> anyhow::Result<()> {
     let bin = format!("{}objcopy", cfg.system.arch.binutils_prefix());
     let tool = which(&bin)
         .or_else(|_| which("rust-objcopy"))
+        .or_else(|_| which("llvm-objcopy"))
         .or_else(|_| which("objcopy"))
         .map_err(|_| anyhow::anyhow!("[ ERROR ] install {} or rust-objcopy first", bin))?;
     let mut cmd = Command::new(tool);

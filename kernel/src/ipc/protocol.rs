@@ -1,5 +1,6 @@
 // 异常和故障
 pub const KERNEL_PROTO: usize = 0x0100;
+pub const TERMINAL_PROTO: usize = 0x0B00;
 
 /// 系统调用 (Syscall)
 /// 触发条件：用户态调用了系统调用号
@@ -42,3 +43,9 @@ pub const UNKNOWN_FAULT: usize = 0x07;
 /// 触发条件：硬件中断发生，内核转发给注册的处理程序
 /// 消息内容：通常为空，通过 Badge 区分
 pub const NOTIFY: usize = 0x08;
+
+// Additional methods for terminal I/O
+pub const TERM_PUT_STR: usize = 0x01;
+pub const TERM_GET_STR: usize = 0x02;
+pub const TERM_GET_CHAR: usize = 0x03;
+pub const TERM_PUT_CHAR: usize = 0x04;

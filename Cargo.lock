@@ -853,6 +853,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "num_enum",
+ "postcard",
+ "psf2-font",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "proc-macro-error-attr2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -882,6 +894,12 @@ checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "psf2-font"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af48e78d72e173d57d5de70b495051de5efdf1c2cc7351c97a82f9974519a136"
 
 [[package]]
 name = "ptr_meta"

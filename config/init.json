@@ -36,6 +36,14 @@
             "path": "nexus",
             "auto_start": true,
             "dependencies": []
+        },
+        {
+            "name": "prism",
+            "path": "prism",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn"
+            ]
         }
     ]
 }

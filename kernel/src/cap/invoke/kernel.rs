@@ -144,6 +144,26 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
             utcb.mrs_regs[0] = crate::hal::timer::get_freq();
             Ok(())
         }
+        kernelmethod::SET_CONSOLE_ENDPOINT => {
+            if !cap.has_rights(Rights::EXECUTE) {
+                error!("Kernel::SET_CONSOLE_ENDPOINT failed: permission denied");
+                return Err(Error::PermissionDenied);
+            }
+            let ep_cptr = CapPtr::from(utcb.mrs_regs[0]);
+            let ep_cap = match tcb.cap_lookup(ep_cptr) {
+                Some(c) => c,
+                None => {
+                    error!("Kernel::SET_CONSOLE_ENDPOINT: endpoint not found");
+                    return Err(Error::InvalidCapability);
+                }
+            };
+            if ep_cap.cap_type() != CapType::Endpoint {
+                error!("Kernel::SET_CONSOLE_ENDPOINT: not an endpoint");
+                return Err(Error::InvalidCapability);
+            }
+            crate::printk::set_console_endpoint(Some(ep_cap.clone()));
+            Ok(())
+        }
         _ => {
             error!("Kernel::invoke failed: invalid method {}", method);
             Err(Error::InvalidMethod)

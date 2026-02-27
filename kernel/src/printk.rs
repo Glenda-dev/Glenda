@@ -1,4 +1,6 @@
+use crate::cap::{CapType, Capability};
 use crate::hal::console;
+use crate::ipc;
 use crate::sync::SpinLock;
 use core::fmt::Arguments;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -6,17 +8,41 @@ use core::sync::atomic::{AtomicBool, Ordering};
 static PRINTK_LOCK: SpinLock<()> = SpinLock::new(());
 pub static VERBOSE: AtomicBool = AtomicBool::new(true);
 
-pub fn set_verbose(enable: bool) {
-    VERBOSE.store(enable, Ordering::Relaxed);
+static CONSOLE_ENDPOINT: SpinLock<Option<Capability>> = SpinLock::new(None);
+
+pub fn set_console_endpoint(ep: Option<Capability>) {
+    let mut guard = CONSOLE_ENDPOINT.lock();
+    *guard = ep;
+}
+
+pub fn get_console_endpoint() -> Option<Capability> {
+    CONSOLE_ENDPOINT.lock().clone()
 }
 
 pub fn is_verbose() -> bool {
     VERBOSE.load(Ordering::Relaxed)
 }
+pub fn set_verbose(enable: bool) {
+    VERBOSE.store(enable, Ordering::Relaxed);
+}
 
 pub fn _printk(args: Arguments) {
     let _guard = PRINTK_LOCK.lock();
     console::print(args);
+
+    // Check if we need to notify someone
+    let guard = CONSOLE_ENDPOINT.lock();
+    if let Some(cap) = &*guard {
+        if cap.cap_type() == CapType::Endpoint {
+            let ep_ptr = cap.obj_ptr();
+            let badge = cap.get_badge();
+            let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
+            // Since we can't easily pass the string here without allocation,
+            // we just notify for now. The receiver can pull the data.
+            // Or we could have a kernel buffer.
+            let _ = ipc::notify(ep, badge);
+        }
+    }
 }
 pub fn _printk_unsynced(args: Arguments) {
     console::print(args);

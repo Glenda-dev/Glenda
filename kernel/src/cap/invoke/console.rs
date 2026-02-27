@@ -1,7 +1,10 @@
 use super::super::method::*;
-use crate::cap::{Capability, Rights};
+use crate::cap::{CapType, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
+use crate::ipc;
+use crate::ipc::protocol;
+use crate::printk;
 use crate::proc::scheduler;
 
 pub fn invoke_console(cap: &mut Capability, method: usize, _cptr: usize) -> Result<(), Error> {
@@ -13,6 +16,27 @@ pub fn invoke_console(cap: &mut Capability, method: usize, _cptr: usize) -> Resu
             return Err(Error::MappingFailed);
         }
     };
+
+    // Check for global console redirect
+    if let Some(redirect_cap) = printk::get_console_endpoint() {
+        if redirect_cap.cap_type() == CapType::Endpoint {
+            let ep_ptr = redirect_cap.obj_ptr();
+            let ep = unsafe { ep_ptr.as_ref::<ipc::Endpoint>() };
+            let label = match method {
+                consolemethod::CONSOLE_PUT_STR => protocol::TERM_PUT_STR,
+                consolemethod::CONSOLE_GET_STR => protocol::TERM_GET_STR,
+                consolemethod::CONSOLE_GET_CHAR => protocol::TERM_GET_CHAR,
+                consolemethod::CONSOLE_PUT_CHAR => protocol::TERM_PUT_CHAR,
+                _ => {
+                    error!("Console::invoke failed: unsupported method for redirect");
+                    return Err(Error::InvalidMethod);
+                }
+            };
+            let msg_tag = ipc::MsgTag::new(protocol::TERMINAL_PROTO, label, ipc::MsgFlags::NONE);
+            utcb.msg_tag = msg_tag;
+            return ipc::call(tcb, ep, redirect_cap.get_badge(), None);
+        }
+    }
 
     match method {
         consolemethod::CONSOLE_PUT_STR => {
