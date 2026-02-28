@@ -29,5 +29,7 @@
             ],
             "autostart": false
         }
-    ]
+    ],
+    "replacement_policy": "lru",
+    "write_policy": "write-through"
 }

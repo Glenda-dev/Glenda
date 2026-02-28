@@ -857,6 +857,7 @@ name = "prism"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "libglenda_drivers-rs",
  "num_enum",
  "postcard",
  "psf2-font",
