@@ -48,13 +48,13 @@ pub fn bootstrap_cpus() {
     let opaque = crate::boot::get_dtb().map(|(pa, _)| pa.as_usize()).unwrap_or(0);
     let harts = crate::boot::get_cpu_count();
     let cpuid = cpu::cpu_id();
-    log!("sbi: Bootstrapping secondary CPUs from CPU {}...", cpuid);
+    log!("opensbi: Bootstrapping secondary CPUs from CPU {}...", cpuid);
     for target in 0..harts {
         if target == cpuid {
             continue;
         }
         match sbi::send_hsm(target, 0, start_addr, opaque).map(|_| ()) {
-            Ok(()) => log!("sbi: Started CPU {} via SBI", target),
+            Ok(()) => log!("opensbi: Started CPU {} via SBI", target),
             Err(err) => log!(
                 "{}sbi: Failed to start CPU {} via SBI: error {}{}\n",
                 ANSI_RED,

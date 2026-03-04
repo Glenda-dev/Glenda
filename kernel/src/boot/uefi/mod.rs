@@ -132,7 +132,7 @@ pub unsafe extern "efiapi" fn efi_main(
     let _ = unsafe { uefi::boot::exit_boot_services(uefi_mem_type::LOADER_DATA) };
 
     // 6. 开启 MMU 并跳转到内核
-    arch::jump_to_kernel(hartid);
+    crate::glenda_boot(cpuid);
 
     // Should not return
     Status::SUCCESS

@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::mem::{PPN, PageTable, Perms, PhysAddr, VPN, VirtAddr};
+use crate::proc::asid;
 
 /// 页大小
 pub const PGSIZE: usize = 4096;
@@ -16,7 +17,9 @@ pub const ASID_MASK: usize = MAX_ASID - 1;
 /// 内核栈大小
 pub const KSTACK_PAGES: usize = 1;
 /// 用户地址
-pub const USER_VA: usize = 0x400000;
+pub const USER_VA: usize = 0x10000;
+/// 页表项标志掩码
+pub const PTEFLAGS_MASK: usize = 0x3FF;
 /// 页表项类型
 #[derive(Clone, Copy, Debug)]
 pub struct Pte;
@@ -24,7 +27,9 @@ pub struct Pte;
 /// 刷新 TLB
 ///
 /// `vaddr`: 可选的虚拟地址，如果为 None 则刷新整个 TLB
-pub fn flush_tlb(vaddr: Option<VirtAddr>) {
+/// `size`: 刷新大小，0 表示单页
+/// `asid`: 地址空间标识符
+pub fn flush_tlb(vaddr: Option<VirtAddr>, size: usize, asid: Option<usize>) {
     unimplemented!()
 }
 
@@ -70,7 +75,7 @@ pub fn pt_setup(pt: &mut PageTable) -> Result<(), Error> {
 
 impl Pte {
     pub const fn null() -> Self {
-        unimplemented!()
+        Pte
     }
     pub const fn from(pa: PhysAddr, flags: Perms) -> Self {
         unimplemented!()

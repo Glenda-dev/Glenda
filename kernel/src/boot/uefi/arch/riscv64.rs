@@ -45,24 +45,3 @@ pub fn get_boot_hartid() -> usize {
     // 回退默认 0
     panic!("Failed to get boot hart ID from EFI_RISCV_BOOT_PROTOCOL");
 }
-
-pub fn jump_to_kernel(hartid: usize) {
-    // 设置 CPU ID 并建立页表
-    hal::cpu::set_cpuid(hartid);
-
-    let regions = unsafe { &MEM_MAP[..MEM_MAP_COUNT] };
-    let satp = unsafe { hal::mem::setup_boot_pagetable(regions) };
-    unsafe { hal::mem::activate_vspace(satp) };
-
-    // 跳转到内核主入口
-    crate::glenda_boot();
-}
-
-pub unsafe fn init() {
-    // Already populated in efi_main
-}
-
-pub fn bootstrap() {
-    let hartid = hal::cpu::cpu_id();
-    jump_to_kernel(hartid);
-}

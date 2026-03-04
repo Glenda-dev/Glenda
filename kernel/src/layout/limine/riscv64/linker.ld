@@ -1,5 +1,5 @@
 OUTPUT_ARCH(elf64-littleriscv)
-ENTRY(glenda_boot)
+ENTRY(master_trampoline)
 
 PHDRS
 {
@@ -57,9 +57,4 @@ SECTIONS
   . = ALIGN(0x1000);
   PROVIDE(__alloc_start = .);
 
-  /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
-  /DISCARD/ : {
-      *(.eh_frame*)
-      *(.note .note.*)
-  }
 }

@@ -18,7 +18,7 @@ pub fn setup_trampoline(kpt: &mut PageTable) {
 
     assert!(tramp_pa.is_aligned(PGSIZE));
     let tramp_va = VirtAddr::from(TRAMPOLINE_VA);
-    let flags = Perms::READ | Perms::EXECUTE | Perms::ACCESSED | Perms::GLOBAL;
+    let flags = Perms::READ | Perms::EXECUTE | Perms::GLOBAL;
     log!(
         "hal: Map TRAMPOLINE [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
         tramp_pa.as_usize(),

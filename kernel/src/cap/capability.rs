@@ -1,7 +1,7 @@
 use super::CapType;
 use super::Rights;
 use crate::cap::Badge;
-use crate::cap::cnode::{CNODE_PAGES, CNODE_SLOTS, CNode};
+use crate::cap::cnode::{CNODE_PAGES, CNode};
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::PageTable;
@@ -418,6 +418,17 @@ impl Capability {
         (paddr, Asid::from(asid as u16, generation as u64))
     }
 
+    pub fn set_asid(&mut self, asid: Asid) {
+        if self.cap_type() == CapType::VSpace {
+            let asid_val = asid.id as usize & ASID_MASK;
+            let gen_val = asid.generation as usize;
+            let mask = !((ASID_MASK << DATA_SHIFT) | (!0usize << (DATA_SHIFT + ASID_BITS)));
+            self.words[1] = (self.words[1] & mask)
+                | (asid_val << DATA_SHIFT)
+                | (gen_val << (DATA_SHIFT + ASID_BITS));
+        }
+    }
+
     pub fn frame_info(&self) -> Option<(PhysAddr, usize, bool)> {
         if self.cap_type() == CapType::Frame {
             let paddr = PhysAddr::from(self.words[0]);
@@ -460,20 +471,19 @@ impl Capability {
             }
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
-                let cnode = unsafe { vaddr.as_ref::<CNode>() };
-                if cnode.ref_count().load(Ordering::Relaxed) > 1 {
+                let cnode_mut = unsafe { &mut *(vaddr.as_usize() as *mut CNode) };
+                if cnode_mut.ref_count().load(Ordering::Relaxed) > 1 {
                     warn!(
-                        "cap_recycle: Cannot recycle CNode {:p}: still has {} references",
-                        cnode,
-                        cnode.ref_count().load(Ordering::Relaxed)
+                        "cap: Cannot recycle CNode {:p}: still has {} references",
+                        cnode_mut,
+                        cnode_mut.ref_count().load(Ordering::Relaxed)
                     );
                     return None;
                 }
 
-                // Manually drop slots 1..255 to decrement ref counts of contained caps
-                for i in 1..CNODE_SLOTS {
-                    unsafe { core::ptr::drop_in_place(cnode.get_slot_ptr(i)) };
-                }
+                // Explicitly trigger Drop to use bitmap for efficient cleanup of used slots.
+                // This will call delete_recursive on all active slots.
+                unsafe { core::ptr::drop_in_place(cnode_mut) };
 
                 let paddr = virt_to_phys(vaddr);
                 Some(Self::create_untyped(

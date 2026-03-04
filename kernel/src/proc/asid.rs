@@ -39,7 +39,7 @@ impl AsidManager {
 
     /// 分配一个新的 ASID
     fn alloc(&mut self) -> Asid {
-        if self.current_asid < MAX_ASID as u16 {
+        if (self.current_asid as usize) < MAX_ASID - 1 {
             self.current_asid += 1;
         } else {
             // ASID 耗尽，进入下一代，重置计数器
@@ -47,7 +47,7 @@ impl AsidManager {
             self.current_asid = 1;
 
             // 关键：刷新所有 TLB，因为旧代的 ASID 1 现在要被复用了
-            hal::mem::flush_tlb(None);
+            hal::mem::flush_tlb(None, 0, None);
         }
 
         Asid { id: self.current_asid, generation: self.generation }

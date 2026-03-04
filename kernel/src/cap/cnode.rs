@@ -2,11 +2,10 @@ use super::{CapType, Capability};
 use crate::error::Error;
 use crate::hal::mem::PGSIZE;
 use crate::mem::VirtAddr;
-// use crate::printk;
 use crate::sync::{SpinLock, SpinLockGuard};
 use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
@@ -41,19 +40,21 @@ impl CapPtr {
     }
 
     pub fn len(&self) -> usize {
-        if self.0 >> CNODE_BITS == 0 {
+        if self.0 == 0 {
+            0
+        } else if self.0 <= 0xFF {
             1
-        } else if self.0 >> (CNODE_BITS * 2) == 0 {
+        } else if self.0 <= 0xFFFF {
             2
-        } else if self.0 >> (CNODE_BITS * 3) == 0 {
+        } else if self.0 <= 0xFF_FFFF {
             3
-        } else if self.0 >> (CNODE_BITS * 4) == 0 {
+        } else if self.0 <= 0xFFFF_FFFF {
             4
-        } else if self.0 >> (CNODE_BITS * 5) == 0 {
+        } else if self.0 <= 0xFF_FFFF_FFFF {
             5
-        } else if self.0 >> (CNODE_BITS * 6) == 0 {
+        } else if self.0 <= 0xFFFF_FFFF_FFFF {
             6
-        } else if self.0 >> (CNODE_BITS * 7) == 0 {
+        } else if self.0 <= 0xFF_FFFF_FFFF_FFFF {
             7
         } else {
             8
@@ -61,11 +62,14 @@ impl CapPtr {
     }
 
     pub fn concat(root: CapPtr, ptr: CapPtr) -> CapPtr {
-        if root.is_null() {
+        if root.0 == 0 {
             return ptr;
         }
+        if ptr.0 == 0 {
+            return root;
+        }
         let root_len = root.len();
-        CapPtr(root.0 | ptr.0 << (root_len * CNODE_BITS))
+        CapPtr(root.0 | (ptr.0 << (root_len * CNODE_BITS)))
     }
 }
 
@@ -128,6 +132,11 @@ impl Slot {
 struct CNodeMetadata {
     ref_count: AtomicUsize,
     lock: SpinLock<()>,
+    /// 位图，记录已占用的槽位 (256位 = 32字节 = 4个u64)
+    bitmap: [core::sync::atomic::AtomicU64; 4],
+    /// 填充以匹配 Slot 的大小 (Slot 为 64 字节)
+    /// ref_count (8) + lock (8) + bitmap (32) = 48 字节
+    _padding: [u8; 16],
 }
 
 /// 能力节点 (CNode)
@@ -137,6 +146,32 @@ struct CNodeMetadata {
 #[repr(C)]
 pub struct CNode {
     pub slots: UnsafeCell<[Slot; CNODE_SLOTS]>,
+}
+
+impl Drop for CNode {
+    fn drop(&mut self) {
+        let metadata = self.metadata();
+        let _guard = metadata.lock.lock();
+
+        // 遍历位图来清理所有槽位
+        for i in 0..4 {
+            let mut word = metadata.bitmap[i].load(Ordering::SeqCst);
+            // Slot 0 特殊处理 (元数据本身不应该在此被 delete)
+            if i == 0 {
+                word &= !1;
+            }
+
+            while word != 0 {
+                let bit = word.trailing_zeros() as usize;
+                let index = i * 64 + bit;
+                unsafe {
+                    let slot = &mut *self.get_slot_ptr(index);
+                    delete_recursive(slot);
+                }
+                word &= !(1 << bit);
+            }
+        }
+    }
 }
 
 unsafe impl Sync for CNode {}
@@ -154,8 +189,17 @@ impl CNode {
 
             // 2. 在 Slot 0 中初始化元数据
             // 使用 write 而不是 assignment 来避免析构旧数据（虽然是0）
-            let metadata =
-                CNodeMetadata { ref_count: AtomicUsize::new(0), lock: SpinLock::new(()) };
+            let metadata = CNodeMetadata {
+                ref_count: AtomicUsize::new(0),
+                lock: SpinLock::new(()),
+                bitmap: [
+                    AtomicU64::new(1), // 位 0 被占用 (Slot 0 存储元数据)
+                    AtomicU64::new(0),
+                    AtomicU64::new(0),
+                    AtomicU64::new(0),
+                ],
+                _padding: [0; 16],
+            };
             let metadata_ptr = self.slots.get() as *mut CNodeMetadata;
             metadata_ptr.write(metadata);
 
@@ -283,7 +327,7 @@ impl CNode {
         if next_cptr.is_null() {
             // Found leaf - check if empty
             if slot.cap.cap_type() != CapType::Empty {
-                error!("cnode: Insert failed, slot not empty at index {}", index);
+                error!("cnode: Insert failed, slot not empty at index {} with {}", index, slot.cap);
                 return Err(Error::AlreadyExists);
             }
             slot.cap = cap.clone();
@@ -424,7 +468,11 @@ impl CNode {
 
         // 必须确保目标槽位为空，否则会破坏 CDT
         if slot.cap.cap_type() != CapType::Empty {
-            error!("CNode::insert_child failed: target slot not empty cptr={}", cptr);
+            error!(
+                "CNode::insert_child failed: target slot not empty cptr={}, target_slot={}, cap={}",
+                cptr, slot.cap, cap
+            );
+            core::hint::spin_loop();
             return Err(Error::AlreadyExists);
         }
 
@@ -465,6 +513,13 @@ impl CNode {
         parent_slot_ref.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
 
         slot.cdt = cdt;
+
+        // 4. 更新位图
+        let index = cptr.index();
+        let word_idx = index / 64;
+        let bit_idx = index % 64;
+        self.metadata().bitmap[word_idx].fetch_or(1 << bit_idx, Ordering::SeqCst);
+
         Ok(())
     }
 
@@ -484,7 +539,6 @@ impl CNode {
             None => return Err(Error::InvalidSlot),
             Some(ptr) => unsafe { &mut *ptr },
         };
-
         // 1. Revoke children first to ensure no one else is using derived caps
         revoke_recursive(slot);
 
@@ -507,11 +561,18 @@ impl CNode {
         if cptr.is_null() {
             return Err(Error::InvalidSlot);
         }
+        let index = cptr.index();
         let slot = match unsafe { self.lookup_slot_ptr(cptr) } {
             None => return Err(Error::InvalidSlot),
             Some(ptr) => unsafe { &mut *ptr },
         };
         delete_recursive(slot);
+
+        // 更新位图
+        let word_idx = index / 64;
+        let bit_idx = index % 64;
+        self.metadata().bitmap[word_idx].fetch_and(!(1 << bit_idx), Ordering::SeqCst);
+
         Ok(())
     }
 

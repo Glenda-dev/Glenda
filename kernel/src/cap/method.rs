@@ -26,6 +26,7 @@ pub mod tcbmethod {
 
 pub mod pagetablemethod {
     pub const MAP_TABLE: usize = 1;
+    pub const UNMAP_TABLE: usize = 2;
 }
 
 pub mod cnodemethod {
@@ -34,13 +35,13 @@ pub mod cnodemethod {
     pub const DELETE: usize = 3;
     pub const REVOKE: usize = 4;
     pub const MOVE: usize = 5;
-    pub const DEBUG_PRINT: usize = 6;
-    pub const RECYCLE: usize = 7;
+    pub const RECYCLE: usize = 6;
+    pub const DEBUG_PRINT: usize = 7;
 }
 
 pub mod untypedmethod {
     pub const RETYPE: usize = 1;
-    pub const MERGE: usize = 2;
+    pub const GET_INFO: usize = 2;
 }
 
 pub mod irqmethod {
@@ -71,6 +72,8 @@ pub mod vspacemethod {
     pub const MAP: usize = 1;
     pub const UNMAP: usize = 2;
     pub const MAP_TABLE: usize = 3;
-    pub const SETUP: usize = 4;
-    pub const DEBUG_PRINT: usize = 5;
+    pub const UNMAP_TABLE: usize = 4;
+    pub const SETUP: usize = 5;
+    pub const DEBUG_PRINT: usize = 6;
+    pub const UPDATE: usize = 7;
 }

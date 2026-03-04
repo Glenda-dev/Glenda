@@ -3,7 +3,6 @@ pub const MAX_UNTYPED_REGIONS: usize = 4;
 pub const MAX_MMIO_REGIONS: usize = 64;
 
 use crate::hal::mem::PGSIZE;
-use crate::mem::UntypedRegion;
 
 pub const BOOTINFO_SIZE: usize = core::mem::size_of::<BootInfo>();
 pub const BOOTINFO_PAGES: usize = (BOOTINFO_SIZE + PGSIZE - 1) / PGSIZE;
@@ -38,7 +37,7 @@ pub struct BootInfo {
 
     /// List of untyped memory regions available to the system
     /// The i-th entry here corresponds to the capability at `untyped.start + i`
-    pub untyped_list: [UntypedRegion; MAX_UNTYPED_REGIONS],
+    pub untyped_list: [usize; MAX_UNTYPED_REGIONS],
 
     pub cmdline: [u8; 256],
 }
@@ -47,7 +46,7 @@ impl BootInfo {
     pub fn new() -> Self {
         Self {
             untyped_count: 0,
-            untyped_list: [UntypedRegion::empty(); MAX_UNTYPED_REGIONS],
+            untyped_list: [0; MAX_UNTYPED_REGIONS],
             initrd_paddr: 0,
             initrd_size: 0,
             platform_type: PlatformType::NULL,

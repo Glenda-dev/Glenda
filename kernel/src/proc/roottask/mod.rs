@@ -73,8 +73,7 @@ fn spawn_payload(root_task: ProcPayload) -> Result<(), Error> {
     tcb.set_address(UTCB_VA, TRAPFRAME_VA);
     tcb.state = ThreadState::Ready;
     scheduler::add_thread(tcb);
-    log!("proc: Root Task created. Entry: {:#x}, SP: {:#x}", entry_point, stack_top);
-
+    log!("proc: Root Task created at {:p}. Entry: {:#x}, SP: {:#x}", tcb, entry_point, stack_top);
     //cspace.debug_print();
     //vspace.debug_print();
     Ok(())

@@ -1,6 +1,5 @@
+use super::PTEFLAGS_MASK;
 use crate::mem::{PPN, Perms, PhysAddr};
-
-const PTEFLAGS_MASK: usize = 0x3FF;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Pte(usize);
@@ -9,7 +8,7 @@ impl Pte {
     pub const fn null() -> Self {
         Self(0)
     }
-    pub const fn from(pa: PhysAddr, flags: Perms) -> Self {
+    pub fn from(pa: PhysAddr, flags: Perms) -> Self {
         Self((((pa.as_usize() >> 12) & 0xFFFFFFFFFFF) << 10) | convert_flags(flags))
     }
     pub const fn as_usize(&self) -> usize {
@@ -21,13 +20,13 @@ impl Pte {
     pub const fn set_ppn(&mut self, ppn: PPN) {
         self.0 = (self.0 & PTEFLAGS_MASK) | (ppn.as_usize() << 10)
     }
-    pub const fn get_flags(&self) -> Perms {
+    pub fn get_flags(&self) -> Perms {
         convert_to_perms(self.0 & PTEFLAGS_MASK)
     }
-    pub const fn set_flags(&mut self, flags: Perms) {
+    pub fn set_flags(&mut self, flags: Perms) {
         self.0 = (self.0 & PTEFLAGS_MASK) | convert_flags(flags)
     }
-    pub const fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         let flags = self.get_flags();
         flags.contains(Perms::VALID)
     }
@@ -43,19 +42,57 @@ impl Pte {
     }
 }
 
-const fn convert_flags(perms: Perms) -> usize {
-    let mut bits = perms.bits();
-    // For RISC-V leaf PTEs (where R/W/X is not 0), we should set A (Accessed)
-    // and D (Dirty) bits to avoid extra page fault traps during the first access.
-    if bits & (Perms::READ.bits() | Perms::WRITE.bits() | Perms::EXECUTE.bits()) != 0 {
-        bits |= Perms::ACCESSED.bits();
-        if bits & Perms::WRITE.bits() != 0 {
-            bits |= Perms::DIRTY.bits();
-        }
+fn convert_flags(perms: Perms) -> usize {
+    let mut bits = PTE_V;
+    if perms.intersects(Perms::READ | Perms::WRITE | Perms::EXECUTE) {
+        bits |= PTE_A | PTE_D;
+    }
+    if perms.contains(Perms::READ) {
+        bits |= PTE_R;
+    }
+    if perms.contains(Perms::WRITE) {
+        bits |= PTE_W;
+    }
+    if perms.contains(Perms::EXECUTE) {
+        bits |= PTE_X;
+    }
+    if perms.contains(Perms::USER) {
+        bits |= PTE_U;
+    }
+    if perms.contains(Perms::GLOBAL) {
+        bits |= PTE_G;
     }
     bits & PTEFLAGS_MASK
 }
 
-const fn convert_to_perms(flags: usize) -> Perms {
-    Perms::from_bits_truncate(flags & PTEFLAGS_MASK)
+fn convert_to_perms(flags: usize) -> Perms {
+    let mut perms = Perms::empty();
+    if flags & PTE_R != 0 {
+        perms.insert(Perms::READ);
+    }
+    if flags & PTE_W != 0 {
+        perms.insert(Perms::WRITE);
+    }
+    if flags & PTE_X != 0 {
+        perms.insert(Perms::EXECUTE);
+    }
+    if flags & PTE_U != 0 {
+        perms.insert(Perms::USER);
+    }
+    if flags & PTE_G != 0 {
+        perms.insert(Perms::GLOBAL);
+    }
+    if flags & PTE_V != 0 {
+        perms.insert(Perms::VALID);
+    }
+    perms
 }
+
+const PTE_V: usize = 1 << 0;
+const PTE_R: usize = 1 << 1;
+const PTE_W: usize = 1 << 2;
+const PTE_X: usize = 1 << 3;
+const PTE_U: usize = 1 << 4;
+const PTE_G: usize = 1 << 5;
+const PTE_A: usize = 1 << 6;
+const PTE_D: usize = 1 << 7;

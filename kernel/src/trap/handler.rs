@@ -1,7 +1,6 @@
 use super::{TrapCause, TrapException, TrapInterrupt};
 use crate::cap::CapType;
-#[cfg(feature = "gdb")]
-use crate::debug::gdb;
+use crate::error::Error;
 use crate::hal;
 use crate::hal::trap::TrapFrame;
 use crate::ipc;
@@ -44,13 +43,6 @@ fn exception_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
-    #[cfg(feature = "gdb")]
-    if e == TrapException::Breakpoint {
-        gdb::enter(ctx);
-        ctx.advance_pc();
-        return;
-    }
-
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
         if tcb.native && e == TrapException::Syscall {
@@ -97,6 +89,15 @@ fn fault_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
+    log!(
+        "trap: Fault in thread {:p}: {}, cause={:#x}, pc={:#x}, value={:#x}, status={:#x}",
+        tcb,
+        e,
+        cause,
+        pc,
+        value,
+        status
+    );
     if let Some(handler_cap) = tcb.fault_handler.clone()
         && handler_cap.cap_type() == CapType::Endpoint
     {
@@ -149,7 +150,7 @@ fn fault_handler(
         // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
         ipc::call(tcb, ep, badge, None).unwrap_or_else(|err| {
             error!(
-                "Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}\n",
+                "trap: Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}\n",
                 err,
                 e,
                 cause,
@@ -200,10 +201,14 @@ fn syscall_handler(ctx: &mut TrapFrame) {
         let epc = ctx.get_epc();
         let ra = ctx.get_ra();
         let sp = ctx.get_sp();
-        panic!(
-            "Syscall with null cptr, method={:#x}, epc={:#x}, ra={:#x}, sp={:#x}",
-            method, epc, ra, sp
+        let tcb = scheduler::current().expect("Syscall with null cptr and no current thread");
+        error!(
+            "trap: Syscall with null cptr at thread {:p}, method={:#x}, epc={:#x}, ra={:#x}, sp={:#x}",
+            tcb, method, epc, ra, sp
         );
+        ctx.set_return_value(Error::InvalidCapability as usize);
+        ctx.advance_pc();
+        return;
     }
     let ret = syscall::dispatch(cptr, method);
     ctx.set_return_value(ret);

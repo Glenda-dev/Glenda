@@ -159,11 +159,13 @@ impl TCB {
         unsafe { cspace_cap.obj_ptr().as_ref::<CNode>() }
     }
 
-    pub fn mmu_register(&self) -> usize {
+    pub fn mmu_register(&mut self) -> usize {
         let (paddr, mut id) =
             self.vspace_root.as_ref().expect("VSpace root not configured").vspace_info();
-        if asid::check(id) {
+        if !asid::check(id) {
             id = asid::alloc();
+            // 持久化 ASID 更新到 Capability 中
+            self.vspace_root.as_mut().unwrap().set_asid(id);
         }
         hal::mem::get_mmu_register(paddr, id.id as usize)
     }
@@ -267,7 +269,7 @@ impl TCB {
 
     pub fn cap_lookup(&self, cptr: CapPtr) -> Option<Capability> {
         // 1. 获取 Root CNode
-        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        let root_cap = self.cspace_root.as_ref()?;
         if root_cap.cap_type() == CapType::CNode {
             let cnode = unsafe { root_cap.obj_ptr().as_mut::<CNode>() };
             // 2. 在 CNode 中查找
@@ -278,7 +280,7 @@ impl TCB {
     }
 
     pub fn lookup_slot(&self, cptr: CapPtr) -> Option<*mut Slot> {
-        let root_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
+        let root_cap = self.cspace_root.as_ref()?;
         if root_cap.cap_type() == CapType::CNode {
             let cnode = unsafe { root_cap.obj_ptr().as_mut::<CNode>() };
             unsafe { cnode.lookup_slot_ptr(cptr) }

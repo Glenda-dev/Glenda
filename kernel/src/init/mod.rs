@@ -30,6 +30,7 @@ fn init_primary() {
     pmem::init();
     platform::init();
     console::init();
+    // 关键：在这里重新初始化内核页表，处理真正的权限控制和 HHDM
     vm::init();
     proc::init();
     irq::init();

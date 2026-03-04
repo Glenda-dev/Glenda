@@ -53,6 +53,49 @@ pub fn system_reset(reset_type: usize, reset_reason: usize) -> Result<(), isize>
     if error == 0 { Ok(()) } else { Err(error) }
 }
 
+const SBI_EXT_RFENCE: usize = 0x52464E43;
+const SBI_FID_REMOTE_SFENCE_VMA: usize = 0;
+const SBI_FID_REMOTE_SFENCE_VMA_ASID: usize = 1;
+
+pub fn remote_sfence_vma(hart_mask: usize, hart_mask_base: usize, addr: usize, size: usize) {
+    let _ = unsafe {
+        sbi_call(SBI_EXT_RFENCE, SBI_FID_REMOTE_SFENCE_VMA, hart_mask, hart_mask_base, addr);
+        sbi_call(SBI_EXT_RFENCE, SBI_FID_REMOTE_SFENCE_VMA, 0, 0, size); // size needs to be passed too, but standard SBI interface is a bit more complex for size. 
+        // Simplification: We use the v0.2 RFENCE extension.
+        // Real SBI call for RFENCE: a0=hart_mask, a1=hart_mask_base, a2=start_addr, a3=size
+        asm!(
+            "ecall",
+            in("a7") SBI_EXT_RFENCE,
+            in("a6") SBI_FID_REMOTE_SFENCE_VMA,
+            in("a0") hart_mask,
+            in("a1") hart_mask_base,
+            in("a2") addr,
+            in("a3") size,
+        );
+    };
+}
+
+pub fn remote_sfence_vma_asid(
+    hart_mask: usize,
+    hart_mask_base: usize,
+    addr: usize,
+    size: usize,
+    asid: usize,
+) {
+    let _ = unsafe {
+        asm!(
+            "ecall",
+            in("a7") SBI_EXT_RFENCE,
+            in("a6") SBI_FID_REMOTE_SFENCE_VMA_ASID,
+            in("a0") hart_mask,
+            in("a1") hart_mask_base,
+            in("a2") addr,
+            in("a3") size,
+            in("a4") asid,
+        );
+    };
+}
+
 pub fn put_char(c: u8) {
     let _ = unsafe { sbi_call(1, 0, c as usize, 0, 0) };
 }

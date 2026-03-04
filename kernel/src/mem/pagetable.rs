@@ -1,8 +1,10 @@
 use crate::error::Error;
 use crate::hal;
+use crate::hal::mem::PTEFLAGS_MASK;
 use crate::hal::mem::Pte;
 use crate::hal::mem::{PGNUM, PGSIZE, PT_LEVELS};
 use crate::mem::addr::phys_to_virt;
+use crate::mem::addr::virt_to_phys;
 use crate::mem::pmem;
 use crate::mem::{Perms, PhysAddr, VirtAddr};
 
@@ -13,12 +15,14 @@ pub struct PageTable {
 }
 
 impl PageTable {
-    /// 创建一个新的空页表 (仅用于初始化)
     pub const fn new() -> Self {
         PageTable { entries: [Pte::null(); PGNUM] }
     }
 
-    /// 从物理地址获取页表的可变引用
+    pub fn paddr(&self) -> PhysAddr {
+        virt_to_phys(VirtAddr::from(self as *const _ as usize))
+    }
+
     pub fn from_addr(paddr: PhysAddr) -> &'static mut Self {
         let vaddr = phys_to_virt(paddr);
         unsafe { vaddr.as_mut::<PageTable>() }
@@ -78,9 +82,15 @@ impl PageTable {
         size: usize,
         flags: Perms,
     ) -> Result<(), Error> {
-        log!("mem: PageTable::map: va={:?} pa={:?} size={} flags={:?}", va, pa, size, flags);
+        log!("vm: PageTable::map: va={:?} pa={:?} size={:#x} flags={:?}", va, pa, size, flags);
         assert!(va.is_aligned(PGSIZE));
         assert!(pa.is_aligned(PGSIZE));
+
+        // W^X Check: A page cannot be both Writable and Executable.
+        if flags.contains(Perms::WRITE) && flags.contains(Perms::EXECUTE) {
+            error!("vm: PageTable::map W^X violation: va={:?} flags={:?}", va, flags);
+            return Err(Error::InvalidArgs);
+        }
 
         let mut current_va = va;
         let mut current_pa = pa;
@@ -89,7 +99,7 @@ impl PageTable {
             let pte_ptr = if let Some(ptr) = self.walk(current_va) {
                 ptr
             } else {
-                error!("PageTable::map failed: intermediate missing for va={:?}", current_va);
+                error!("vm: PageTable::map failed: intermediate missing for va={:?}", current_va);
                 return Err(Error::MappingFailed);
             };
 
@@ -98,7 +108,7 @@ impl PageTable {
                 // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
                     error!(
-                        "PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}",
+                        "vm: PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}",
                         current_va,
                         old_pte.pa(),
                         current_pa
@@ -107,13 +117,51 @@ impl PageTable {
                 }
 
                 // 写入新的 PTE
-                *pte_ptr = Pte::from(current_pa, flags | Perms::VALID);
+                *pte_ptr = Pte::from(current_pa, flags);
             }
 
             current_va += PGSIZE;
             current_pa += PGSIZE;
         }
-        hal::mem::flush_tlb(None);
+        Ok(())
+    }
+
+    /// 更新映射权限
+    ///
+    /// * `va`: 虚拟起始地址
+    /// * `size`: 映射大小 (字节)
+    /// * `flags`: 新的权限标志
+    pub fn update(&mut self, va: VirtAddr, size: usize, flags: Perms) -> Result<(), Error> {
+        log!("vm: PageTable::update: va={:?} size={} flags={:?}", va, size, flags);
+        assert!(va.is_aligned(PGSIZE));
+
+        // W^X Check: A page cannot be both Writable and Executable.
+        if flags.contains(Perms::WRITE) && flags.contains(Perms::EXECUTE) {
+            error!("vm: PageTable::update W^X violation: va={:?} flags={:?}", va, flags);
+            return Err(Error::InvalidArgs);
+        }
+
+        let mut current_va = va;
+        let end_va = va + size;
+        while current_va < end_va {
+            let pte_ptr = if let Some(ptr) = self.walk(current_va) {
+                ptr
+            } else {
+                error!("vm: PageTable::update failed: mapping missing for va={:?}", current_va);
+                return Err(Error::MappingFailed);
+            };
+
+            unsafe {
+                let mut pte = *pte_ptr;
+                if !pte.is_valid() {
+                    error!("vm: PageTable::update failed: invalid pte at va={:?}", current_va);
+                    return Err(Error::MappingFailed);
+                }
+                pte.set_flags(flags | Perms::VALID);
+                *pte_ptr = pte;
+            }
+            current_va += PGSIZE;
+        }
         Ok(())
     }
 
@@ -124,6 +172,7 @@ impl PageTable {
     ///
     /// 注意：不负责释放物理内存。物理内存由 Capability 系统管理。
     pub fn unmap(&mut self, va: VirtAddr, size: usize) -> Result<(), Error> {
+        log!("vm: PageTable::unmap: va={:?} size={}", va, size);
         let start_va = va.align_down(PGSIZE);
         let end_va = (va + size).align_up(PGSIZE);
         let mut current_va = start_va;
@@ -138,7 +187,6 @@ impl PageTable {
             }
             current_va += PGSIZE;
         }
-        hal::mem::flush_tlb(None);
         Ok(())
     }
 
@@ -153,8 +201,9 @@ impl PageTable {
         table_pa: PhysAddr,
         level: usize,
     ) -> Result<(), Error> {
+        log!("vm: PageTable::map_table: va={:?} table_pa={:?} level={}", va, table_pa, level);
         if level == 0 || level >= PT_LEVELS {
-            error!("PageTable::map_table failed: invalid level {}", level);
+            error!("vm: PageTable::map_table failed: invalid level {}", level);
             return Err(Error::InvalidArgs); // 无效层级
         }
 
@@ -165,7 +214,7 @@ impl PageTable {
             let pte_val = table.entries[idx];
             if !pte_val.is_valid() || pte_val.is_leaf() {
                 error!(
-                    "PageTable::map_table failed: parent missing/huge at level {} va={:?}",
+                    "vm: PageTable::map_table failed: parent missing/huge at level {} va={:?}",
                     l, va
                 );
                 return Err(Error::MappingFailed); // 父级页表不存在或已被大页占用
@@ -180,12 +229,56 @@ impl PageTable {
         let pte_ptr = &mut table.entries[idx];
 
         if pte_ptr.is_valid() {
-            error!("PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
+            error!("vm: PageTable::map_table failed: slot occupied at level {} va={:?}", level, va);
             return Err(Error::AlreadyExists); // 槽位已被占用
         }
         // 注意：中间页表的 PTE 没有 R/W/X 权限，只有 V 位
         *pte_ptr = Pte::from(table_pa, Perms::VALID);
-        hal::mem::flush_tlb(None);
+
+        Ok(())
+    }
+
+    /// 解锁中间页表 (Unmap PageTable)
+    ///
+    /// * `va`: 虚拟地址
+    /// * `level`: 目标层级
+    pub fn unmap_table(&mut self, va: VirtAddr, level: usize) -> Result<(), Error> {
+        log!("vm: PageTable::unmap_table: va={:?} level={}", va, level);
+        if level == 0 || level >= PT_LEVELS {
+            error!("vm: PageTable::unmap_table failed: invalid level {}", level);
+            return Err(Error::InvalidArgs);
+        }
+
+        let mut table = self;
+        for l in ((level + 1)..PT_LEVELS).rev() {
+            let idx = hal::mem::get_vpn_index(va, l).as_usize();
+            let pte_val = table.entries[idx];
+            if !pte_val.is_valid() || pte_val.is_leaf() {
+                // 如果路径不存在，说明本来就是干净的，返回成功
+                return Ok(());
+            }
+            let next_pa = pte_val.pa();
+            let next_va = phys_to_virt(next_pa);
+            table = unsafe { next_va.as_mut::<PageTable>() };
+        }
+
+        let idx = hal::mem::get_vpn_index(va, level).as_usize();
+        let pte_ptr = &mut table.entries[idx];
+
+        if !pte_ptr.is_valid() || pte_ptr.is_leaf() {
+            // 如果目标槽位已经是空的，或者原本就是个叶子节点（Frame），返回成功
+            *pte_ptr = Pte::null();
+            return Ok(());
+        }
+
+        // 获取被卸载页表的虚拟地址并清零
+        let pt_pa = pte_ptr.pa();
+        let pt_va = phys_to_virt(pt_pa);
+        unsafe {
+            core::ptr::write_bytes(pt_va.as_mut_ptr::<u8>(), 0, PGSIZE);
+        }
+
+        *pte_ptr = Pte::null();
 
         Ok(())
     }
@@ -195,6 +288,13 @@ impl PageTable {
     /// 如果中间页表不存在，则分配新的页表页。
     /// 需要调用 pmem::alloc_pagetable_cap 来分配页表页。
     pub fn map_with_alloc(&mut self, va: VirtAddr, pa: PhysAddr, size: usize, flags: Perms) {
+        log!(
+            "vm: PageTable::map_with_alloc: va={:?} pa={:?} size={:#x} flags={}",
+            va,
+            pa,
+            size,
+            flags
+        );
         let start = va;
         let end = va + size;
 
@@ -248,27 +348,14 @@ impl PageTable {
 
             // 设置最后一级 PTE
             let idx = hal::mem::get_vpn_index(va, 0).as_usize();
-
-            let pte_ptr = unsafe { &mut (*table).entries[idx] };
-            // 允许重映射，因为 init_kernel_vm 会先映射整个 RAM 再细化内核段权限
-            *pte_ptr = Pte::from(pa, flags | Perms::VALID);
+            unsafe {
+                (*table).entries[idx] = Pte::from(pa, flags | Perms::VALID);
+            }
             va += PGSIZE;
             pa += PGSIZE;
         }
     }
     pub fn debug_print(&self) {
-        // use crate::printk;
-
-        // #[inline(always)]
-        // fn sv39_canon(va: usize) -> usize {
-        //     // sign-extend bit 38
-        //     let sign = (va >> 38) & 1;
-        //     if sign == 1 { va | (!0usize << 39) } else { va & ((1usize << 39) - 1) }
-        // }
-
-        // Generic debug print is hard without knowing VA bits.
-        // For now I'll comment out canon or just print raw index constructed VA.
-
         let pgtbl_2 = self as *const PageTable as usize;
         printk!("L2 PT @ {:#x}\n", pgtbl_2);
 
@@ -316,10 +403,10 @@ impl PageTable {
                     let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
                     // let va = sv39_canon(va_raw);
                     let va = va_raw; // Simplified for now
-                    let flags = pte0.get_flags();
+                    let flags = pte0.as_usize() & PTEFLAGS_MASK;
 
                     printk!(
-                        ".. .. .. page {} VA={:#x} -> PA={:#x} flags={}\n",
+                        ".. .. .. page {} VA={:#x} -> PA={:#x} flags={:#x}\n",
                         k,
                         va,
                         pa.as_usize(),

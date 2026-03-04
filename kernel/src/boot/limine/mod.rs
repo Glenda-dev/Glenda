@@ -6,6 +6,7 @@ use crate::hal;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
 use limine::memory_map::EntryType;
+use limine::mp::Cpu;
 use limine::request::*;
 
 pub const MAX_MEM_ENTRIES: usize = 256;
@@ -152,8 +153,6 @@ pub unsafe fn init() {
     });
 }
 
-use limine::mp::Cpu;
-
 unsafe extern "C" fn secondary_trampoline(cpu: &Cpu) -> ! {
     let cpuid = arch::cpuid(cpu);
     crate::glenda_secondary(cpuid)
@@ -167,15 +166,15 @@ pub fn bootstrap() {
             let cpuid = arch::cpuid(cpu);
             if cpuid != bsp_id {
                 log!("limine: Starting CPU {}", cpuid);
-                #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
                 cpu.goto_address.write(secondary_trampoline);
-                #[cfg(target_arch = "loongarch64")]
-                {
-                    // TODO
-                }
             }
         }
     } else {
         log!("limine: No MP response found");
     }
+}
+
+unsafe extern "C" fn master_trampoline() -> ! {
+    let cpuid = hal::cpu::cpuid();
+    crate::glenda_boot(cpuid);
 }

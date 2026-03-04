@@ -54,6 +54,9 @@ impl PmemManager {
     fn init(&mut self, kernel_end: PhysAddr) {
         let mut available = 0;
         let mmap = crate::boot::get_mem_map();
+        if mmap.is_empty() {
+            panic!("pmem: No memory map entries found from bootloader");
+        }
         let initrd = crate::boot::get_initrd();
         let (initrd_start, initrd_end) = if let Some((vaddr, size)) = initrd {
             let paddr = PhysAddr::from(vaddr.as_usize());

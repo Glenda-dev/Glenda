@@ -21,7 +21,7 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
             let mut cap = unsafe { (*slot_ptr).cap.clone() };
 
             if cap.is_null() {
-                log!(
+                error!(
                     "syscall: Null capability at {:p}, cptr: {:#x}, method: {}",
                     slot_ptr,
                     cptr.bits(),

@@ -149,15 +149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "buddy_system_allocator"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672b945a3e4f4f40bfd4cd5ee07df9e796a42254ce7cd6d2599ad969244c44a"
-dependencies = [
- "spin",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -325,8 +316,6 @@ dependencies = [
  "fdt",
  "libglenda-rs",
  "libglenda_drivers-rs",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -415,7 +404,6 @@ version = "0.1.0"
 dependencies = [
  "libglenda-rs",
  "libglenda_drivers-rs",
- "postcard",
  "serde",
  "serde_json",
 ]
@@ -453,7 +441,6 @@ version = "0.1.0"
 dependencies = [
  "libglenda-rs",
  "libglenda_drivers-rs",
- "managed",
  "serde",
  "serde_json",
  "smoltcp",
@@ -628,13 +615,12 @@ name = "libglenda-rs"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.11.0",
- "buddy_system_allocator",
- "linked_list_allocator",
  "num_enum",
  "postcard",
  "serde",
  "serde-big-array",
  "serde_json",
+ "talc",
 ]
 
 [[package]]
@@ -652,15 +638,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af6d2ee42712e7bd2c787365cd1dab06ef59a61becbf87bec7b32b970bd2594b"
 dependencies = [
  "bitflags 2.11.0",
-]
-
-[[package]]
-name = "linked_list_allocator"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
-dependencies = [
- "spinning_top 0.2.5",
 ]
 
 [[package]]
@@ -696,7 +673,6 @@ version = "0.1.0"
 dependencies = [
  "libglenda-rs",
  "libglenda_drivers-rs",
- "serde",
 ]
 
 [[package]]
@@ -748,8 +724,6 @@ name = "nexus"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -816,8 +790,6 @@ name = "pci"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
- "log",
 ]
 
 [[package]]
@@ -1093,12 +1065,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spin"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
-
-[[package]]
 name = "spinning_top"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1148,6 +1114,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "talc"
+version = "4.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ae828aa394de34c7de08f522d1b86bd1c182c668d27da69caadda00590f26d"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]
@@ -1305,7 +1280,6 @@ version = "0.1.0"
 dependencies = [
  "libglenda-rs",
  "libglenda_drivers-rs",
- "postcard",
  "serde",
  "serde_json",
 ]
@@ -1329,9 +1303,7 @@ dependencies = [
 name = "virtio-common"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.11.0",
  "libglenda-rs",
- "volatile",
 ]
 
 [[package]]
@@ -1351,12 +1323,6 @@ dependencies = [
  "libglenda_drivers-rs",
  "virtio-common",
 ]
-
-[[package]]
-name = "volatile"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442887c63f2c839b346c192d047a7c87e73d0689c9157b00b53dcc27dd5ea793"
 
 [[package]]
 name = "warren"

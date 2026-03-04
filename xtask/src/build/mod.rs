@@ -72,7 +72,10 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     let src = Path::new("target").join(target_triple).join(profile).join("kernel");
     let dst = Path::new("target/kernel");
     fs::create_dir_all("target")?;
-    fs::copy(src, dst)?;
+    fs::copy(&src, &dst)?;
+
+    // Strip kernel
+    strip(cfg, dst)?;
 
     if is_uefi {
         // If the linker produced ELF, we convert to PE via objcopy as the "packaging" step

@@ -134,29 +134,12 @@ pub unsafe fn bootstrap_kernel(magic: usize, info_pa: usize) -> ! {
         MULTIBOOT2_INFO_ADDR = info_pa;
     }
 
-    // 0. Set CPU ID (Assume 0 for now)
-    hal::cpu::set_cpuid(0);
-
-    // 2. Setup page tables
     unsafe { init() };
-
-    let regions = unsafe { &MEM_MAP[..MEM_MAP_COUNT] };
-    let satp = unsafe { hal::mem::setup_boot_pagetable(regions) };
-
-    unsafe {
-        hal::mem::activate_vspace(satp);
-    }
-
-    crate::glenda_boot();
+    // FIXME
+    crate::glenda_boot(0);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe fn multiboot2_secondary_bootstrap(hartid: usize) -> ! {
-    // 复用主核建立的 BOOT_PAGE_TABLE
-    let root_pa = PhysAddr::from(&raw const hal::mem::BOOT_PAGE_TABLE as usize);
-    let satp = hal::mem::get_mmu_register(root_pa, 0);
-    unsafe {
-        hal::mem::activate_vspace(satp);
-    }
     crate::glenda_secondary(hartid);
 }

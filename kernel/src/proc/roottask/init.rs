@@ -172,7 +172,7 @@ pub fn init_cspace(
         slot += 1;
 
         if bootinfo.untyped_count < bootinfo.untyped_list.len() {
-            bootinfo.untyped_list[bootinfo.untyped_count] = region;
+            bootinfo.untyped_list[bootinfo.untyped_count] = region.start.as_usize();
             bootinfo.untyped_count += 1;
         }
     }

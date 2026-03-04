@@ -1,5 +1,5 @@
-use crate::mem::{PhysAddr, VirtAddr};
 use crate::mem::Perms;
+use crate::mem::{PhysAddr, VirtAddr};
 
 pub const PGSIZE: usize = 4096;
 pub const VA_MAX: usize = 1 << 47;
@@ -22,9 +22,15 @@ pub const PTE_W: u64 = 1 << 8;
 pub struct Pte(u64);
 
 impl Pte {
-    pub const fn new(val: u64) -> Self { Self(val) }
-    pub const fn null() -> Self { Self(0) }
-    pub fn bits(&self) -> u64 { self.0 }
+    pub const fn new(val: u64) -> Self {
+        Self(val)
+    }
+    pub const fn null() -> Self {
+        Self(0)
+    }
+    pub fn bits(&self) -> u64 {
+        self.0
+    }
 
     pub fn from(pa: PhysAddr, perms: Perms) -> Self {
         let ppn_bits = (pa.as_usize() as u64) & 0x0000_FFFF_FFFF_F000;
@@ -53,8 +59,12 @@ impl Pte {
 
     pub fn get_flags(&self) -> Perms {
         let mut perms = Perms::empty();
-        if (self.0 & PTE_PLV_U) != 0 { perms |= Perms::USER; }
-        if (self.0 & PTE_W) != 0 { perms |= Perms::WRITE; }
+        if (self.0 & PTE_PLV_U) != 0 {
+            perms |= Perms::USER;
+        }
+        if (self.0 & PTE_W) != 0 {
+            perms |= Perms::WRITE;
+        }
         perms | Perms::READ
     }
 }
@@ -83,7 +93,7 @@ pub fn get_vpn_index(va: VirtAddr, level: usize) -> crate::mem::addr::VPN {
     crate::mem::addr::VPN::from((va_masked >> shift) & 0x1FF)
 }
 
-pub fn flush_tlb(_asid: Option<usize>) {
+pub fn flush_tlb(vaddr: Option<VirtAddr>, asid: Option<usize>) {
     unsafe {
         core::arch::asm!("invtlb 0x0, $r0, $r0");
     }
@@ -93,18 +103,15 @@ pub fn pt_setup(_pt: &mut crate::mem::PageTable) -> Result<(), crate::error::Err
     Ok(())
 }
 
-pub fn kpt_setup(_pt: &mut crate::mem::PageTable) {
-}
+pub fn kpt_setup(_pt: &mut crate::mem::PageTable) {}
 
 pub fn get_mmu_register(paddr: PhysAddr, _asid: usize) -> usize {
     paddr.as_usize()
 }
 
-pub fn activate_vspace(_reg: usize) {
-}
+pub fn activate_vspace(_reg: usize) {}
 
-pub fn deactivate_vspace() {
-}
+pub fn deactivate_vspace() {}
 
 pub fn kernel_end_addr() -> PhysAddr {
     unsafe {

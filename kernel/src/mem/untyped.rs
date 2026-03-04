@@ -51,18 +51,13 @@ impl UntypedRegion {
             CapType::PageTable => sizes::PAGETABLE,
             CapType::VSpace => sizes::VSPACE,
             CapType::Untyped => flags,
-            _ => return None,
+            _ => {
+                error!("Untyped::Retype failed: unsupported type {:?}", obj_type);
+                return None;
+            }
         };
 
         let needed_pages = obj_pages;
-        if self.watermark + needed_pages > self.pages {
-            error!(
-                "Untyped::Retype OOM: need {} pages, {} available",
-                needed_pages,
-                self.pages - self.watermark
-            );
-            return None;
-        }
 
         let current_page_offset = self.watermark;
 
@@ -71,6 +66,16 @@ impl UntypedRegion {
         log!("untyped: Retyping paddr {:?} to {:?} (pages: {})", obj_paddr, obj_type, obj_pages);
         let obj_vaddr = phys_to_virt(obj_paddr);
         let obj_size_bytes = obj_pages * PGSIZE;
+        if self.watermark + needed_pages > self.pages {
+            error!(
+                "Untyped::Retype OOM: need {} pages, {} available (total: {}, watermark: {})",
+                needed_pages,
+                self.pages - self.watermark,
+                self.pages,
+                self.watermark
+            );
+            return None;
+        }
 
         // Security: Zero out memory before delegating to typed objects.
         // Optimization: Defer zeroing when retyping into smaller Untyped blocks,

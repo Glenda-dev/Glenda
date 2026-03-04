@@ -7,4 +7,5 @@ pub fn init() {
     VM_INIT.call_once(|| {
         vm::init_kernel_vm();
     });
+    vm::switch_to_kernel();
 }

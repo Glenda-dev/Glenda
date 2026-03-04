@@ -62,27 +62,34 @@ cargo xtask gdb
 
 ## 开发路线图 (Roadmap)
 
-### 内核层
-- [x] S-mode 基础引导与 SBI 交互
-- [x] 物理内存管理器 (Untyped Memory)
-- [x] 基于能力 (Capability) 的地址空间管理 (VSpace)
-- [x] UTCB 增强型同步 IPC
-- [x] 优先级抢占式调度器 (Scheduler)
-- [x] 基础 Trap 处理与系统调用 (Syscall) 框架
-- [ ] HAL 抽象与多架构支持
-  - [x] RISC-V 64 支持
-  - [ ] LoongArch 64 支持
-- [ ] 硬件中断托管服务 (Async IRQ)
+### 核心开发 (Done)
+- [x] **内核基础**: S-mode 引导、SBI 交互、Trap 框架。
+- [x] **能力系统 (Cap)**: Untyped 内存管理、CNode 权限传递、VSpace 地址空间控制。
+- [x] **高性能 IPC**: 基于 UTCB 的同步消息传递。
+- [x] **进程管理**: 优先级抢占式调度、Warren 根进程引导。
+- [x] **驱动基础**: UART 用户态驱动、VirtIO Block 磁盘驱动。
+- [x] **工具链**: `xtask` 自动化构建、镜像生成与 QEMU 自动化。
 
-### 服务层
-- [x] Warren 引导框架实现
-- [ ] 9Ball 系统引导任务
-- [ ] Unicorn 设备驱动管理器
-- [ ] Fossil 命名空间服务器
-- [ ] Gopher 网络栈
-- [x] UART 字符设备驱动 (User-mode)
-- [x] VirtIO Block 磁盘驱动
-- [ ] VirtIO 网络驱动
+### 阶段 1: 系统服务增强 (In Progress)
+- [ ] **Nineball**: 系统服务编排与自动化发现。
+- [ ] **Fossil**: 全局命名空间文件系统。
+- [ ] **Gopher**: 基于 LWIP 的用户态网络栈。
+- [ ] **Unicorn**: 统一设备驱动管理模型。
+- [ ] **Prism**: 基础图形显示驱动。
+- [ ] **APE**: 初始 POSIX 兼容层支持。
+
+### 阶段 2: 架构扩展与分布式 (Planned)
+- [ ] **多架构支持**: 实现 LoongArch 64 端口。
+- [ ] **Portal**: 远程 IPC 协议、USB4 隧道、RoCE 传输支持。
+- [ ] **March**: 增强型工作池调度器与实时性约束。
+- [ ] **Factotum**: 端到端身份验证与安全令牌管理。
+- [ ] **Nexus**: 跨节点物理资源虚拟化与聚合。
+
+### 阶段 3: 优化与高级特性
+- [ ] **性能**: vDSO SeqLock 免 IPC 状态读取。
+- [ ] **内存**: 写时复制 (COW) Fork 支持。
+- [ ] **鲁棒性**: 异步 IRQ 托管与故障恢复机制。
+- [ ] **分布式**: 进程/线程跨节点热迁移支持。
 
 ## 贡献者
 

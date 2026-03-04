@@ -142,6 +142,7 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("TCB::Resume failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
+
             // Resume
             if tcb.resume() {
                 // 将线程加入调度队列

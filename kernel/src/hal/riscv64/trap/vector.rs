@@ -128,7 +128,6 @@ pub unsafe extern "C" fn user_vector() {
         "ld t1, 0(a0)",  // t1 = tf->kernel_satp (内核页表)
         // 切换页表到内核空间
         "csrw satp, t1",
-        "sfence.vma zero, zero",
         // 跳转处理函数
         // 注意：此时 a0 仍持有 TrapFrame 的 *用户态虚拟地址*。
         // 但由于页表已切换到内核，此地址在内核空间通过 a0 访问是无效的。
@@ -146,7 +145,6 @@ pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
 
         // 1. 切换回用户页表
         "csrw satp, a1",
-        "sfence.vma zero, zero",
         // 2. 将 TrapFrame 指针存入 sscratch，供下次 trap 使用
         // 此时我们使用用户页表，访问 a0 (TrapFrame VA) 是合法的
         "csrw sscratch, a0",

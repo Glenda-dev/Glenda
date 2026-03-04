@@ -33,7 +33,7 @@ use printk::{ANSI_BLUE, ANSI_RED, ANSI_RESET};
  (虽然大概率以后要从头写出来 M-mode 到 S-mode 的切换)
 
  寄存器约定[1]:
-   - $a0 存放当前核的 hartid
+   - $a0 存放当前核的 cpuid
    - $a1 存放设备树指针
 
  [1]: https://www.kernel.org/doc/Documentation/riscv/boot.rst
@@ -43,7 +43,6 @@ pub fn glenda_main(is_primary: bool) -> ! {
     init::init(is_primary);
 
     let cpuid = hal::cpu::cpu_id();
-    printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     if is_primary {
         print_banner();
         let bootargs = crate::boot::get_cmdline().unwrap_or("");
@@ -57,6 +56,7 @@ pub fn glenda_main(is_primary: bool) -> ! {
             proc::roottask::spawn_first();
         }
     }
+    printk!("{}CPU {} entering scheduler{}\n", ANSI_BLUE, cpuid, ANSI_RESET);
     proc::scheduler::scheduler();
 }
 
@@ -83,12 +83,13 @@ fn print_banner() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn glenda_boot() -> ! {
+pub extern "C" fn glenda_boot(cpuid: usize) -> ! {
+    hal::cpu::set_cpuid(cpuid);
     crate::glenda_main(true);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn glenda_secondary(hartid: usize) -> ! {
-    hal::cpu::set_cpuid(hartid);
+pub extern "C" fn glenda_secondary(cpuid: usize) -> ! {
+    hal::cpu::set_cpuid(cpuid);
     crate::glenda_main(false);
 }

@@ -1,5 +1,3 @@
-use crate::hal;
-use crate::mem::addr::PhysAddr;
 use core::arch::global_asm;
 
 #[cfg(not(target_arch = "riscv64"))]
@@ -51,27 +49,11 @@ boot_stack_top:
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sbi_bootstrap(hartid: usize, dtb_pa: usize) -> ! {
     // 保存早期信息
-    super::set_boot_info(hartid, dtb_pa);
-
-    // 解析设备树并获取内存区域
-    let regions = unsafe { super::init_mem_map() };
-
-    // 设置页表
-    let satp = unsafe { hal::mem::setup_boot_pagetable(regions) };
-
-    // 开启 MMU
-    unsafe { hal::mem::activate_vspace(satp) };
-
-    crate::glenda_boot();
+    super::set_boot_info(dtb_pa);
+    crate::glenda_boot(hartid);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sbi_secondary_bootstrap(hartid: usize, _dtb_pa: usize) -> ! {
-    // 复用主核建立的 BOOT_PAGE_TABLE
-    let root_pa = PhysAddr::from(&raw const hal::mem::BOOT_PAGE_TABLE as usize);
-    let satp = hal::mem::get_mmu_register(root_pa, 0);
-
-    unsafe { hal::mem::activate_vspace(satp) };
-
     crate::glenda_secondary(hartid);
 }

@@ -136,14 +136,21 @@ pub unsafe fn write_tp(value: usize) {
 }
 
 #[inline(always)]
-pub unsafe fn sfence_vma(vaddr: usize) {
+pub unsafe fn sfence_vma(vaddr: usize, asid: usize) {
     unsafe {
-        asm!("sfence.vma {}, zero", in(reg) vaddr);
+        asm!("sfence.vma {}, {}", in(reg) vaddr, in(reg) asid);
     }
 }
 
 #[inline(always)]
-pub unsafe fn sfence_vma_all() {
+pub unsafe fn sfence_vma_all(asid: usize) {
+    unsafe {
+        asm!("sfence.vma zero, {}", in(reg) asid);
+    }
+}
+
+#[inline(always)]
+pub unsafe fn sfence_vma_global() {
     unsafe {
         asm!("sfence.vma zero, zero");
     }

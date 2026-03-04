@@ -257,38 +257,18 @@ pub unsafe fn bootstrap_kernel(hartid: usize, dtb_pa: usize) -> ! {
         }
     }
 
-    // 0. 设置当前核 ID 到 tp 寄存器
-    hal::cpu::set_cpuid(hartid);
-
     // 1. 保存 DTB 物理地址
     unsafe {
         UBOOT_DTB_ADDR = dtb_pa;
     }
 
-    // 2. 通过 HAL 构造初始页表并开启 MMU
-    log!("uboot: Setting up boot page tables...");
-
-    let regions = unsafe { init_mem_map() };
-    let satp = unsafe { hal::mem::setup_boot_pagetable(regions) };
-
-    log!("uboot: Enabling MMU...");
-    unsafe {
-        hal::mem::activate_vspace(satp);
-    }
-
-    // 3. 跳转到内核入口
+    // 2. 跳转到内核入口
     log!("uboot: Jumping to kernel main...");
-    crate::glenda_boot();
+    crate::glenda_boot(hartid);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe fn uboot_secondary_bootstrap(hartid: usize) -> ! {
-    // 复用主核建立的 BOOT_PAGE_TABLE
-    let root_pa = PhysAddr::from(&raw const hal::mem::BOOT_PAGE_TABLE as usize);
-    let satp = hal::mem::get_mmu_register(root_pa, 0);
-    unsafe {
-        hal::mem::activate_vspace(satp);
-    }
     crate::glenda_secondary(hartid);
 }
 

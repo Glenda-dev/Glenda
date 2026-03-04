@@ -45,7 +45,7 @@ impl super::Uart for Pl011 {
         let pa = PhysAddr::from(self.base).align_down(PGSIZE);
         let va = phys_to_virt(pa);
         let size = (self.size + PGSIZE - 1) / PGSIZE * PGSIZE;
-        let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
+        let flags = Perms::READ | Perms::WRITE | Perms::DEVICE;
         log!(
             "pl011: Map MMIO [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
             pa.as_usize(),

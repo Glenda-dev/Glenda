@@ -93,7 +93,7 @@ impl super::Uart for Uart {
         let pa = PhysAddr::from(self.cfg.base).align_down(PGSIZE);
         let va = phys_to_virt(pa);
         let size = (self.size + PGSIZE - 1) / PGSIZE * PGSIZE;
-        let flags = Perms::READ | Perms::WRITE | Perms::ACCESSED | Perms::DIRTY | Perms::GLOBAL;
+        let flags = Perms::READ | Perms::WRITE | Perms::DEVICE;
         log!(
             "ns16550a: Map MMIO [{:#x}, {:#x}) -> [{:#x}, {:#x}) {}",
             pa.as_usize(),
