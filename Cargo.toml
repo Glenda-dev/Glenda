@@ -4,7 +4,6 @@ members = [
     "xtask",
     "lib/libape",
     "lib/libglenda-rs",
-    "lib/libglenda_drivers-rs",
     "service/ape",
     "service/nineball",
     "service/warren",

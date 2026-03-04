@@ -9,7 +9,6 @@ dependencies = [
  "acpi 6.1.0",
  "aml",
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -315,7 +314,6 @@ version = "0.1.0"
 dependencies = [
  "fdt",
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -357,7 +355,6 @@ name = "extfs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -371,7 +368,6 @@ name = "fatfs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -403,7 +399,6 @@ name = "fossil"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "serde",
  "serde_json",
 ]
@@ -432,7 +427,6 @@ name = "goldfish-rtc"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -440,7 +434,6 @@ name = "gopher"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "serde",
  "serde_json",
  "smoltcp",
@@ -549,7 +542,6 @@ name = "initrdfs"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "serde",
 ]
 
@@ -624,14 +616,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libglenda_drivers-rs"
-version = "0.1.0"
-dependencies = [
- "libglenda-rs",
- "serde",
-]
-
-[[package]]
 name = "limine"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -672,7 +656,6 @@ name = "loop"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -686,7 +669,6 @@ name = "march"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -740,7 +722,6 @@ name = "ns16550a"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -829,7 +810,6 @@ name = "prism"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "num_enum",
  "postcard",
  "psf2-font",
@@ -920,7 +900,6 @@ name = "ramdisk"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -966,7 +945,6 @@ name = "sdhci"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -1047,7 +1025,6 @@ name = "sifive-gpio"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
 ]
 
 [[package]]
@@ -1279,7 +1256,6 @@ name = "unicorn"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "serde",
  "serde_json",
 ]
@@ -1295,7 +1271,6 @@ name = "virtio-blk"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "virtio-common",
 ]
 
@@ -1311,7 +1286,6 @@ name = "virtio-mmio"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "virtio-common",
 ]
 
@@ -1320,7 +1294,6 @@ name = "virtio-net"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
- "libglenda_drivers-rs",
  "virtio-common",
 ]
 
