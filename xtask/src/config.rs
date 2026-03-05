@@ -40,7 +40,7 @@ fn default_mem() -> String {
 }
 
 fn default_display() -> String {
-    "gtk".into() // Change default to graphical
+    "gtk".into()
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +87,13 @@ pub struct File {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct HostedConfig {
+    pub runtime: String,
+    pub socket: String,
+    pub apps: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -97,10 +104,11 @@ pub struct Config {
     pub libraries: Vec<Library>,
     #[serde(default)]
     pub features: HashMap<String, Vec<String>>,
-    #[serde(default)]
     pub system: SystemConfig,
     #[serde(default)]
     pub qemu: QemuConfig,
+    #[serde(default)]
+    pub hosted: HostedConfig,
 }
 
 impl Config {

@@ -1,0 +1,22 @@
+[system]
+arch = "hosted"
+profile = "relwithdebuginfo"
+bootloader = "opensbi"
+
+[qemu]
+cpus = 1
+mem = "2G"
+display = "nographic"
+drive = "disk.img"
+net = true
+mac = "52:54:00:11:22:33"
+hostfwd = ["tcp::8080-:80"]
+
+[features]
+kernel = []
+musl-glenda = ["--disable-shared", "--prefix=../../target"]
+
+[hosted]
+runtime = "service/hutch"
+socket = "/tmp/glenda_hutch.sock"
+apps = ["examples/hello"]

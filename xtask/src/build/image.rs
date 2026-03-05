@@ -113,7 +113,11 @@ fn generate_fit_image(cfg: &Config) -> anyhow::Result<()> {
         crate::arch::Arch::X86_64 => "x86_64",
         crate::arch::Arch::Aarch64 => "arm64",
         crate::arch::Arch::Loongarch64 => "loongarch",
+        _ => "none",
     };
+    if arch == "none" {
+        panic!("Not supported");
+    }
 
     let its_content = format!(
         r#"/dts-v1/;

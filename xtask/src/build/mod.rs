@@ -14,6 +14,9 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn build(cfg: &Config) -> anyhow::Result<()> {
+    if cfg.system.arch == crate::arch::Arch::Hosted {
+        return build_hosted(cfg);
+    }
     // Build libraries
     build_libraries(&cfg)?;
     // Process workspace services and generate initrd for kernel embedding
@@ -22,6 +25,30 @@ pub fn build(cfg: &Config) -> anyhow::Result<()> {
     build_kernel(&cfg)?;
     // Prepare the bootable image (copy files, etc.)
     prepare(&cfg)?;
+    Ok(())
+}
+
+fn build_hosted(cfg: &Config) -> anyhow::Result<()> {
+    eprintln!("[ INFO ] Building Hosted Environment...");
+
+    // 1. Build runtime
+    let runtime_path = &cfg.hosted.runtime;
+    eprintln!("[ INFO ] Building Runtime: {}", runtime_path);
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(runtime_path);
+    cmd.arg("build").arg("--profile").arg(&cfg.system.profile);
+    run(&mut cmd)?;
+
+    // 2. Build apps
+    for app_path in &cfg.hosted.apps {
+        eprintln!("[ INFO ] Building App: {}", app_path);
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(app_path);
+        // Use native host triple
+        cmd.arg("build").arg("--profile").arg(&cfg.system.profile);
+        run(&mut cmd)?;
+    }
+
     Ok(())
 }
 

@@ -52,3 +52,6 @@
 [submodule "service/prism"]
 	path = service/prism
 	url = https://github.com/Glenda-dev/prism.git
+[submodule "service/hutch"]
+	path = service/hutch
+	url = https://github.com/Glenda-dev/hutch.git

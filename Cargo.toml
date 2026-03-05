@@ -30,7 +30,7 @@ members = [
     "service/fossil",
     "service/nexus",
     "service/march",
-    "service/prism",
+    "service/prism", "service/hutch",
 ]
 resolver = "2"
 

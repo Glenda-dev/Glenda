@@ -72,7 +72,11 @@ fn main() -> anyhow::Result<()> {
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,
         Cmd::Run { timeout } => {
-            qemu::qemu_run(&cfg, Some(timeout))?;
+            if cfg.system.arch == arch::Arch::Hosted {
+                run_hosted(&cfg)?;
+            } else {
+                qemu::qemu_run(&cfg, Some(timeout))?;
+            }
         }
         Cmd::Gdb { port } => {
             qemu::qemu_gdb(&cfg, port)?;
@@ -90,6 +94,27 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Clean => build::clean(&cfg)?,
         Cmd::Check { args } => check::check(&cfg, &args)?,
+    }
+    Ok(())
+}
+
+fn run_hosted(cfg: &Config) -> anyhow::Result<()> {
+    use std::process::Command;
+    let runtime_path = &cfg.hosted.runtime;
+    let profile =
+        if cfg.system.profile == "relwithdebuginfo" { "release" } else { &cfg.system.profile };
+    // Assuming the binary name matches the folder name
+    let runtime_bin = Path::new(runtime_path).file_name().unwrap().to_str().unwrap();
+    let runtime_exe = Path::new("target").join(profile).join(runtime_bin);
+    let socket = &cfg.hosted.socket;
+
+    eprintln!("[ INFO ] Running Hosted Runtime: {}", runtime_exe.display());
+
+    let mut cmd = Command::new(runtime_exe);
+    cmd.arg("--listen").arg(socket);
+    let status = cmd.status()?;
+    if !status.success() {
+        anyhow::bail!("Runtime exited with error");
     }
     Ok(())
 }

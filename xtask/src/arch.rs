@@ -10,6 +10,7 @@ pub enum Arch {
     X86_64,
     Aarch64,
     Loongarch64,
+    Hosted,
 }
 
 impl Arch {
@@ -19,6 +20,7 @@ impl Arch {
             Arch::X86_64 => "x86_64",
             Arch::Aarch64 => "aarch64",
             Arch::Loongarch64 => "loongarch64",
+            Arch::Hosted => "hosted",
         }
     }
 
@@ -28,6 +30,7 @@ impl Arch {
             Arch::X86_64 => "x86_64-unknown-none",
             Arch::Aarch64 => "aarch64-unknown-none-elf",
             Arch::Loongarch64 => "loongarch64-unknown-none",
+            Arch::Hosted => "hosted",
         }
     }
 
@@ -37,6 +40,7 @@ impl Arch {
             Arch::X86_64 => "qemu-system-x86_64",
             Arch::Aarch64 => "qemu-system-aarch64",
             Arch::Loongarch64 => "qemu-system-loongarch64",
+            Arch::Hosted => "none",
         }
     }
 
@@ -46,6 +50,7 @@ impl Arch {
             Arch::X86_64 => "x86_64-elf-",
             Arch::Aarch64 => "aarch64-elf-",
             Arch::Loongarch64 => "loongarch64-elf-",
+            Arch::Hosted => "",
         }
     }
 
@@ -61,6 +66,7 @@ impl Arch {
                 "/usr/share/ovmf/ovmf_code_x64.bin".to_string(),
             ],
             Arch::Loongarch64 => vec![local, "/usr/share/edk2/loongarch/QEMU_EFI.fd".to_string()],
+            Arch::Hosted => vec![],
         }
     }
 
@@ -78,6 +84,7 @@ impl Arch {
             Arch::Loongarch64 => {
                 Some("https://github.com/qemu/qemu/raw/master/pc-bios/edk2-loongarch64-code.fd.bz2")
             }
+            Arch::Hosted => None,
         }
     }
 
@@ -87,6 +94,7 @@ impl Arch {
             Arch::X86_64 => "BOOTX64.EFI",
             Arch::Aarch64 => "BOOTAA64.EFI",
             Arch::Loongarch64 => "BOOTLOONGARCH64.EFI",
+            Arch::Hosted => "",
         }
     }
 }
