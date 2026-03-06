@@ -5,8 +5,10 @@ use std::process::Command;
 
 /// Run cargo build for a component
 pub fn build(cfg: &Config, path: &Path, features: &str, flags: &str) -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+    let path = root.join(path);
     let mut cmd = Command::new("cargo");
-    cmd.current_dir(path);
+    cmd.current_dir(&path);
     cmd.arg("build");
     let target = cfg.system.arch.target_triple();
     cmd.arg("--target").arg(target);

@@ -1,6 +1,6 @@
 use crate::config::Config;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use which::which;
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
@@ -10,9 +10,6 @@ pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
 pub fn run_with_timeout(cmd: &mut Command, timeout: Option<u64>) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Running: $ {:?}", cmd);
     let mut child = cmd
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| anyhow::anyhow!("[ ERROR ] Failed to start command {:?}: {}", cmd, e))?;
 

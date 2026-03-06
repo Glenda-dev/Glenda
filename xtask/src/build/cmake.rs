@@ -5,12 +5,14 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
+    let root = std::env::current_dir()?;
+    let path = root.join(path);
     let build_dir = path.join("build");
     fs::create_dir_all(&build_dir)?;
 
     let mut cmd = Command::new("cmake");
-    cmd.current_dir(&build_dir);
-    cmd.arg("..");
+    cmd.current_dir(&path);
+    cmd.arg("-B").arg("build");
     cmd.arg(format!("-DARCH={}", cfg.system.arch.as_str()));
 
     // Set cross-compiler if generic (bare metal)
@@ -25,8 +27,7 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     cmd.arg("-DCMAKE_ASM_COMPILER_WORKS=1");
     // Install locally within the build directory to avoid permission issues
     // and for easier packaging later
-    let cwd = std::env::current_dir()?;
-    let install_prefix = cwd.join("target");
+    let install_prefix = root.join("target").join("sysroot");
     cmd.arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_prefix.display()));
 
     for arg in args {
@@ -34,22 +35,15 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     }
     run(&mut cmd)?;
 
-    let mut cmd = Command::new("make");
-    cmd.current_dir(&build_dir);
-    if let Ok(n) = std::thread::available_parallelism() {
-        cmd.arg(format!("-j{}", n.get()));
-    }
+    let mut cmd = Command::new("cmake");
+    cmd.arg("--build").arg("build");
+    cmd.current_dir(&path);
     run(&mut cmd)?;
 
-    Ok(())
-}
-
-pub fn install(_cfg: &Config, path: &Path, _args: &[String]) -> anyhow::Result<()> {
-    let build_dir = path.join("build");
-
-    let mut cmd = Command::new("make");
-    cmd.current_dir(&build_dir);
-    cmd.arg("install");
+    let mut cmd = Command::new("cmake");
+    cmd.arg("--install").arg("build");
+    cmd.current_dir(&path);
     run(&mut cmd)?;
+
     Ok(())
 }

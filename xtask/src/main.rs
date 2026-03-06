@@ -59,15 +59,16 @@ fn main() -> anyhow::Result<()> {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")?;
     let root = std::path::Path::new(&manifest_dir).parent().unwrap();
     std::env::set_current_dir(root)?;
+    let root = std::env::current_dir()?;
 
     let xtask = Xtask::parse();
     let default_path = "config.toml";
-    let cfg_path = Path::new(xtask.config.as_deref().unwrap_or(default_path));
+    let cfg_path = root.join(xtask.config.as_deref().unwrap_or(default_path));
     if !cfg_path.exists() {
         eprintln!("[ WARN ] {} not found, skipping pack step", cfg_path.display());
         return Ok(());
     }
-    let cfg = Config::from_path(cfg_path)?;
+    let cfg = Config::from_path(&cfg_path)?;
 
     match xtask.cmd {
         Cmd::Build => build::build(&cfg)?,

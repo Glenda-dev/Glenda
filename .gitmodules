@@ -55,3 +55,6 @@
 [submodule "service/hutch"]
 	path = service/hutch
 	url = https://github.com/Glenda-dev/hutch.git
+[submodule "service/busybox"]
+	path = service/busybox
+	url = https://github.com/Glenda-dev/busybox-glenda.git

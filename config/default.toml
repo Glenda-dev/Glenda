@@ -131,6 +131,12 @@ path = "service/ape"
 build = "cargo"
 output = "build/ape.elf"
 kind = "service"
+[[services]]
+name = "busybox"
+path = "service/busybox"
+build = "custom"
+output = "build/busybox.elf"
+kind = "service"
 
 # Drivers
 [[services]]
@@ -203,8 +209,8 @@ output = "build/libglenda.a"
 [[libraries]]
 name = "musl-glenda"
 path = "lib/musl-glenda"
-build = "make"
-output = "lib/libc.a"
+build = "custom"
+output = ""
 
 [[files]]
 name = "init.json"
@@ -225,4 +231,3 @@ path = "config/tty.json"
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
-musl-glenda = ["--disable-shared", "--prefix=../../target/sysroot"]

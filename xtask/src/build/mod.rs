@@ -1,12 +1,11 @@
 mod cargo;
 mod cmake;
+mod custom;
 mod image;
-mod make;
 
 pub use image::{image_img, image_iso, prepare};
 
 use crate::config::{Config, Service};
-
 use crate::util::{run, strip};
 use std::fs::{self, File};
 use std::io::Write;
@@ -14,6 +13,10 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn build(cfg: &Config) -> anyhow::Result<()> {
+    let sysroot = std::env::current_dir()?.join("target").join("sysroot");
+    let sysroot_lib = sysroot.join("lib");
+    fs::create_dir_all(sysroot_lib.clone())?;
+
     if cfg.system.arch == crate::arch::Arch::Hosted {
         return build_hosted(cfg);
     }
@@ -132,25 +135,43 @@ pub fn build_libraries(cfg: &Config) -> anyhow::Result<()> {
             "cmake" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
                 cmake::build(cfg, Path::new(&c.path), &args)?;
-                cmake::install(cfg, Path::new(&c.path), &args)?;
             }
-            "make" => {
+            "custom" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
-                make::build(cfg, Path::new(&c.path), &args)?;
-                make::install(cfg, Path::new(&c.path), &args)?;
+                custom::build(cfg, Path::new(&c.path), &args)?;
             }
             _ => anyhow::bail!("Unknown build method '{}' for library '{}'", c.build, c.name),
         }
 
-        if !c.output.is_empty() {
+        let sysroot_lib_dir = Path::new("target/sysroot/lib");
+        fs::create_dir_all(&sysroot_lib_dir)?;
+
+        if c.build == "cargo" {
+            // Copy cargo-built library (assume it's a staticlib/rlib)
+            let target_triple = cfg.system.arch.target_triple();
+            let profile = &cfg.system.profile;
+
+            // Artifact name is determined by [lib] name in Cargo.toml
+            // For libglenda-rs, it is 'glenda'
+            let lib_artifact_name = &c.name;
+            // Stripped
+
+            let src_name = format!("{}.a", lib_artifact_name.replace('-', "_"));
+            let src = Path::new("target").join(target_triple).join(profile).join(&src_name);
+
+            if src.exists() {
+                let dst_name = src_name.clone();
+                fs::copy(&src, sysroot_lib_dir.join(dst_name))?;
+            } else {
+                eprintln!("[ WARN ] Cargo library artifact not found at: {}", src.display());
+            }
+        } else if !c.output.is_empty() {
             let src = Path::new(&c.path).join(&c.output);
 
             if src.exists() {
-                let dst_dir = Path::new("target/lib");
-                fs::create_dir_all(&dst_dir)?;
                 let filename =
                     src.file_name().ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
-                fs::copy(&src, dst_dir.join(filename))?;
+                fs::copy(&src, sysroot_lib_dir.join(filename))?;
             } else {
                 eprintln!("[ WARN ] Library artifact not found at: {}", src.display());
             }
@@ -226,9 +247,9 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
                 cmake::build(cfg, Path::new(&c.path), &args)?;
                 Path::new(&c.path).join(&c.output)
             }
-            "make" => {
+            "custom" => {
                 let args = cfg.features.get(&c.name).cloned().unwrap_or_default();
-                make::build(cfg, Path::new(&c.path), &args)?;
+                custom::build(cfg, Path::new(&c.path), &args)?;
                 Path::new(&c.path).join(&c.output)
             }
             _ => anyhow::bail!("Unknown build method '{}' for service '{}'", c.build, c.name),
