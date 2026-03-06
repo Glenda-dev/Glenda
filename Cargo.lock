@@ -517,6 +517,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hutch-test-suite"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"

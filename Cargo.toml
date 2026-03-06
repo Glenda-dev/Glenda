@@ -8,6 +8,8 @@ members = [
     "service/nineball",
     "service/warren",
     "service/unicorn",
+    "service/hutch",
+    "service/hutch/tests/suite",
     "examples/dosbox",
     "drivers/virtio/common",
     "drivers/virtio/block",
@@ -30,7 +32,7 @@ members = [
     "service/fossil",
     "service/nexus",
     "service/march",
-    "service/prism", "service/hutch",
+    "service/prism",
 ]
 resolver = "2"
 

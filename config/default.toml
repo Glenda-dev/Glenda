@@ -1,6 +1,7 @@
 [system]
 arch = "riscv64"
 profile = "release"
+bootloader = "opensbi"
 
 [qemu]
 cpus = 1
@@ -9,12 +10,19 @@ display = "nographic"
 drive = "disk.img"
 bootargs = "-v"
 
+# System Services
 [[services]]
 name = "warren"
 path = "service/warren"
 build = "cargo"
 output = "build/warren.elf"
 kind = "root_task"
+[[services]]
+name = "gopher"
+path = "service/gopher"
+build = "cargo"
+output = "build/gopher.elf"
+kind = "service"
 [[services]]
 name = "nineball"
 path = "service/nineball"
@@ -27,6 +35,104 @@ path = "service/unicorn"
 build = "cargo"
 output = "build/unicorn.elf"
 kind = "service"
+[[services]]
+name = "nexus"
+path = "service/nexus"
+build = "cargo"
+output = "build/nexus.elf"
+kind = "service"
+[[services]]
+name = "prism"
+path = "service/prism"
+build = "cargo"
+output = "build/prism.elf"
+kind = "service"
+[[services]]
+name = "march"
+path = "service/march"
+build = "cargo"
+output = "build/march.elf"
+kind = "service"
+[[services]]
+name = "initrdfs"
+path = "fs/initrdfs"
+build = "cargo"
+output = "build/initrdfs.elf"
+kind = "service"
+[[services]]
+name = "loop"
+path = "drivers/sys/loop"
+build = "cargo"
+output = "build/loop.elf"
+kind = "service"
+[[services]]
+name = "fatfs"
+path = "fs/fatfs"
+build = "cargo"
+output = "build/fatfs.elf"
+kind = "service"
+[[services]]
+name = "extfs"
+path = "fs/extfs"
+build = "cargo"
+output = "build/extfs.elf"
+kind = "service"
+[[services]]
+name = "ns16550a"
+path = "drivers/uart/ns16550a"
+build = "cargo"
+output = "build/ns16550a.elf"
+kind = "service"
+[[services]]
+name = "virtio-blk"
+path = "drivers/virtio/block"
+build = "cargo"
+output = "build/virtio-blk.elf"
+kind = "service"
+[[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
+kind = "service"
+[[services]]
+name = "fossil"
+path = "service/fossil"
+build = "cargo"
+output = "build/fossil.elf"
+kind = "service"
+[[services]]
+name = "goldfish-rtc"
+path = "drivers/timer/goldfish-rtc"
+build = "cargo"
+output = "build/goldfish-rtc.elf"
+kind = "service"
+[[services]]
+name = "dtb"
+path = "drivers/platform/dtb"
+build = "cargo"
+output = "build/dtb.elf"
+kind = "service"
+[[services]]
+name = "virtio-mmio"
+path = "drivers/virtio/mmio"
+build = "cargo"
+output = "build/virtio-mmio.elf"
+kind = "service"
+[[services]]
+name = "ramdisk"
+path = "drivers/sys/ramdisk"
+build = "cargo"
+output = "build/ramdisk.elf"
+kind = "service"
+[[services]]
+name = "ape"
+path = "service/ape"
+build = "cargo"
+output = "build/ape.elf"
+kind = "service"
+
+# Drivers
 [[services]]
 name = "goldfish-rtc"
 path = "drivers/timer/goldfish-rtc"
@@ -52,6 +158,20 @@ build = "cargo"
 output = "build/virtio-net.elf"
 kind = "service"
 [[services]]
+name = "sifive-gpio"
+path = "drivers/gpio/sifive-gpio"
+build = "cargo"
+output = "build/sifive-gpio.elf"
+kind = "service"
+[[services]]
+name = "sdhci"
+path = "drivers/sdio/sdhci"
+build = "cargo"
+output = "build/sdhci.elf"
+kind = "service"
+
+# FS
+[[services]]
 name = "extfs"
 path = "fs/extfs"
 build = "cargo"
@@ -63,12 +183,8 @@ path = "fs/fatfs"
 build = "cargo"
 output = "build/fatfs.elf"
 kind = "service"
-[[services]]
-name = "ape"
-path = "service/ape"
-build = "cargo"
-output = "build/ape.elf"
-kind = "service"
+
+# Lib
 [[libraries]]
 name = "libglenda-rs"
 path = "lib/libglenda-rs"
@@ -89,31 +205,24 @@ name = "musl-glenda"
 path = "lib/musl-glenda"
 build = "make"
 output = "lib/libc.a"
-[[services]]
-name = "sifive-gpio"
-path = "drivers/gpio/sifive-gpio"
-build = "cargo"
-output = "build/sifive-gpio.elf"
-kind = "service"
-[[services]]
-name = "sdhci"
-path = "drivers/sdio/sdhci"
-build = "cargo"
-output = "build/sdhci.elf"
-kind = "service"
 
 [[files]]
 name = "init.json"
-path = "platform/qemu/init.json"
+path = "config/init.json"
 [[files]]
 name = "drivers.json"
-path = "platform/qemu/drivers.json"
+path = "config/drivers.json"
 [[files]]
 name = "fs.json"
-path = "platform/qemu/fs.json"
-
+path = "config/fs.json"
+[[files]]
+name = "network.json"
+path = "config/network.json"
+[[files]]
+name = "tty.json"
+path = "config/tty.json"
 
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]
-musl-glenda = ["--disable-shared", "--prefix=../../target"]
+musl-glenda = ["--disable-shared", "--prefix=../../target/sysroot"]

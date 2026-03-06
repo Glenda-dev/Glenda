@@ -101,8 +101,7 @@ fn main() -> anyhow::Result<()> {
 fn run_hosted(cfg: &Config) -> anyhow::Result<()> {
     use std::process::Command;
     let runtime_path = &cfg.hosted.runtime;
-    let profile =
-        if cfg.system.profile == "relwithdebuginfo" { "release" } else { &cfg.system.profile };
+    let profile = &cfg.system.profile;
     // Assuming the binary name matches the folder name
     let runtime_bin = Path::new(runtime_path).file_name().unwrap().to_str().unwrap();
     let runtime_exe = Path::new("target").join(profile).join(runtime_bin);

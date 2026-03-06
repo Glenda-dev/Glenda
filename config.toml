@@ -48,7 +48,6 @@ path = "service/prism"
 build = "cargo"
 output = "build/prism.elf"
 kind = "service"
-
 [[services]]
 name = "march"
 path = "service/march"

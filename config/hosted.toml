@@ -19,4 +19,4 @@ musl-glenda = ["--disable-shared", "--prefix=../../target"]
 [hosted]
 runtime = "service/hutch"
 socket = "/tmp/glenda_hutch.sock"
-apps = ["examples/hello"]
+apps = ["examples/hello", "service/hutch/tests/suite"]
