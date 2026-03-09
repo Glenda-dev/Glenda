@@ -42,18 +42,28 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
         // Initrd
         if let Some(chosen) = fdt.find_node("/chosen") {
             let start = chosen.property("linux,initrd-start").and_then(|p| {
+                #[cfg(target_pointer_width = "64")]
                 if p.value.len() == 8 {
                     Some(u64::from_be_bytes(p.value.try_into().unwrap()) as usize)
-                } else if p.value.len() == 4 {
+                } else {
+                    None
+                }
+                #[cfg(target_pointer_width = "32")]
+                if p.value.len() == 4 {
                     Some(u32::from_be_bytes(p.value.try_into().unwrap()) as usize)
                 } else {
                     None
                 }
             });
             let end = chosen.property("linux,initrd-end").and_then(|p| {
+                #[cfg(target_pointer_width = "64")]
                 if p.value.len() == 8 {
                     Some(u64::from_be_bytes(p.value.try_into().unwrap()) as usize)
-                } else if p.value.len() == 4 {
+                } else {
+                    None
+                }
+                #[cfg(target_pointer_width = "32")]
+                if p.value.len() == 4 {
                     Some(u32::from_be_bytes(p.value.try_into().unwrap()) as usize)
                 } else {
                     None
@@ -98,15 +108,12 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
         }
 
         // 3. 处理 RAM，剔除保留区域
-        for region in fdt.memory().regions() {
-            let r_base = region.starting_address as usize;
-            let r_size = region.size.unwrap_or(0);
-
+        let process_region = |r_base: usize, r_size: usize, count: &mut usize| {
             let start = (r_base + PGSIZE - 1) & !(PGSIZE - 1);
             let end = (r_base + r_size) & !(PGSIZE - 1);
 
             if end <= start {
-                continue;
+                return;
             }
 
             let base = start;
@@ -159,20 +166,51 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
             // Add resulting RAM ranges
             for k in 0..range_count {
                 let (base, size) = ranges[k];
-                if size > 0 && count < 64 {
+                if size > 0 && *count < 64 {
                     log!(
                         "opensbi: Found RAM: {:#x} - {:#x} ({} MB)",
                         base,
                         base + size,
                         size / 1024 / 1024
                     );
-                    MEM_MAP[count] = MemoryMapEntry {
+                    MEM_MAP[*count] = MemoryMapEntry {
                         base: PhysAddr::from(base),
                         length: size,
                         kind: MemoryType::Ram,
                     };
-                    count += 1;
+                    *count += 1;
                 }
+            }
+        };
+
+        for node in fdt.all_nodes() {
+            if node.name.starts_with("memory@") {
+                if let Some(reg) = node.property("reg") {
+                    let data = reg.value;
+                    // Support both #address-cells=1/2 and #size-cells=1/2
+                    if data.len() == 16 {
+                        // Assume 2 cells for base and 2 cells for size (64-bit)
+                        let r_base = u64::from_be_bytes(data[0..8].try_into().unwrap()) as usize;
+                        let r_size = u64::from_be_bytes(data[8..16].try_into().unwrap()) as usize;
+                        process_region(r_base, r_size, &mut count);
+                    } else if data.len() == 8 {
+                        // Assume 1 cell for base and 1 cell for size (32-bit)
+                        let r_base = u32::from_be_bytes(data[0..4].try_into().unwrap()) as usize;
+                        let r_size = u32::from_be_bytes(data[4..8].try_into().unwrap()) as usize;
+                        process_region(r_base, r_size, &mut count);
+                    }
+                }
+            }
+        }
+
+        if count == 0 {
+            // Fallback: use fdt-rs helper but it might fail on some DTBs
+            for region in fdt.memory().regions() {
+                process_region(
+                    region.starting_address as usize,
+                    region.size.unwrap_or(0),
+                    &mut count,
+                );
             }
         }
         MEM_MAP_COUNT = count;
@@ -197,13 +235,15 @@ pub unsafe fn init() {
             (chosen_node.property("linux,initrd-start"), chosen_node.property("linux,initrd-end"))
         {
             let parse_be = |data: &[u8]| -> usize {
+                #[cfg(target_pointer_width = "64")]
                 if data.len() == 8 {
-                    u64::from_be_bytes(data.try_into().unwrap()) as usize
-                } else if data.len() == 4 {
-                    u32::from_be_bytes(data.try_into().unwrap()) as usize
-                } else {
-                    0
+                    return u64::from_be_bytes(data.try_into().unwrap()) as usize;
                 }
+                #[cfg(target_pointer_width = "32")]
+                if data.len() == 4 {
+                    return u32::from_be_bytes(data.try_into().unwrap()) as usize;
+                }
+                0
             };
 
             let start_val = parse_be(start.value);

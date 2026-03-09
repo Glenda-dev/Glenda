@@ -10,30 +10,30 @@ pub const PGNUM: usize = 512;
 pub const MAX_ASID: usize = 1024;
 pub const ASID_MASK: usize = 0x3FF;
 
-pub const PTE_V: u64 = 1 << 0;
-pub const PTE_D: u64 = 1 << 1;
-pub const PTE_PLV_U: u64 = 3 << 2;
-pub const PTE_MAT_CACHED: u64 = 1 << 4;
-pub const PTE_P: u64 = 1 << 7;
-pub const PTE_W: u64 = 1 << 8;
+pub const PTE_V: usize = 1 << 0;
+pub const PTE_D: usize = 1 << 1;
+pub const PTE_PLV_U: usize = 3 << 2;
+pub const PTE_MAT_CACHED: usize = 1 << 4;
+pub const PTE_P: usize = 1 << 7;
+pub const PTE_W: usize = 1 << 8;
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default)]
-pub struct Pte(u64);
+pub struct Pte(usize);
 
 impl Pte {
-    pub const fn new(val: u64) -> Self {
+    pub const fn new(val: usize) -> Self {
         Self(val)
     }
     pub const fn null() -> Self {
         Self(0)
     }
-    pub fn bits(&self) -> u64 {
+    pub fn bits(&self) -> usize {
         self.0
     }
 
     pub fn from(pa: PhysAddr, perms: Perms) -> Self {
-        let ppn_bits = (pa.as_usize() as u64) & 0x0000_FFFF_FFFF_F000;
+        let ppn_bits = (pa.as_usize() as usize) & 0x0000_FFFF_FFFF_F000;
         let mut bits = ppn_bits | PTE_V | PTE_P | PTE_MAT_CACHED;
 
         if perms.contains(Perms::USER) {

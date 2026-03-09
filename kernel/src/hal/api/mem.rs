@@ -5,7 +5,10 @@ use crate::proc::asid;
 /// 页大小
 pub const PGSIZE: usize = 4096;
 /// 最大虚拟地址
+#[cfg(target_pointer_width = "64")]
 pub const VA_MAX: usize = 0xFFFFFFFFFFFFFFFF;
+#[cfg(target_pointer_width = "32")]
+pub const VA_MAX: usize = 0xFFFFFFFF;
 /// 页表层级数
 pub const PT_LEVELS: usize = 1;
 /// 每级页表的页表项数量

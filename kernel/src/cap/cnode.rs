@@ -5,7 +5,7 @@ use crate::mem::VirtAddr;
 use crate::sync::{SpinLock, SpinLockGuard};
 use core::cell::UnsafeCell;
 use core::fmt::{Debug, Display};
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub const SLOT_SIZE: usize = core::mem::size_of::<Slot>();
 pub const CNODE_SIZE: usize = core::mem::size_of::<CNode>();
@@ -40,25 +40,7 @@ impl CapPtr {
     }
 
     pub fn len(&self) -> usize {
-        if self.0 == 0 {
-            0
-        } else if self.0 <= 0xFF {
-            1
-        } else if self.0 <= 0xFFFF {
-            2
-        } else if self.0 <= 0xFF_FFFF {
-            3
-        } else if self.0 <= 0xFFFF_FFFF {
-            4
-        } else if self.0 <= 0xFF_FFFF_FFFF {
-            5
-        } else if self.0 <= 0xFFFF_FFFF_FFFF {
-            6
-        } else if self.0 <= 0xFF_FFFF_FFFF_FFFF {
-            7
-        } else {
-            8
-        }
+        if self.0 == 0 { 0 } else { ((usize::BITS - self.0.leading_zeros() + 7) / 8) as usize }
     }
 
     pub fn concat(root: CapPtr, ptr: CapPtr) -> CapPtr {
@@ -132,8 +114,8 @@ impl Slot {
 struct CNodeMetadata {
     ref_count: AtomicUsize,
     lock: SpinLock<()>,
-    /// 位图，记录已占用的槽位 (256位 = 32字节 = 4个u64)
-    bitmap: [core::sync::atomic::AtomicU64; 4],
+    /// 位图，记录已占用的槽位 (256位 = 32字节 = 4个usize)
+    bitmap: [core::sync::atomic::AtomicUsize; 4],
     /// 填充以匹配 Slot 的大小 (Slot 为 64 字节)
     /// ref_count (8) + lock (8) + bitmap (32) = 48 字节
     _padding: [u8; 16],
@@ -193,10 +175,10 @@ impl CNode {
                 ref_count: AtomicUsize::new(0),
                 lock: SpinLock::new(()),
                 bitmap: [
-                    AtomicU64::new(1), // 位 0 被占用 (Slot 0 存储元数据)
-                    AtomicU64::new(0),
-                    AtomicU64::new(0),
-                    AtomicU64::new(0),
+                    AtomicUsize::new(1), // 位 0 被占用 (Slot 0 存储元数据)
+                    AtomicUsize::new(0),
+                    AtomicUsize::new(0),
+                    AtomicUsize::new(0),
                 ],
                 _padding: [0; 16],
             };

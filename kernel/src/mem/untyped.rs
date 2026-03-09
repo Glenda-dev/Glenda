@@ -32,9 +32,8 @@ impl UntypedRegion {
         if cap.cap_type() != CapType::Untyped {
             return None;
         }
-        let data = cap.get_data();
-        let pages = data & 0x1FFFFFF;
-        let watermark = (data >> 25) & 0x1FFFFFF;
+        let pages = cap.untyped_pages();
+        let watermark = cap.untyped_watermark();
         Some(Self { start: cap.paddr(), pages: pages, watermark: watermark })
     }
 

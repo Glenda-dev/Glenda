@@ -14,9 +14,9 @@ pub struct Elf64Ehdr {
     pub e_type: u16,
     pub e_machine: u16,
     pub e_version: u32,
-    pub e_entry: u64,
-    pub e_phoff: u64,
-    pub e_shoff: u64,
+    pub e_entry: usize,
+    pub e_phoff: usize,
+    pub e_shoff: usize,
     pub e_flags: u32,
     pub e_ehsize: u16,
     pub e_phentsize: u16,
@@ -31,12 +31,12 @@ pub struct Elf64Ehdr {
 pub struct Elf64Phdr {
     pub p_type: u32,
     pub p_flags: u32,
-    pub p_offset: u64,
-    pub p_vaddr: u64,
-    pub p_paddr: u64,
-    pub p_filesz: u64,
-    pub p_memsz: u64,
-    pub p_align: u64,
+    pub p_offset: usize,
+    pub p_vaddr: usize,
+    pub p_paddr: usize,
+    pub p_filesz: usize,
+    pub p_memsz: usize,
+    pub p_align: usize,
 }
 
 pub const PT_LOAD: u32 = 1;

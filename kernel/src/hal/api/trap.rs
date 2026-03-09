@@ -130,7 +130,7 @@ pub extern "C" fn trap_user_handler() {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 #[unsafe(link_section = "trampsec")]
-pub unsafe extern "C" fn user_return(trapframe: u64, satp: u64) {
+pub unsafe extern "C" fn user_return(trapframe: usize, satp: usize) {
     naked_asm!("");
 }
 

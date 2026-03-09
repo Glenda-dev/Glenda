@@ -5,7 +5,11 @@ use core::fmt::Debug;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Badge(usize);
 
+#[cfg(target_pointer_width = "64")]
 const BADGE_BITS: usize = 64 - DATA_SHIFT;
+#[cfg(target_pointer_width = "32")]
+const BADGE_BITS: usize = 32 - DATA_SHIFT;
+
 pub const BADGE_MASK: usize = (1 << BADGE_BITS) - 1;
 
 impl Badge {

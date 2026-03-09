@@ -54,7 +54,7 @@ pub fn invoke_untyped(cap: &mut Capability, method: usize, cptr: usize) -> Resul
                     })?;
 
                     // 重要：将更新后的 watermark 写回原始 Untyped 能力
-                    cap.set_data(untyped.pages | (untyped.watermark << 25));
+                    cap.set_untyped_pages_and_watermark(untyped.pages, untyped.watermark);
                     Ok(())
                 }
                 None => {

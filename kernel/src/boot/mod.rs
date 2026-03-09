@@ -32,6 +32,16 @@ pub use opensbi::{bootstrap, init};
 #[cfg(feature = "bl-multiboot2")]
 pub use multiboot2::{bootstrap, init};
 
+pub mod api;
+#[cfg(not(any(
+    feature = "bl-limine",
+    feature = "bl-uefi",
+    feature = "bl-uboot",
+    feature = "bl-opensbi",
+    feature = "bl-multiboot2"
+)))]
+pub use api::*;
+
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryMapEntry {
     pub base: PhysAddr,

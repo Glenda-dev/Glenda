@@ -20,7 +20,10 @@ use num_enum::FromPrimitive;
 #[repr(C)]
 #[derive(Debug)]
 pub struct Capability {
+    #[cfg(target_pointer_width = "64")]
     pub words: [usize; 2],
+    #[cfg(target_pointer_width = "32")]
+    pub words: [usize; 4],
 }
 
 impl Display for Capability {
@@ -32,8 +35,14 @@ impl Display for Capability {
 
         match cap_type {
             CapType::Untyped => {
+                #[cfg(target_pointer_width = "64")]
                 let pages = (self.words[1] >> 13) & 0x1FFFFFF;
+                #[cfg(target_pointer_width = "64")]
                 let watermark = (self.words[1] >> 38) & 0x1FFFFFF;
+                #[cfg(target_pointer_width = "32")]
+                let pages = self.words[2];
+                #[cfg(target_pointer_width = "32")]
+                let watermark = self.words[3];
                 s.field("start_paddr", &PhysAddr::from(self.words[0]));
                 s.field("total_pages", &pages);
                 s.field("watermark", &watermark);
@@ -52,7 +61,11 @@ impl Display for Capability {
             CapType::Frame => {
                 let paddr = PhysAddr::from(self.words[0]);
                 s.field("paddr", &paddr);
-                s.field("pages", &((self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF));
+                s.field(
+                    "pages",
+                    &((self.words[1] >> DATA_SHIFT)
+                        & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1)),
+                );
                 s.field("device", &self.is_device());
             }
             CapType::PageTable => {
@@ -179,7 +192,14 @@ impl Capability {
     }
 
     pub const fn empty() -> Self {
-        Self { words: [0, 0] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [0, 0] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [0, 0, 0, 0] }
+        }
     }
 
     pub fn mint(&self, badge: Badge, rights: Rights) -> Self {
@@ -260,14 +280,44 @@ impl Capability {
     }
 
     pub const fn is_device(&self) -> bool {
-        (self.words[1] & TYPE_MASK) == (CapType::Frame as usize) && (self.words[1] & (1 << 63)) != 0
+        (self.words[1] & TYPE_MASK) == (CapType::Frame as usize)
+            && (self.words[1] & (1 << (usize::BITS - 1))) != 0
     }
 
     pub fn set_is_device(&mut self, is_device: bool) {
         if is_device {
-            self.words[1] |= 1 << 63;
+            self.words[1] |= 1 << (usize::BITS - 1);
         } else {
-            self.words[1] &= !(1 << 63);
+            self.words[1] &= !(1 << (usize::BITS - 1));
+        }
+    }
+
+    pub const fn untyped_watermark(&self) -> usize {
+        #[cfg(target_pointer_width = "64")]
+        return (self.words[1] >> 38) & 0x1FFFFFF;
+        #[cfg(target_pointer_width = "32")]
+        return self.words[3];
+    }
+
+    pub const fn untyped_pages(&self) -> usize {
+        #[cfg(target_pointer_width = "64")]
+        return (self.words[1] >> 13) & 0x1FFFFFF;
+        #[cfg(target_pointer_width = "32")]
+        return self.words[2];
+    }
+
+    pub fn set_untyped_pages_and_watermark(&mut self, pages: usize, watermark: usize) {
+        #[cfg(target_pointer_width = "64")]
+        {
+            let mut w1 = self.words[1];
+            w1 &= !0x1FFFFFFFFFFFF000;
+            w1 |= ((pages & 0x1FFFFFF) << 13) | ((watermark & 0x1FFFFFF) << 38);
+            self.words[1] = w1;
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            self.words[2] = pages;
+            self.words[3] = watermark;
         }
     }
 
@@ -275,7 +325,7 @@ impl Capability {
         let mut data = self.words[1] >> DATA_SHIFT;
         // 如果是 Frame 类型，需要排除第 63 位 (is_device)
         if (self.words[1] & TYPE_MASK) == (CapType::Frame as usize) {
-            data &= 0x3FFFFFFFFFFFF;
+            data &= (1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1;
         }
         data
     }
@@ -288,12 +338,22 @@ impl Capability {
     pub fn create_untyped(untyped: &UntypedRegion, rights: Rights) -> Self {
         let w0 = untyped.start.as_usize();
         // Word 1: Type (5) | Rights (8) | TotalPages (25) | FreePages (25)
+        #[cfg(target_pointer_width = "64")]
         let w1 = (CapType::Untyped as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | ((untyped.pages & 0x1FFFFFF) << 13)
-            | (0 << 38); // watermark starts at 0
+            | ((untyped.pages & 0x1FFFFFF) << 13);
+        #[cfg(target_pointer_width = "32")]
+        let w1 = (CapType::Untyped as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
 
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_tcb(tcb: &TCB, rights: Rights) -> Self {
@@ -302,7 +362,14 @@ impl Capability {
         let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::TCB as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_endpoint(ep: &Endpoint, rights: Rights) -> Self {
@@ -311,7 +378,14 @@ impl Capability {
         let w0 = ep_ptr.as_usize();
         let w1 = (CapType::Endpoint as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_reply(tcb: &TCB, rights: Rights) -> Self {
@@ -320,22 +394,36 @@ impl Capability {
         let w0 = tcb_ptr.as_usize();
         let w1 = (CapType::Reply as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_frame(frame: &PhysFrame, rights: Rights, is_device: bool) -> Self {
         assert!(frame.paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
         let w0 = frame.paddr.as_usize();
-        let pages = frame.pages & 0x3FFFFFFFFFFFF; // 50 bits (excluding bit 63)
+        let pages = frame.pages & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1); // 50 bits (excluding bit 63)
         let mut w1 = (CapType::Frame as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (pages << DATA_SHIFT);
 
         if is_device {
-            w1 |= 1 << 63;
+            w1 |= 1 << (usize::BITS - 1);
         }
 
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_pagetable(pt: &PageTable, level: usize, rights: Rights) -> Self {
@@ -344,7 +432,14 @@ impl Capability {
         let w1 = (CapType::PageTable as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (level << DATA_SHIFT);
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_cnode(cnode: &CNode, rights: Rights) -> Self {
@@ -353,21 +448,42 @@ impl Capability {
         let w0 = cnode_ptr.as_usize();
         let w1 = (CapType::CNode as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_irqhandler(irq: usize, rights: Rights) -> Self {
         let w0 = irq;
         let w1 = (CapType::IrqHandler as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_kernel(rights: Rights) -> Self {
         let w0 = 0;
         let w1 = (CapType::Kernel as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
     pub fn create_vspace(pt: &PageTable, asid: Asid, rights: Rights) -> Self {
         let asid_val = asid.id as usize & ASID_MASK;
@@ -380,14 +496,28 @@ impl Capability {
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
             | (asid_val << DATA_SHIFT)
             | (gen_val << (DATA_SHIFT + ASID_BITS));
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn create_console(rights: Rights) -> Self {
         let w0 = 0;
         let w1 = (CapType::Console as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
-        Self { words: [w0, w1] }
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
     }
 
     pub fn get_badge(&self) -> Badge {
@@ -415,7 +545,7 @@ impl Capability {
 
         let asid = (self.words[1] >> DATA_SHIFT) & ASID_MASK;
         let generation = self.words[1] >> (DATA_SHIFT + ASID_BITS);
-        (paddr, Asid::from(asid as u16, generation as u64))
+        (paddr, Asid::from(asid as u16, generation as usize))
     }
 
     pub fn set_asid(&mut self, asid: Asid) {
@@ -432,7 +562,8 @@ impl Capability {
     pub fn frame_info(&self) -> Option<(PhysAddr, usize, bool)> {
         if self.cap_type() == CapType::Frame {
             let paddr = PhysAddr::from(self.words[0]);
-            let pages = (self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF;
+            let pages =
+                (self.words[1] >> DATA_SHIFT) & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1);
             let is_device = self.is_device();
             Some((paddr, pages, is_device))
         } else {
@@ -456,7 +587,8 @@ impl Capability {
                     return Some(Self::empty());
                 }
                 let paddr = PhysAddr::from(self.words[0]);
-                let pages = (self.words[1] >> DATA_SHIFT) & 0x3FFFFFFFFFFFF;
+                let pages = (self.words[1] >> DATA_SHIFT)
+                    & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1);
                 Some(Self::create_untyped(
                     &UntypedRegion { start: paddr, pages, watermark: 0 },
                     Rights::all(),
@@ -546,8 +678,7 @@ impl Capability {
             }
             CapType::Untyped => {
                 let paddr = PhysAddr::from(self.words[0]);
-                let data = self.get_data();
-                let pages = data & 0x1FFFFFF;
+                let pages = self.untyped_pages();
                 Some(Self::create_untyped(
                     &UntypedRegion { start: paddr, pages, watermark: 0 },
                     Rights::all(),

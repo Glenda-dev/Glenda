@@ -7,6 +7,8 @@ use std::fmt::{self, Display, Formatter};
 pub enum Arch {
     #[default]
     Riscv64,
+    #[serde(rename = "riscv32")]
+    Riscv32,
     X86_64,
     Aarch64,
     Loongarch64,
@@ -17,6 +19,7 @@ impl Arch {
     pub fn as_str(&self) -> &'static str {
         match self {
             Arch::Riscv64 => "riscv64",
+            Arch::Riscv32 => "riscv32",
             Arch::X86_64 => "x86_64",
             Arch::Aarch64 => "aarch64",
             Arch::Loongarch64 => "loongarch64",
@@ -27,6 +30,7 @@ impl Arch {
     pub fn target_triple(&self) -> &'static str {
         match self {
             Arch::Riscv64 => "riscv64gc-unknown-none-elf",
+            Arch::Riscv32 => "riscv32imac-unknown-none-elf",
             Arch::X86_64 => "x86_64-unknown-none",
             Arch::Aarch64 => "aarch64-unknown-none-elf",
             Arch::Loongarch64 => "loongarch64-unknown-none",
@@ -37,6 +41,7 @@ impl Arch {
     pub fn qemu_binary(&self) -> &'static str {
         match self {
             Arch::Riscv64 => "qemu-system-riscv64",
+            Arch::Riscv32 => "qemu-system-riscv32",
             Arch::X86_64 => "qemu-system-x86_64",
             Arch::Aarch64 => "qemu-system-aarch64",
             Arch::Loongarch64 => "qemu-system-loongarch64",
@@ -47,6 +52,7 @@ impl Arch {
     pub fn binutils_prefix(&self) -> &'static str {
         match self {
             Arch::Riscv64 => "riscv64-unknown-elf-",
+            Arch::Riscv32 => "riscv32-unknown-elf-",
             Arch::X86_64 => "x86_64-elf-",
             Arch::Aarch64 => "aarch64-elf-",
             Arch::Loongarch64 => "loongarch64-elf-",
@@ -58,6 +64,7 @@ impl Arch {
         let local = format!("firmware/{}_uefi.fd", self.as_str());
         match self {
             Arch::Riscv64 => vec![local, "/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd".to_string()],
+            Arch::Riscv32 => vec![],
             Arch::Aarch64 => vec![local, "/usr/share/edk2/aarch64/QEMU_EFI.fd".to_string()],
             Arch::X86_64 => vec![
                 local,
@@ -72,6 +79,7 @@ impl Arch {
 
     pub fn uefi_firmware_url(&self) -> Option<&'static str> {
         match self {
+            Arch::Riscv32 => None,
             Arch::Riscv64 => {
                 Some("https://github.com/qemu/qemu/raw/master/pc-bios/edk2-riscv64-code.fd.bz2")
             }
@@ -90,6 +98,7 @@ impl Arch {
 
     pub fn limine_efi_file(&self) -> &'static str {
         match self {
+            Arch::Riscv32 => "BOOTRISCV32.EFI",
             Arch::Riscv64 => "BOOTRISCV64.EFI",
             Arch::X86_64 => "BOOTX64.EFI",
             Arch::Aarch64 => "BOOTAA64.EFI",

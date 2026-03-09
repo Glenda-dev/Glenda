@@ -7,14 +7,14 @@ use crate::sync::SpinLock;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Asid {
     pub id: u16,
-    pub generation: u64,
+    pub generation: usize,
 }
 
 impl Asid {
     pub const fn default() -> Self {
         Self { id: 0, generation: 0 }
     }
-    pub const fn from(id: u16, generation: u64) -> Asid {
+    pub const fn from(id: u16, generation: usize) -> Asid {
         Asid { id, generation }
     }
 }
@@ -26,7 +26,7 @@ struct AsidManager {
     /// 当前可分配的高水位线 (0..MAX_ASID)
     current_asid: u16,
     /// 全局代际计数器
-    generation: u64,
+    generation: usize,
 }
 
 impl AsidManager {

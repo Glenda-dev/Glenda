@@ -1,7 +1,7 @@
 use core::arch::global_asm;
 
-#[cfg(not(target_arch = "riscv64"))]
-compile_error!("OpenSBI only supports riscv64");
+#[cfg(not(any(target_arch = "riscv64", target_arch = "riscv32")))]
+compile_error!("OpenSBI only supports RISC-V architecture");
 
 global_asm!(
     r#"
