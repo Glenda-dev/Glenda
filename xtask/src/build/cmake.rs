@@ -16,10 +16,13 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     cmd.arg(format!("-DARCH={}", cfg.system.arch.as_str()));
 
     // Set cross-compiler if generic (bare metal)
-    // We assume the prefix matches the GCC toolchain
-    let cc = format!("{}gcc", cfg.system.arch.binutils_prefix());
+    // Use clang for LLVM toolchain
+    let cc = "clang";
+    let target = cfg.system.arch.as_str();
     cmd.arg(format!("-DCMAKE_C_COMPILER={}", cc));
     cmd.arg(format!("-DCMAKE_ASM_COMPILER={}", cc));
+    cmd.arg(format!("-DCMAKE_C_COMPILER_TARGET={}", target));
+    cmd.arg(format!("-DCMAKE_ASM_COMPILER_TARGET={}", target));
     cmd.arg("-DCMAKE_SYSTEM_NAME=Generic");
     cmd.arg("-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY");
     // Force compiler check to pass for bare metal / kernel lib without stdlib

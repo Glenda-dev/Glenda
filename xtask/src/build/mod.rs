@@ -110,7 +110,7 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     if is_uefi {
         // If the linker produced ELF, we convert to PE via objcopy as the "packaging" step
         // However, if lld produced PE directly (due to --subsystem), we just rename it.
-        let objcopy = format!("{}objcopy", cfg.system.arch.binutils_prefix());
+        let objcopy = cfg.system.arch.llvm_tool("objcopy");
         let _ = Command::new(objcopy)
             .args(&["-O", "pei-riscv64-little", "target/kernel", "target/kernel.efi"])
             .status();

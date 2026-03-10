@@ -99,7 +99,7 @@ pub fn prepare(cfg: &Config) -> anyhow::Result<()> {
 fn generate_fit_image(cfg: &Config) -> anyhow::Result<()> {
     eprintln!("[ INFO ] Generating FIT image (glenda.itb)...");
     // 1. kernel binary
-    let objcopy = format!("{}objcopy", cfg.system.arch.binutils_prefix());
+    let objcopy = cfg.system.arch.llvm_tool("objcopy");
     let status = Command::new(objcopy)
         .args(&["-O", "binary", "target/kernel", "target/kernel.bin"])
         .status()?;

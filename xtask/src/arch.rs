@@ -23,7 +23,7 @@ impl Arch {
             Arch::X86_64 => "x86_64",
             Arch::Aarch64 => "aarch64",
             Arch::Loongarch64 => "loongarch64",
-            Arch::Hosted => "hosted",
+            Arch::Hosted => std::env::consts::ARCH,
         }
     }
 
@@ -49,15 +49,8 @@ impl Arch {
         }
     }
 
-    pub fn binutils_prefix(&self) -> &'static str {
-        match self {
-            Arch::Riscv64 => "riscv64-unknown-elf-",
-            Arch::Riscv32 => "riscv32-unknown-elf-",
-            Arch::X86_64 => "x86_64-elf-",
-            Arch::Aarch64 => "aarch64-elf-",
-            Arch::Loongarch64 => "loongarch64-elf-",
-            Arch::Hosted => "",
-        }
+    pub fn llvm_tool(&self, tool: &str) -> String {
+        format!("llvm-{}", tool)
     }
 
     pub fn uefi_firmware_candidates(&self) -> Vec<String> {
