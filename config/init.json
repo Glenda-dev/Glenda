@@ -11,13 +11,14 @@
             "path": "fossil",
             "auto_start": true,
             "dependencies": [
-                "unicorn"
+                "unicorn",
+                "nexus"
             ]
         },
         {
             "name": "gopher",
             "path": "gopher",
-            "auto_start": true,
+            "auto_start": false,
             "dependencies": [
                 "unicorn",
                 "march"
@@ -26,7 +27,7 @@
         {
             "name": "march",
             "path": "march",
-            "auto_start": true,
+            "auto_start": false,
             "dependencies": [
                 "unicorn"
             ]
@@ -34,7 +35,7 @@
         {
             "name": "nexus",
             "path": "nexus",
-            "auto_start": true,
+            "auto_start": false,
             "dependencies": []
         },
         {

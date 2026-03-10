@@ -15,6 +15,13 @@
             ]
         },
         {
+            "name": "virtio-gpu",
+            "binary": "virtio-gpu",
+            "compatible": [
+                "virtio-gpu"
+            ]
+        },
+        {
             "name": "virtio-net",
             "binary": "virtio-net",
             "compatible": [

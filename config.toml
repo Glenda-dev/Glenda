@@ -97,6 +97,12 @@ build = "cargo"
 output = "build/virtio-net.elf"
 kind = "service"
 [[services]]
+name = "virtio-gpu"
+path = "drivers/virtio/gpu"
+build = "cargo"
+output = "build/virtio-gpu.elf"
+kind = "service"
+[[services]]
 name = "fossil"
 path = "service/fossil"
 build = "cargo"
@@ -145,5 +151,5 @@ path = "config/tty.json"
 
 [features]
 kernel = []
-libglenda-rs = ["rt-bare"]
+prism = ["utf8"]
 musl-glenda = ["--disable-shared", "--prefix=../../target"]

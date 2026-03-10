@@ -13,6 +13,7 @@ members = [
     "examples/dosbox",
     "drivers/virtio/common",
     "drivers/virtio/block",
+    "drivers/virtio/gpu",
     "drivers/uart/ns16550a",
     "drivers/virtio/net",
     "drivers/timer/goldfish-rtc",
