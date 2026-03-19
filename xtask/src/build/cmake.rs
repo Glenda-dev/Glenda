@@ -23,8 +23,12 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     cmd.arg(format!("-DCMAKE_ASM_COMPILER={}", cc));
     cmd.arg(format!("-DCMAKE_C_COMPILER_TARGET={}", target));
     cmd.arg(format!("-DCMAKE_ASM_COMPILER_TARGET={}", target));
-    cmd.arg("-DCMAKE_SYSTEM_NAME=Generic");
-    cmd.arg("-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY");
+    match cfg.system.arch {
+        crate::arch::Arch::Riscv64 => {
+            cmd.arg("-DCMAKE_C_FLAGS=-march=rv64gc -mabi=lp64d");
+        }
+        _ => {}
+    }
     // Force compiler check to pass for bare metal / kernel lib without stdlib
     cmd.arg("-DCMAKE_C_COMPILER_WORKS=1");
     cmd.arg("-DCMAKE_ASM_COMPILER_WORKS=1");
