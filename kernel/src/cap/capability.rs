@@ -580,7 +580,6 @@ impl Capability {
     }
 
     pub fn recycle(&self) -> Option<Self> {
-        self.dec_ref(); // 先递减引用计数，如果这是最后一个引用，才允许回收
         match self.cap_type() {
             CapType::Frame => {
                 if self.is_device() {
@@ -604,14 +603,17 @@ impl Capability {
             CapType::CNode => {
                 let vaddr = VirtAddr::from(self.words[0]);
                 let cnode_mut = unsafe { &mut *(vaddr.as_usize() as *mut CNode) };
-                if cnode_mut.ref_count().load(Ordering::Relaxed) > 1 {
+                let refs = cnode_mut.ref_count().load(Ordering::Relaxed);
+                if refs != 1 {
                     warn!(
                         "cap: Cannot recycle CNode {:p}: still has {} references",
-                        cnode_mut,
-                        cnode_mut.ref_count().load(Ordering::Relaxed)
+                        cnode_mut, refs
                     );
                     return None;
                 }
+
+                // Consume this capability's reference explicitly.
+                self.dec_ref();
 
                 // Explicitly trigger Drop to use bitmap for efficient cleanup of used slots.
                 // This will call delete_recursive on all active slots.
@@ -626,14 +628,17 @@ impl Capability {
             CapType::TCB => {
                 let vaddr = VirtAddr::from(self.words[0]);
                 let tcb = unsafe { vaddr.as_ref::<TCB>() };
-                if tcb.ref_count.load(Ordering::Relaxed) > 1 {
+                let refs = tcb.ref_count.load(Ordering::Relaxed);
+                if refs != 1 {
                     warn!(
                         "cap_recycle: Cannot recycle TCB {:p}: still has {} references",
-                        tcb,
-                        tcb.ref_count.load(Ordering::Relaxed)
+                        tcb, refs
                     );
                     return None;
                 }
+
+                // Consume this capability's reference explicitly.
+                self.dec_ref();
 
                 // Remove from scheduler if present
                 let tcb_mut = unsafe { vaddr.as_mut::<TCB>() };
@@ -656,15 +661,19 @@ impl Capability {
                 // Recycling is only allowed if this is the last reference to the Endpoint object.
                 // Note: The caller (CNode::recycle) has already revoked all children of this capability.
 
-                if ep.ref_count.load(Ordering::Relaxed) > 1 {
+                let refs = ep.ref_count.load(Ordering::Relaxed);
+                if refs != 1 {
                     warn!(
                         "cap_recycle: Cannot recycle Endpoint {:p}: still has {} references. (is_badged: {})",
                         ep,
-                        ep.ref_count.load(Ordering::Relaxed),
+                        refs,
                         self.is_badged()
                     );
                     return None;
                 }
+
+                // Consume this capability's reference explicitly.
+                self.dec_ref();
 
                 // If we are here, we are the last owner.
                 // We must unblock any pending threads before reclaiming memory.

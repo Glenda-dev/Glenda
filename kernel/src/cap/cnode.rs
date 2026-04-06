@@ -524,16 +524,24 @@ impl CNode {
         // 1. Revoke children first to ensure no one else is using derived caps
         revoke_recursive(slot);
 
-        // 2. Try to recycle current cap
-        if let Some(new_cap) = slot.cap.recycle() {
+        // 2. Try to recycle current cap.
+        // Move out old cap first so that on success we can avoid dropping it again
+        // (recycle already consumes the reference for ref-counted objects).
+        let old_cap = core::mem::replace(&mut slot.cap, Capability::empty());
+        if let Some(new_cap) = old_cap.recycle() {
             let (paddr, pages) = match new_cap.cap_type() {
                 CapType::Untyped => (new_cap.value(), new_cap.get_data() & 0x1FFFFFF),
                 _ => (0, 0),
             };
             slot.cap = new_cap;
             slot.cdt.first_child = VirtAddr::null();
+
+            // old_cap has already been logically consumed by recycle.
+            core::mem::forget(old_cap);
             Ok((paddr, pages))
         } else {
+            // Recycle failed: restore original capability untouched.
+            slot.cap = old_cap;
             Err(Error::InvalidCapability)
         }
     }
