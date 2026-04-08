@@ -22,7 +22,6 @@ pub fn build(cfg: &Config, path: &Path, args: &[String]) -> anyhow::Result<()> {
     cmd.arg(format!("-DCMAKE_C_COMPILER={}", cc));
     cmd.arg(format!("-DCMAKE_ASM_COMPILER={}", cc));
     cmd.arg(format!("-DCMAKE_C_COMPILER_TARGET={}", target));
-    cmd.arg(format!("-DCMAKE_ASM_COMPILER_TARGET={}", target));
     match cfg.system.arch {
         crate::arch::Arch::Riscv64 => {
             cmd.arg("-DCMAKE_C_FLAGS=-march=rv64gc -mabi=lp64d");

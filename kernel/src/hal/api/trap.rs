@@ -61,6 +61,10 @@ impl TrapFrame {
     pub fn get_registers(&self) -> MsgArgs {
         unimplemented!()
     }
+    /// 获取系统调用参数寄存器的值，按照(n, a, b, c, d, e, f)的顺序返回
+    pub fn get_syscall_registers(&self) -> MsgArgs {
+        unimplemented!()
+    }
     /// 设置常见寄存器的值
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         unimplemented!()

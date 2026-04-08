@@ -55,83 +55,114 @@ build = "cargo"
 output = "build/march.elf"
 kind = "service"
 [[services]]
-name = "initrdfs"
-path = "fs/initrdfs"
-build = "cargo"
-output = "build/initrdfs.elf"
-kind = "service"
-[[services]]
-name = "loop"
-path = "drivers/sys/loop"
-build = "cargo"
-output = "build/loop.elf"
-kind = "service"
-[[services]]
-name = "fatfs"
-path = "fs/fatfs"
-build = "cargo"
-output = "build/fatfs.elf"
-kind = "service"
-[[services]]
-name = "extfs"
-path = "fs/extfs"
-build = "cargo"
-output = "build/extfs.elf"
-kind = "service"
-[[services]]
-name = "ns16550a"
-path = "drivers/uart/ns16550a"
-build = "cargo"
-output = "build/ns16550a.elf"
-kind = "service"
-[[services]]
-name = "virtio-blk"
-path = "drivers/virtio/block"
-build = "cargo"
-output = "build/virtio-blk.elf"
-kind = "service"
-[[services]]
-name = "virtio-net"
-path = "drivers/virtio/net"
-build = "cargo"
-output = "build/virtio-net.elf"
-kind = "service"
-[[services]]
-name = "virtio-gpu"
-path = "drivers/virtio/gpu"
-build = "cargo"
-output = "build/virtio-gpu.elf"
-kind = "service"
-[[services]]
 name = "fossil"
 path = "service/fossil"
 build = "cargo"
 output = "build/fossil.elf"
 kind = "service"
 [[services]]
+name = "ape"
+path = "service/ape"
+build = "cargo"
+output = "build/ape.elf"
+kind = "service"
+
+[[services]]
+name = "initrdfs"
+path = "fs/initrdfs"
+build = "cargo"
+output = "build/initrdfs.elf"
+kind = "driver"
+[[services]]
+name = "loop"
+path = "drivers/sys/loop"
+build = "cargo"
+output = "build/loop.elf"
+kind = "driver"
+[[services]]
+name = "fatfs"
+path = "fs/fatfs"
+build = "cargo"
+output = "build/fatfs.elf"
+kind = "driver"
+[[services]]
+name = "extfs"
+path = "fs/extfs"
+build = "cargo"
+output = "build/extfs.elf"
+kind = "driver"
+[[services]]
+name = "ns16550a"
+path = "drivers/uart/ns16550a"
+build = "cargo"
+output = "build/ns16550a.elf"
+kind = "driver"
+[[services]]
+name = "virtio-blk"
+path = "drivers/virtio/block"
+build = "cargo"
+output = "build/virtio-blk.elf"
+kind = "driver"
+[[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
+kind = "driver"
+[[services]]
+name = "virtio-gpu"
+path = "drivers/virtio/gpu"
+build = "cargo"
+output = "build/virtio-gpu.elf"
+kind = "driver"
+[[services]]
 name = "goldfish-rtc"
 path = "drivers/timer/goldfish-rtc"
 build = "cargo"
 output = "build/goldfish-rtc.elf"
-kind = "service"
+kind = "driver"
 [[services]]
 name = "dtb"
 path = "drivers/platform/dtb"
 build = "cargo"
 output = "build/dtb.elf"
-kind = "service"
+kind = "driver"
 [[services]]
 name = "virtio-mmio"
 path = "drivers/virtio/mmio"
 build = "cargo"
 output = "build/virtio-mmio.elf"
-kind = "service"
+kind = "driver"
 [[services]]
 name = "ramdisk"
 path = "drivers/sys/ramdisk"
 build = "cargo"
 output = "build/ramdisk.elf"
-kind = "service"
+kind = "driver"
+
+[[libraries]]
+name = "libape"
+path = "lib/libape"
+build = "cargo"
+output = "libape.a"
+[[libraries]]
+name = "musl-glenda"
+path = "lib/musl-glenda"
+build = "custom"
+output = ""
+
+[[services]]
+name = "hello-posix"
+path = "examples/hello-posix"
+build = "cmake"
+output = "build/hello-posix.elf"
+kind = "test"
+[[services]]
+name = "hello"
+path = "examples/hello"
+build = "cargo"
+output = "build/hello.elf"
+kind = "test"
 
 [[files]]
 name = "init.json"
@@ -149,7 +180,11 @@ path = "config/network.json"
 name = "tty.json"
 path = "config/tty.json"
 
+[[files]]
+name = "hello-posix-native"
+path = "examples/hello-posix/build/hello-posix-native.elf"
+
 [features]
 kernel = []
-prism = ["utf8"]
 musl-glenda = ["--disable-shared", "--prefix=../../target"]
+libape = ["runtime"]

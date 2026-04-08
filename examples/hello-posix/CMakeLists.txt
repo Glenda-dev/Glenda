@@ -16,10 +16,8 @@ include_directories(
     "${SYSROOT}/include"
 )
 
-# Search for libraries in musl-glenda sysroot
-link_directories(
-    "${SYSROOT}/lib"
-)
+set(APE_LIB "${SYSROOT}/lib/libape.a")
+set(LIBC_LIB "${SYSROOT}/lib/libc.a")
 
 # Create executable
 add_executable(hello-posix main.c)
@@ -44,13 +42,16 @@ target_link_options(hello-posix PRIVATE
 # For hello-posix, we link the static libc.a from musl.
 target_link_libraries(hello-posix PRIVATE
     -Wl,--start-group
-    c
-    ape
+    "${LIBC_LIB}"
+    "${APE_LIB}"
     -Wl,--end-group
     ${SYSROOT}/lib/crt1.o
     ${SYSROOT}/lib/crti.o
     ${SYSROOT}/lib/crtn.o
 )
+
+# Ensure linker reruns when static runtime archives are refreshed by xtask.
+set_property(TARGET hello-posix APPEND PROPERTY LINK_DEPENDS "${LIBC_LIB};${APE_LIB}")
 
 # Install rule (required by xtask build system)
 install(TARGETS hello-posix RUNTIME DESTINATION .)

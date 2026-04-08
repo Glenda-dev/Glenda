@@ -310,7 +310,6 @@ pub fn build_initrd(cfg: &Config) -> anyhow::Result<()> {
             "driver" => 1,
             "server" => 2,
             "test" => 3,
-            "file" => 4,
             _ => 4,
         };
         entries.push((t, name, data));

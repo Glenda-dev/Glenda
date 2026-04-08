@@ -124,9 +124,11 @@ impl TrapFrame {
     pub const fn get_sp(&self) -> usize {
         self.sp
     }
-    // TODO: Fix this
     pub fn get_registers(&self) -> MsgArgs {
         [self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6, self.a7]
+    }
+    pub fn get_syscall_registers(&self) -> MsgArgs {
+        [self.a7, self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6]
     }
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         self.a0 = regs[0];

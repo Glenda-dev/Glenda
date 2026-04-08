@@ -109,6 +109,7 @@ version = "0.1.0"
 dependencies = [
  "libape",
  "libglenda-rs",
+ "linux-raw-sys 0.12.1",
 ]
 
 [[package]]
@@ -628,14 +629,15 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libglenda-rs",
+ "linux-raw-sys 0.12.1",
  "num_enum",
 ]
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.184"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
 
 [[package]]
 name = "libglenda-rs"
@@ -673,6 +675,12 @@ name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "lock_api"

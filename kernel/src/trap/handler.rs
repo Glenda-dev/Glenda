@@ -130,7 +130,7 @@ fn fault_handler(
                     protocol::ACCESS_MISALIGNED
                 }
                 TrapException::Syscall => {
-                    utcb.mrs_regs = ctx.get_registers();
+                    utcb.mrs_regs = ctx.get_syscall_registers();
                     protocol::SYSCALL
                 }
                 _ => {
