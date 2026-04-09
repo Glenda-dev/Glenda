@@ -58,6 +58,14 @@
                 "gopher",
                 "fossil"
             ]
+        },
+        {
+            "name": "chimera",
+            "path": "chimera",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn"
+            ]
         }
     ]
 }

@@ -66,6 +66,12 @@ path = "service/ape"
 build = "cargo"
 output = "build/ape.elf"
 kind = "service"
+[[services]]
+name = "chimera"
+path = "service/chimera"
+build = "cargo"
+output = "build/chimera.elf"
+kind = "service"
 
 [[services]]
 name = "initrdfs"
