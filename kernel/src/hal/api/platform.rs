@@ -25,3 +25,7 @@ pub fn reboot() -> ! {
 pub fn bootstrap_cpus() {
     unimplemented!()
 }
+
+pub fn is_virtualization_enabled() -> bool {
+    false
+}

@@ -1,8 +1,10 @@
 use super::cpu;
+use crate::boot;
 use crate::hal::riscv64::sbi;
 use crate::platform::acpi::GlendaAcpiHandler;
 use crate::printk::{ANSI_RED, ANSI_RESET};
 use ::acpi::AcpiTables;
+use core::str;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 mod acpi;
@@ -19,13 +21,63 @@ unsafe extern "C" {
 }
 
 static BOOTSTRAP_DONE: AtomicBool = AtomicBool::new(false);
+static VIRT_ENABLED: AtomicBool = AtomicBool::new(false);
+
+fn detect_virt_from_dtb(fdt: &fdt::Fdt) -> bool {
+    for node in fdt.all_nodes() {
+        let Some(device_type_prop) = node.property("device_type") else {
+            continue;
+        };
+        let Ok(device_type) = str::from_utf8(device_type_prop.value) else {
+            continue;
+        };
+        if device_type.trim_end_matches('\0') != "cpu" {
+            continue;
+        }
+
+        let Some(isa_prop) = node.property("riscv,isa") else {
+            continue;
+        };
+        let Ok(isa) = str::from_utf8(isa_prop.value) else {
+            continue;
+        };
+        if isa.trim_end_matches('\0').contains('h') {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn detect_virt_from_boot_dtb() -> bool {
+    if let Some((dtb, _)) = boot::get_dtb() {
+        if let Ok(fdt) = unsafe { fdt::Fdt::from_ptr(dtb.as_usize() as *const u8) } {
+            return detect_virt_from_dtb(&fdt);
+        }
+    }
+
+    false
+}
 
 pub fn parse_dtb(fdt: &fdt::Fdt) {
+    VIRT_ENABLED.store(detect_virt_from_dtb(fdt), Ordering::Release);
     dtb::parse(fdt)
 }
 
 pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>) {
+    // 当前实现仅在 DTB 中探测 RISC-V H 扩展。
+    VIRT_ENABLED.store(false, Ordering::Release);
     acpi::parse(tables)
+}
+
+pub fn is_virtualization_enabled() -> bool {
+    if VIRT_ENABLED.load(Ordering::Acquire) {
+        return true;
+    }
+
+    let enabled = detect_virt_from_boot_dtb();
+    VIRT_ENABLED.store(enabled, Ordering::Release);
+    enabled
 }
 
 /// 关闭系统

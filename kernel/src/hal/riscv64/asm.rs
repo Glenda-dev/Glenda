@@ -44,6 +44,52 @@ pub fn read_sstatus() -> usize {
 }
 
 #[inline(always)]
+pub fn read_hstatus() -> usize {
+    let hstatus: usize;
+    unsafe {
+        asm!("csrr {}, hstatus", out(reg) hstatus);
+    }
+    hstatus
+}
+
+#[inline(always)]
+pub fn write_hstatus(value: usize) {
+    unsafe {
+        asm!("csrw hstatus, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
+pub fn write_hedeleg(value: usize) {
+    unsafe {
+        asm!("csrw hedeleg, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
+pub fn write_hideleg(value: usize) {
+    unsafe {
+        asm!("csrw hideleg, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
+pub fn write_hgatp(value: usize) {
+    unsafe {
+        asm!("csrw hgatp, {}", in(reg) value);
+    }
+}
+
+#[inline(always)]
+pub fn read_hgatp() -> usize {
+    let hgatp: usize;
+    unsafe {
+        asm!("csrr {}, hgatp", out(reg) hgatp);
+    }
+    hgatp
+}
+
+#[inline(always)]
 pub unsafe fn write_stvec(value: usize) {
     unsafe {
         asm!("csrw stvec, {}", in(reg) value);

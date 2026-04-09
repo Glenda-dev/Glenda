@@ -135,6 +135,8 @@ pub fn init_bootinfo(bootinfo: &mut BootInfo) -> Result<(), Error> {
         bootinfo.cmdline[..len].copy_from_slice(&bytes[..len]);
     }
 
+    bootinfo.virt_enabled = usize::from(hal::platform::is_virtualization_enabled());
+
     bootinfo.version = crate::version::get_version();
     bootinfo.build = crate::version::get_build_time_bytes();
     bootinfo.git_hash = crate::version::get_git_hash_bytes();
