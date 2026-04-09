@@ -7,7 +7,7 @@ bootloader = "opensbi"
 cpus = 1
 mem = "2G"
 display = "nographic"
-drive = "disk.img"
+disk = "disk.img"
 bootargs = "-v"
 
 # System Services
@@ -191,6 +191,9 @@ path = "config/network.json"
 [[files]]
 name = "tty.json"
 path = "config/tty.json"
+[[files]]
+name = "ape.json"
+path = "config/ape.json"
 
 [features]
 kernel = []

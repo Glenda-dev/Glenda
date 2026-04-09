@@ -110,6 +110,8 @@ dependencies = [
  "libape",
  "libglenda-rs",
  "linux-raw-sys 0.12.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

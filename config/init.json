@@ -49,7 +49,7 @@
         {
             "name": "ape",
             "path": "ape",
-            "auto_start": true,
+            "auto_start": false,
             "dependencies": [
                 "unicorn",
                 "nexus",

@@ -7,7 +7,7 @@ bootloader = "opensbi"
 cpus = 1
 mem = "2G"
 display = "nographic"
-drive = "disk.img"
+disk = "./platform/qemu/alpine-linux-riscv64-ext4fs.img"
 net = true
 mac = "52:54:00:11:22:33"
 hostfwd = ["tcp::8080-:80"]
@@ -140,23 +140,6 @@ build = "cargo"
 output = "build/ramdisk.elf"
 kind = "driver"
 
-[[libraries]]
-name = "libape"
-path = "lib/libape"
-build = "cargo"
-output = "libape.a"
-[[libraries]]
-name = "musl-glenda"
-path = "lib/musl-glenda"
-build = "custom"
-output = ""
-
-[[services]]
-name = "hello-posix"
-path = "examples/hello-posix"
-build = "cmake"
-output = "build/hello-posix.elf"
-kind = "test"
 [[services]]
 name = "hello"
 path = "examples/hello"
@@ -179,10 +162,9 @@ path = "config/network.json"
 [[files]]
 name = "tty.json"
 path = "config/tty.json"
-
 [[files]]
-name = "hello-posix-native"
-path = "examples/hello-posix/build/hello-posix-native.elf"
+name = "ape.json"
+path = "config/ape.json"
 
 [features]
 kernel = []

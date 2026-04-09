@@ -49,13 +49,6 @@
                 "ns16550a",
                 "snps,dw-apb-uart"
             ]
-        },
-        {
-            "name": "ramdisk",
-            "binary": "ramdisk",
-            "compatible": [
-                "ramdisk"
-            ]
         }
     ]
 }

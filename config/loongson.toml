@@ -6,7 +6,7 @@ profile = "relwithdebuginfo"
 cpus = 1
 mem = "1G"
 display = "nographic"
-drive = "disk.img"
+disk = "disk.img"
 bootargs = "-v"
 
 [[services]]
