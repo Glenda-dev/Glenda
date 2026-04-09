@@ -58,3 +58,6 @@
 [submodule "service/busybox"]
 	path = service/busybox
 	url = https://github.com/Glenda-dev/busybox-glenda.git
+[submodule "service/chimera"]
+	path = service/chimera
+	url = https://github.com/Glenda-dev/chimera.git

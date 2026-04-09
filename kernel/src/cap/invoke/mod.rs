@@ -5,6 +5,7 @@ mod irq;
 mod kernel;
 mod tcb;
 mod untyped;
+mod virt;
 mod vspace;
 
 use crate::cap::{CapType, Capability};
@@ -27,6 +28,8 @@ pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), 
         CapType::Reply => ipc::invoke_reply(cap, method),
         CapType::Kernel => kernel::invoke_kernel(cap, method, cptr),
         CapType::Console => console::invoke_console(cap, method, cptr),
+        CapType::VCPU => virt::invoke_vcpu(cap, method),
+        CapType::VMSpace => virt::invoke_vmspace(cap, method),
         _ => {
             log!("Invoke: Invalid capability: {}", cap);
             Err(Error::InvalidType)

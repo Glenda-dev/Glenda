@@ -2,6 +2,7 @@ use crate::cpu;
 
 pub fn init() {
     cpu::init();
+    crate::hal::virt::init_cpu();
 
     #[cfg(target_arch = "riscv64")]
     unsafe {

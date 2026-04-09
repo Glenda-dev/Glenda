@@ -10,6 +10,7 @@ use crate::irq;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc::TCB;
 use crate::proc::scheduler;
+use crate::proc::virt::vcpu_state_from_cap;
 use crate::trap::syscall;
 
 #[unsafe(no_mangle)]
@@ -89,6 +90,24 @@ fn fault_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
+    if matches!(
+        e,
+        TrapException::GuestPageFault
+            | TrapException::VirtualInstruction
+            | TrapException::VirtualSupervisorSyscall
+    ) && let Some(vcpu_cap) = tcb.bound_vcpu.as_ref()
+        && let Ok(vcpu) = vcpu_state_from_cap(vcpu_cap)
+    {
+        vcpu.exit_reason = match e {
+            TrapException::GuestPageFault => crate::proc::virt::VcpuExitReason::GuestPageFault,
+            TrapException::VirtualInstruction => crate::proc::virt::VcpuExitReason::VirtualInstruction,
+            _ => crate::proc::virt::VcpuExitReason::HostTrap,
+        };
+        vcpu.exit_detail0 = value;
+        vcpu.exit_detail1 = cause;
+        vcpu.exit_detail2 = pc;
+    }
+
     log!(
         "trap: Fault in thread {:p}: {}, cause={:#x}, pc={:#x}, value={:#x}, status={:#x}",
         tcb,
@@ -132,6 +151,24 @@ fn fault_handler(
                 TrapException::Syscall => {
                     utcb.mrs_regs = ctx.get_syscall_registers();
                     protocol::SYSCALL
+                }
+                TrapException::GuestPageFault => {
+                    utcb.mrs_regs[0] = value; // guest fault addr
+                    utcb.mrs_regs[1] = pc; // host trap pc
+                    utcb.mrs_regs[2] = cause; // scause
+                    protocol::VIRT_EXIT
+                }
+                TrapException::VirtualInstruction => {
+                    utcb.mrs_regs[0] = value; // trapping instruction encoding/value
+                    utcb.mrs_regs[1] = pc; // pc
+                    utcb.mrs_regs[2] = cause; // scause
+                    protocol::VIRT_EXIT
+                }
+                TrapException::VirtualSupervisorSyscall => {
+                    utcb.mrs_regs[0] = cause; // scause
+                    utcb.mrs_regs[1] = value; // stval/htval proxy
+                    utcb.mrs_regs[2] = pc; // pc
+                    protocol::VIRT_EXIT
                 }
                 _ => {
                     utcb.mrs_regs[0] = cause; // cause

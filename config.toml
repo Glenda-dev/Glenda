@@ -43,6 +43,12 @@ build = "cargo"
 output = "build/nexus.elf"
 kind = "service"
 [[services]]
+name = "chimera"
+path = "service/chimera"
+build = "cargo"
+output = "build/chimera.elf"
+kind = "service"
+[[services]]
 name = "prism"
 path = "service/prism"
 build = "cargo"

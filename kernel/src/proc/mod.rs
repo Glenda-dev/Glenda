@@ -3,6 +3,7 @@ pub mod elf;
 pub mod roottask;
 pub mod scheduler;
 pub mod thread;
+pub mod virt;
 
 pub use elf::ElfFile;
 pub use thread::{TCB, ThreadState};
