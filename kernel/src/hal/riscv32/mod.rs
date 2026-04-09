@@ -10,5 +10,6 @@ pub mod runtime;
 pub mod sbi;
 pub mod timer;
 pub mod trap;
+pub mod virt;
 
 pub const ARCH: &'static str = "riscv32";

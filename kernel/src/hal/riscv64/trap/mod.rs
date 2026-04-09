@@ -34,7 +34,10 @@ pub fn match_cause(cause: usize) -> TrapCause {
     if is_interrupt {
         match code {
             5 => TrapCause::Interrupt(TrapInterrupt::Timer), // Supervisor Timer Interrupt
+            6 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorTimer),
             9 => TrapCause::Interrupt(TrapInterrupt::External), // Supervisor External Interrupt
+            10 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorExternal),
+            2 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorSoftware),
             _ => TrapCause::Unknown(cause),
         }
     } else {
@@ -44,7 +47,10 @@ pub fn match_cause(cause: usize) -> TrapCause {
             0 | 4 | 6 => TrapCause::Exception(TrapException::AccessMisaligned),
             1 | 5 | 7 => TrapCause::Exception(TrapException::AccessFault),
             8 => TrapCause::Exception(TrapException::Syscall), // Environment call from U-mode
+            10 => TrapCause::Exception(TrapException::VirtualSupervisorSyscall),
             12 | 13 | 15 => TrapCause::Exception(TrapException::PageFault), // Instruction/Load/Store Page Fault
+            20 | 21 | 23 => TrapCause::Exception(TrapException::GuestPageFault),
+            22 => TrapCause::Exception(TrapException::VirtualInstruction),
             _ => TrapCause::Unknown(cause),
         }
     }
