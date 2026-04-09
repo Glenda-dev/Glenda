@@ -22,9 +22,17 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
 
     cmd.arg("-machine").arg("virt,acpi=on");
 
-    // Use vvfat for the boot device, place it BEFORE other drives so it's virtio 0
-    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
-    cmd.arg("-device").arg("virtio-blk-device,drive=boot");
+    // OpenSBI 直启内核时不挂载 EFI/vvfat 启动盘。
+    // 其它引导模式保留 vvfat 启动盘，便于加载 EFI/boot 产物。
+    let attach_efi_disk = !matches!(cfg.system.bootloader, crate::arch::Bootloader::Opensbi);
+    let mut next_mmio_bus = 0usize;
+    if attach_efi_disk {
+        cmd.arg("-drive")
+            .arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
+        cmd.arg("-device")
+            .arg(format!("virtio-blk-device,drive=boot,bus=virtio-mmio-bus.{next_mmio_bus}"));
+        next_mmio_bus += 1;
+    }
 
     match cfg.system.bootloader {
         crate::arch::Bootloader::Uboot => {
@@ -123,11 +131,13 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
             cmd.arg("-serial").arg("stdio");
         }
     }
-    if let Some(drive) = &cfg.qemu.drive {
-        // Skip if drive is already disk.img which might be same as boot
-        if drive != "disk.img" {
-            cmd.arg("-drive").arg(format!("file={drive},if=none,format=raw,id=x0"));
-            cmd.arg("-device").arg("virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0");
+    let data_disk = cfg.qemu.disk.as_ref().or(cfg.qemu.drive.as_ref());
+    if let Some(disk) = data_disk {
+        if !disk.is_empty() {
+            cmd.arg("-drive").arg(format!("file={disk},if=none,format=raw,id=disk0"));
+            cmd.arg("-device")
+                .arg(format!("virtio-blk-device,drive=disk0,bus=virtio-mmio-bus.{next_mmio_bus}"));
+            next_mmio_bus += 1;
         }
     }
 
@@ -143,7 +153,8 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         }
         cmd.arg("-netdev").arg(netdev);
 
-        let mut device = String::from("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.1");
+        let mut device =
+            format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.{next_mmio_bus}");
         if let Some(mac) = &cfg.qemu.mac {
             device.push_str(&format!(",mac={}", mac));
         }
