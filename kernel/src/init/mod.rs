@@ -54,6 +54,10 @@ fn init_secondary() {
     // 关键：必须先初始化 CPU 结构，因为后续的 vm::init() 等可能会用到 cpu::get()
     cpu::init();
     trap::init();
+    // Secondary harts must also switch to the shared kernel page table
+    // before they can safely run scheduled user threads.
+    // This is needed when there are multiple harts
+    vm::init();
     irq::init();
     INIT_CPUS_DONE.fetch_add(1, Ordering::SeqCst);
     let cpus = crate::boot::get_cpu_count();
