@@ -89,6 +89,12 @@ impl Display for Capability {
             CapType::Console => {
                 s.field("console", &"global");
             }
+            CapType::Vcpu => {
+                s.field("vcpu_state_ptr", &VirtAddr::from(self.words[0]));
+            }
+            CapType::Vmspace => {
+                s.field("vmspace_root_paddr", &PhysAddr::from(self.words[0]));
+            }
             _ => {}
         }
         s.finish()
@@ -239,6 +245,8 @@ impl Capability {
             CapType::Frame => phys_to_virt(PhysAddr::from(self.words[0])),
             CapType::PageTable => phys_to_virt(PhysAddr::from(self.words[0])),
             CapType::VSpace => phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::Vcpu => VirtAddr::from(self.words[0]),
+            CapType::Vmspace => phys_to_virt(PhysAddr::from(self.words[0])),
             _ => VirtAddr::null(),
         }
     }
@@ -250,6 +258,7 @@ impl Capability {
             CapType::Frame => PhysAddr::from(self.words[0]),
             CapType::PageTable => PhysAddr::from(self.words[0]),
             CapType::VSpace => PhysAddr::from(self.words[0]),
+            CapType::Vmspace => PhysAddr::from(self.words[0]),
             _ => PhysAddr::null(),
         }
     }
@@ -509,6 +518,34 @@ impl Capability {
     pub fn create_console(rights: Rights) -> Self {
         let w0 = 0;
         let w1 = (CapType::Console as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
+    }
+
+    pub fn create_vcpu(vcpu_state: VirtAddr, rights: Rights) -> Self {
+        let w0 = vcpu_state.as_usize();
+        let w1 = (CapType::Vcpu as usize) & TYPE_MASK
+            | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
+        #[cfg(target_pointer_width = "64")]
+        {
+            Self { words: [w0, w1] }
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            Self { words: [w0, w1, 0, 0] }
+        }
+    }
+
+    pub fn create_vmspace(root: PhysAddr, rights: Rights) -> Self {
+        let w0 = root.as_usize();
+        let w1 = (CapType::Vmspace as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT;
         #[cfg(target_pointer_width = "64")]
         {

@@ -21,6 +21,8 @@ mod sizes {
     pub const ENDPOINT: usize = 1; // 1 page
     pub const PAGETABLE: usize = 1; // 1 page
     pub const VSPACE: usize = 1; // 4 pages
+    pub const VCPU: usize = 1; // 1 page (vcpu state blob)
+    pub const VMSPACE: usize = 1; // 1 page (stage-2 root table)
 }
 
 impl UntypedRegion {
@@ -49,6 +51,8 @@ impl UntypedRegion {
             CapType::Frame => flags,
             CapType::PageTable => sizes::PAGETABLE,
             CapType::VSpace => sizes::VSPACE,
+            CapType::Vcpu => sizes::VCPU,
+            CapType::Vmspace => sizes::VMSPACE,
             CapType::Untyped => flags,
             _ => {
                 error!("Untyped::Retype failed: unsupported type {:?}", obj_type);
@@ -114,6 +118,12 @@ impl UntypedRegion {
                 let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
                 unsafe { pt_ptr.write(PageTable::new()) };
                 Capability::create_vspace(unsafe { &*pt_ptr }, asid::alloc(), Rights::ALL)
+            }
+            CapType::Vcpu => Capability::create_vcpu(obj_vaddr, Rights::ALL),
+            CapType::Vmspace => {
+                let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
+                unsafe { pt_ptr.write(PageTable::new()) };
+                Capability::create_vmspace(obj_paddr, Rights::ALL)
             }
             CapType::Untyped => {
                 let untyped = UntypedRegion { start: obj_paddr, pages: obj_pages, watermark: 0 };

@@ -18,6 +18,8 @@ pub enum CapType {
     Kernel = 9,
     VSpace = 10,
     Console = 11,
+    Vcpu = 12,
+    Vmspace = 13,
     #[num_enum(default)]
     Unknown = 255,
 }

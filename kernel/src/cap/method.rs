@@ -77,3 +77,17 @@ pub mod vspacemethod {
     pub const DEBUG_PRINT: usize = 6;
     pub const UPDATE: usize = 7;
 }
+
+pub mod vcpumethod {
+    pub const BIND_TCB: usize = 1;
+    pub const RUN: usize = 2;
+    pub const INJECT_IRQ: usize = 3;
+    pub const READ_REG: usize = 4;
+    pub const WRITE_REG: usize = 5;
+}
+
+pub mod vmspacemethod {
+    pub const MAP_STAGE2: usize = 1;
+    pub const UNMAP_STAGE2: usize = 2;
+    pub const SETUP_STAGE2: usize = 3;
+}
