@@ -38,6 +38,7 @@ pub fn invoke_vcpu(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("Vcpu::BindTcb failed: cap is not TCB");
                 return Err(Error::InvalidType);
             }
+            let bound_tcb = unsafe { tcb_cap.obj_ptr().as_mut::<crate::proc::TCB>() };
 
             let vcpu = vcpu_state_from_cap(cap)?;
             vcpu.bind_tcb(tcb_cap.obj_ptr().as_usize())?;
@@ -53,6 +54,7 @@ pub fn invoke_vcpu(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 }
                 vcpu.bind_vmspace(vmspace_cap.paddr());
             }
+            bound_tcb.set_bound_vcpu(cap.clone());
             Ok(())
         }
         vcpumethod::RUN => {

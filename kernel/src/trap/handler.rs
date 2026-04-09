@@ -10,6 +10,7 @@ use crate::irq;
 use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
 use crate::proc::TCB;
 use crate::proc::scheduler;
+use crate::proc::virt::vcpu_state_from_cap;
 use crate::trap::syscall;
 
 #[unsafe(no_mangle)]
@@ -89,6 +90,24 @@ fn fault_handler(
     status: usize,
     ctx: &mut TrapFrame,
 ) {
+    if matches!(
+        e,
+        TrapException::GuestPageFault
+            | TrapException::VirtualInstruction
+            | TrapException::VirtualSupervisorSyscall
+    ) && let Some(vcpu_cap) = tcb.bound_vcpu.as_ref()
+        && let Ok(vcpu) = vcpu_state_from_cap(vcpu_cap)
+    {
+        vcpu.exit_reason = match e {
+            TrapException::GuestPageFault => crate::proc::virt::VcpuExitReason::GuestPageFault,
+            TrapException::VirtualInstruction => crate::proc::virt::VcpuExitReason::VirtualInstruction,
+            _ => crate::proc::virt::VcpuExitReason::HostTrap,
+        };
+        vcpu.exit_detail0 = value;
+        vcpu.exit_detail1 = cause;
+        vcpu.exit_detail2 = pc;
+    }
+
     log!(
         "trap: Fault in thread {:p}: {}, cause={:#x}, pc={:#x}, value={:#x}, status={:#x}",
         tcb,

@@ -54,6 +54,7 @@ pub struct TCB {
 
     // --- IPC State ---
     pub fault_handler: Option<Capability>, // 异常处理 Endpoint
+    pub bound_vcpu: Option<Capability>,    // 绑定的 VCPU（用于 guest trap 回传）
 
     // IPC 等待队列：当此线程处于 BlockedRecv 状态时，
     // 试图向此线程发送消息的其他线程会挂入此队列
@@ -107,6 +108,7 @@ impl TCB {
             cspace_root: None,
             vspace_root: None,
             fault_handler: None,
+            bound_vcpu: None,
             send_queue_head: None,
             send_queue_tail: None,
             prev: None,
@@ -225,6 +227,10 @@ impl TCB {
     pub fn set_fault_handler(&mut self, ep: Capability, native: bool) {
         self.fault_handler = Some(ep);
         self.native = native;
+    }
+
+    pub fn set_bound_vcpu(&mut self, vcpu: Capability) {
+        self.bound_vcpu = Some(vcpu);
     }
 
     pub fn set_affinity(&mut self, cpuid: usize) {
