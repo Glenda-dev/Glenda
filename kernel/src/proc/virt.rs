@@ -2,7 +2,8 @@ use crate::cap::CapType;
 use crate::cap::Capability;
 use crate::error::Error;
 use crate::hal;
-use crate::mem::PhysAddr;
+use crate::hal::virt::{VcpuRunState, VirtExitReason};
+use crate::mem::{PhysAddr, addr::phys_to_virt};
 use crate::sync::SpinLock;
 
 #[repr(usize)]
@@ -22,8 +23,11 @@ pub struct VcpuState {
     pub lock: SpinLock<()>,
     pub bound_tcb: usize,
     pub vmspace_paddr: usize,
+    pub hgatp: usize,
+    pub vmid: usize,
     pub pending_virq_bitmap: usize,
     pub regs: [usize; 32],
+    pub pc: usize,
     pub exit_reason: VcpuExitReason,
     pub exit_detail0: usize,
     pub exit_detail1: usize,
@@ -36,8 +40,11 @@ impl VcpuState {
             lock: SpinLock::new(()),
             bound_tcb: 0,
             vmspace_paddr: 0,
+            hgatp: 0,
+            vmid: 0,
             pending_virq_bitmap: 0,
             regs: [0; 32],
+            pc: 0,
             exit_reason: VcpuExitReason::None,
             exit_detail0: 0,
             exit_detail1: 0,
@@ -55,6 +62,8 @@ impl VcpuState {
 
     pub fn bind_vmspace(&mut self, vmspace_paddr: PhysAddr) {
         self.vmspace_paddr = vmspace_paddr.as_usize();
+        self.vmid = (vmspace_paddr.as_usize() >> 12) & 0x3fff;
+        self.hgatp = hal::virt::setup_vmspace(vmspace_paddr, self.vmid).unwrap_or(0);
     }
 
     pub fn inject_irq(&mut self, irq: usize) -> Result<(), Error> {
@@ -79,17 +88,55 @@ impl VcpuState {
         if self.bound_tcb == 0 {
             return Err(Error::InvalidCapability);
         }
+        if self.vmspace_paddr == 0 || self.hgatp == 0 {
+            return Err(Error::InvalidCapability);
+        }
         if !hal::virt::is_enabled() {
             return Err(Error::NotSupported);
         }
 
-        if self.pending_virq_bitmap != 0 {
-            self.exit_reason = VcpuExitReason::ExternalInterrupt;
-            self.exit_detail0 = self.pending_virq_bitmap;
-            self.pending_virq_bitmap = 0;
-        } else {
-            self.exit_reason = VcpuExitReason::HostTrap;
-            self.exit_detail0 = 0;
+        let mut run = VcpuRunState {
+            regs: self.regs,
+            pc: self.pc,
+            hgatp: self.hgatp,
+            pending_virq_bitmap: self.pending_virq_bitmap,
+        };
+        let exit = hal::virt::run_vcpu(&mut run)?;
+        self.regs = run.regs;
+        self.pc = run.pc;
+        self.pending_virq_bitmap = run.pending_virq_bitmap;
+
+        self.exit_reason = match exit.reason {
+            VirtExitReason::None => VcpuExitReason::None,
+            VirtExitReason::HostTrap => VcpuExitReason::HostTrap,
+            VirtExitReason::GuestPageFault => VcpuExitReason::GuestPageFault,
+            VirtExitReason::VirtualInstruction => VcpuExitReason::VirtualInstruction,
+            VirtExitReason::ExternalInterrupt => VcpuExitReason::ExternalInterrupt,
+            VirtExitReason::TimerInterrupt => VcpuExitReason::ExternalInterrupt,
+            VirtExitReason::Unknown => VcpuExitReason::Unknown,
+        };
+        self.exit_detail0 = exit.detail0;
+        self.exit_detail1 = exit.detail1;
+        self.exit_detail2 = exit.detail2;
+
+        // 把关键 guest 执行状态回写到绑定线程 trapframe，供 VMM 读取/调度。
+        let tcb = unsafe { &mut *(self.bound_tcb as *mut crate::proc::TCB) };
+        let tf = tcb.get_tf();
+        tf.set_epc(self.pc);
+        tf.set_registers(&[
+            self.regs[10],
+            self.regs[11],
+            self.regs[12],
+            self.regs[13],
+            self.regs[14],
+            self.regs[15],
+            self.regs[16],
+            self.regs[17],
+        ]);
+
+        if self.exit_reason == VcpuExitReason::GuestPageFault && self.vmspace_paddr != 0 {
+            let vm_pt = unsafe { phys_to_virt(PhysAddr::from(self.vmspace_paddr)).as_mut::<crate::mem::PageTable>() };
+            let _ = vm_pt.walk(crate::mem::VirtAddr::from(self.exit_detail0));
         }
         Ok(self.exit_reason)
     }
