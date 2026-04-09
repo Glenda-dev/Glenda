@@ -44,6 +44,11 @@ pub const UNKNOWN_FAULT: usize = 0x07;
 /// 消息内容：通常为空，通过 Badge 区分
 pub const NOTIFY: usize = 0x08;
 
+/// 虚拟化退出 (Virtualization Exit)
+/// 触发条件：VCPU 运行返回到 VMM
+/// 消息内容：[reason, detail0, detail1, detail2]
+pub const VIRT_EXIT: usize = 0x09;
+
 // Additional methods for terminal I/O
 pub const TERM_PUT_STR: usize = 0x01;
 pub const TERM_GET_STR: usize = 0x02;

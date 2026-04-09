@@ -7,6 +7,7 @@ use crate::mem::PageTable;
 use crate::mem::PhysFrame;
 use crate::mem::addr::phys_to_virt;
 use crate::proc::{TCB, asid};
+use crate::proc::virt::VcpuState;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
@@ -119,7 +120,11 @@ impl UntypedRegion {
                 unsafe { pt_ptr.write(PageTable::new()) };
                 Capability::create_vspace(unsafe { &*pt_ptr }, asid::alloc(), Rights::ALL)
             }
-            CapType::Vcpu => Capability::create_vcpu(obj_vaddr, Rights::ALL),
+            CapType::Vcpu => {
+                let vcpu_ptr = obj_vaddr.as_mut_ptr::<VcpuState>();
+                unsafe { vcpu_ptr.write(VcpuState::new()) };
+                Capability::create_vcpu(obj_vaddr, Rights::ALL)
+            }
             CapType::Vmspace => {
                 let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();
                 unsafe { pt_ptr.write(PageTable::new()) };

@@ -133,6 +133,24 @@ fn fault_handler(
                     utcb.mrs_regs = ctx.get_syscall_registers();
                     protocol::SYSCALL
                 }
+                TrapException::GuestPageFault => {
+                    utcb.mrs_regs[0] = value; // guest fault addr
+                    utcb.mrs_regs[1] = pc; // host trap pc
+                    utcb.mrs_regs[2] = cause; // scause
+                    protocol::VIRT_EXIT
+                }
+                TrapException::VirtualInstruction => {
+                    utcb.mrs_regs[0] = value; // trapping instruction encoding/value
+                    utcb.mrs_regs[1] = pc; // pc
+                    utcb.mrs_regs[2] = cause; // scause
+                    protocol::VIRT_EXIT
+                }
+                TrapException::VirtualSupervisorSyscall => {
+                    utcb.mrs_regs[0] = cause; // scause
+                    utcb.mrs_regs[1] = value; // stval/htval proxy
+                    utcb.mrs_regs[2] = pc; // pc
+                    protocol::VIRT_EXIT
+                }
                 _ => {
                     utcb.mrs_regs[0] = cause; // cause
                     utcb.mrs_regs[1] = value; // value
