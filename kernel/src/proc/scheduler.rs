@@ -138,10 +138,9 @@ pub fn remove_thread(tcb: &mut TCB) {
             if tcb.cpu_id == current_hart_id {
                 // 如果是当前 CPU 正在运行的线程（也就是自己），将其设为 Inactive
                 // 下一次 yield 或 schedule 时会切换走
-                // 但 recycle 是同步调用，调用者可能是此线程（自杀）或另一线程（monitor 杀子线程）
-                // 如果是自杀，recycle 返回后，系统调用处理逻辑可能会让其继续运行？
-                // 不，recycle 会将 Slot 变回 Untyped。后续对 Capability 的访问会失败。
-                // 但 TCB 结构依然在内存中（如果未立即被复用）。
+                // 调用者可能是此线程（自杀）或另一线程（monitor 杀子线程）。
+                // 为避免并发状态不一致，先将其标记为 Inactive。
+                // TCB 结构的最终生命周期由能力清理路径负责。
                 // 为了安全，设为 Inactive 是必须的。
                 tcb.state = ThreadState::Inactive;
             } else {
@@ -174,9 +173,9 @@ pub fn remove_thread(tcb: &mut TCB) {
             tcb.state = ThreadState::Inactive;
         }
         _ => {
-            // 其他状态下（如 BlockedRecv），它不在 Ready 队列，而在 Endpoint 等待队列
+            // 其他状态下（如 BlockedRecv），它不在 Ready 队列，而在 Endpoint 等待队列。
             // Endpoint 的 cancel_badged_sends 等方法负责移除。
-            // 但如果仅仅是 simple recycle，我们至少要确保它标记为 Inactive。
+            // 这里至少保证状态为 Inactive。
             tcb.state = ThreadState::Inactive;
         }
     }

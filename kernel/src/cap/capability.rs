@@ -1,7 +1,7 @@
 use super::CapType;
 use super::Rights;
 use crate::cap::Badge;
-use crate::cap::cnode::{CNODE_PAGES, CNode};
+use crate::cap::cnode::CNode;
 use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::PageTable;
@@ -9,7 +9,6 @@ use crate::mem::addr::{phys_to_virt, virt_to_phys};
 use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
-use crate::proc::scheduler;
 use core::fmt::Display;
 use core::sync::atomic::Ordering;
 use num_enum::FromPrimitive;
@@ -614,123 +613,5 @@ impl Capability {
 
     pub fn pt_level(&self) -> usize {
         if self.cap_type() == CapType::PageTable { self.words[1] >> DATA_SHIFT } else { 0 }
-    }
-
-    pub fn recycle(&self) -> Option<Self> {
-        match self.cap_type() {
-            CapType::Frame => {
-                if self.is_device() {
-                    return Some(Self::empty());
-                }
-                let paddr = PhysAddr::from(self.words[0]);
-                let pages = (self.words[1] >> DATA_SHIFT)
-                    & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1);
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            CapType::PageTable | CapType::VSpace => {
-                let paddr = PhysAddr::from(self.words[0]);
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            CapType::CNode => {
-                let vaddr = VirtAddr::from(self.words[0]);
-                let cnode_mut = unsafe { &mut *(vaddr.as_usize() as *mut CNode) };
-                let refs = cnode_mut.ref_count().load(Ordering::Relaxed);
-                if refs != 1 {
-                    warn!(
-                        "cap: Cannot recycle CNode {:p}: still has {} references",
-                        cnode_mut, refs
-                    );
-                    return None;
-                }
-
-                // Consume this capability's reference explicitly.
-                self.dec_ref();
-
-                // Explicitly trigger Drop to use bitmap for efficient cleanup of used slots.
-                // This will call delete_recursive on all active slots.
-                unsafe { core::ptr::drop_in_place(cnode_mut) };
-
-                let paddr = virt_to_phys(vaddr);
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages: CNODE_PAGES, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            CapType::TCB => {
-                let vaddr = VirtAddr::from(self.words[0]);
-                let tcb = unsafe { vaddr.as_ref::<TCB>() };
-                let refs = tcb.ref_count.load(Ordering::Relaxed);
-                if refs != 1 {
-                    warn!(
-                        "cap_recycle: Cannot recycle TCB {:p}: still has {} references",
-                        tcb, refs
-                    );
-                    return None;
-                }
-
-                // Consume this capability's reference explicitly.
-                self.dec_ref();
-
-                // Remove from scheduler if present
-                let tcb_mut = unsafe { vaddr.as_mut::<TCB>() };
-                scheduler::remove_thread(tcb_mut);
-
-                // Drop TCB to decrement ref counts of its internal capabilities (CSpace, VSpace, etc.)
-                unsafe { core::ptr::drop_in_place(tcb_mut) };
-
-                let paddr = virt_to_phys(vaddr);
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            CapType::Endpoint => {
-                let vaddr = VirtAddr::from(self.words[0]);
-                let ep = unsafe { vaddr.as_ref::<Endpoint>() };
-
-                // If this is a badged endpoint (client), it might be shared with the server (unbadged).
-                // Recycling is only allowed if this is the last reference to the Endpoint object.
-                // Note: The caller (CNode::recycle) has already revoked all children of this capability.
-
-                let refs = ep.ref_count.load(Ordering::Relaxed);
-                if refs != 1 {
-                    warn!(
-                        "cap_recycle: Cannot recycle Endpoint {:p}: still has {} references. (is_badged: {})",
-                        ep,
-                        refs,
-                        self.is_badged()
-                    );
-                    return None;
-                }
-
-                // Consume this capability's reference explicitly.
-                self.dec_ref();
-
-                // If we are here, we are the last owner.
-                // We must unblock any pending threads before reclaiming memory.
-                ep.destroy();
-
-                let paddr = virt_to_phys(vaddr);
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages: 1, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            CapType::Untyped => {
-                let paddr = PhysAddr::from(self.words[0]);
-                let pages = self.untyped_pages();
-                Some(Self::create_untyped(
-                    &UntypedRegion { start: paddr, pages, watermark: 0 },
-                    Rights::all(),
-                ))
-            }
-            _ => None,
-        }
     }
 }

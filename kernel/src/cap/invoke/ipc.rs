@@ -78,10 +78,13 @@ pub fn invoke_reply(cap: &mut Capability, method: usize) -> Result<(), Error> {
     match method {
         replymethod::REPLY => {
             let cap_to_send = ipc::transfer_cap(current_tcb);
-            ipc::reply(current_tcb, target_tcb, cap_to_send)?;
-            // Reply 成功后，该回复能力失效
+            // Reply capability is one-shot by design.
+            // Even if reply delivery fails (e.g. target already gone/not blocked),
+            // the capability must be consumed to avoid stale reply caps occupying
+            // fixed reply slots and causing cascading IPC failures.
+            let ret = ipc::reply(current_tcb, target_tcb, cap_to_send);
             *cap = Capability::empty();
-            Ok(())
+            ret
         }
         _ => {
             error!("Reply::invoke failed: invalid method {}", method);

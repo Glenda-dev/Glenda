@@ -34,14 +34,14 @@ pub mod cnodemethod {
     pub const COPY: usize = 2;
     pub const DELETE: usize = 3;
     pub const REVOKE: usize = 4;
-    pub const MOVE: usize = 5;
-    pub const RECYCLE: usize = 6;
-    pub const DEBUG_PRINT: usize = 7;
+    pub const TRANSFER: usize = 5;
+    pub const DEBUG_PRINT: usize = 6;
 }
 
 pub mod untypedmethod {
     pub const RETYPE: usize = 1;
-    pub const GET_INFO: usize = 2;
+    pub const RECYCLE: usize = 2;
+    pub const GET_INFO: usize = 3;
 }
 
 pub mod irqmethod {

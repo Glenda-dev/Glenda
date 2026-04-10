@@ -3,6 +3,36 @@ use crate::cap::{Badge, CNode, CapPtr, CapType, Capability, Rights};
 use crate::error::Error;
 use crate::proc::scheduler;
 
+fn resolve_dest_cnode(
+    tcb: &crate::proc::thread::TCB,
+    current_cnode: &mut CNode,
+    dest_cnode_cptr: CapPtr,
+) -> Result<&'static mut CNode, Error> {
+    if dest_cnode_cptr.is_null() {
+        // Null destination cnode means "operate on current invoked cnode".
+        return Ok(unsafe { &mut *(current_cnode as *mut CNode) });
+    }
+
+    let dest_cap = tcb.cap_lookup(dest_cnode_cptr).ok_or(Error::InvalidCapability)?;
+    if dest_cap.cap_type() != CapType::CNode {
+        error!(
+            "CNode op failed: dest_cnode is not CNode, cptr={:?}, type={:?}",
+            dest_cnode_cptr,
+            dest_cap.cap_type()
+        );
+        return Err(Error::InvalidType);
+    }
+    Ok(unsafe { dest_cap.obj_ptr().as_mut::<CNode>() })
+}
+
+fn validate_non_null_slot(op: &str, slot: CapPtr, slot_name: &str) -> Result<(), Error> {
+    if slot.is_null() {
+        error!("CNode::{} failed: {} is null/invalid ({:?})", op, slot_name, slot);
+        return Err(Error::InvalidSlot);
+    }
+    Ok(())
+}
+
 pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
     let vaddr = if cap.cap_type() == CapType::CNode {
         cap.obj_ptr()
@@ -23,11 +53,15 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
     match method {
         cnodemethod::MINT => {
-            // Mint: (src_cptr, dest_slot, badge, rights)
+            // Mint: (src_cptr, dest_cnode_cptr, dest_slot, badge, rights)
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
-            let new_badge = Badge::from(utcb.mrs_regs[2]);
-            let req_rights = Rights::from_bits_truncate(utcb.mrs_regs[3] as u8);
+            let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[1]);
+            let dest_slot = CapPtr::from(utcb.mrs_regs[2]);
+            let new_badge = Badge::from(utcb.mrs_regs[3]);
+            let req_rights = Rights::from_bits_truncate(utcb.mrs_regs[4] as u8);
+            validate_non_null_slot("Mint", src_cptr, "src_cptr")?;
+            validate_non_null_slot("Mint", dest_slot, "dest_slot")?;
+            let dest_cnode = resolve_dest_cnode(tcb, cnode, dest_cnode_cptr)?;
 
             if let Some(src_slot) = tcb.lookup_slot(src_cptr) {
                 let src_cap = unsafe { &(*src_slot).cap };
@@ -45,10 +79,10 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
                 let new_cap = src_cap.mint(final_badge, final_rights);
 
-                cnode.insert_child(dest_cptr, &new_cap, src_slot).map_err(|e| {
+                dest_cnode.insert_child(dest_slot, &new_cap, src_slot).map_err(|e| {
                     error!(
                         "CNode::Mint failed: insert_child failed dest={:?} error={:?}",
-                        dest_cptr, e
+                        dest_slot, e
                     );
                     e
                 })
@@ -58,19 +92,23 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
             }
         }
         cnodemethod::COPY => {
-            // Copy: (src_ dest_slot, rights)
+            // Copy: (src_cptr, dest_cnode_cptr, dest_slot, rights)
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
-            let rights = utcb.mrs_regs[2] as u8;
+            let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[1]);
+            let dest_slot = CapPtr::from(utcb.mrs_regs[2]);
+            let rights = utcb.mrs_regs[3] as u8;
+            validate_non_null_slot("Copy", src_cptr, "src_cptr")?;
+            validate_non_null_slot("Copy", dest_slot, "dest_slot")?;
+            let dest_cnode = resolve_dest_cnode(tcb, cnode, dest_cnode_cptr)?;
 
             if let Some(src_slot) = tcb.lookup_slot(src_cptr) {
                 let src_cap = unsafe { &(*src_slot).cap };
                 let new_cap = src_cap.mint(Badge::null(), Rights::from_bits_truncate(rights));
 
-                cnode.insert_child(dest_cptr, &new_cap, src_slot).map_err(|e| {
+                dest_cnode.insert_child(dest_slot, &new_cap, src_slot).map_err(|e| {
                     error!(
                         "CNode::Copy failed: insert_child failed dest={:?} error={:?}",
-                        dest_cptr, e
+                        dest_slot, e
                     );
                     e
                 })
@@ -95,28 +133,43 @@ pub fn invoke_cnode(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 e
             })
         }
-        cnodemethod::MOVE => {
-            // Move: (src_cptr, dest_slot)
+        cnodemethod::TRANSFER => {
+            // Transfer: (src_cptr, dest_cnode_cptr, dest_slot)
             let src_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let dest_cptr = CapPtr::from(utcb.mrs_regs[1]);
+            let dest_cnode_cptr = CapPtr::from(utcb.mrs_regs[1]);
+            let dest_slot = CapPtr::from(utcb.mrs_regs[2]);
+            validate_non_null_slot("Transfer", src_cptr, "src_cptr")?;
+            validate_non_null_slot("Transfer", dest_slot, "dest_slot")?;
+            if dest_cnode_cptr.is_null() {
+                // Null destination means transfer within current invoked cnode.
+                cnode.transfer(src_cptr, dest_slot).map_err(|e| {
+                    error!(
+                        "CNode::Transfer failed (self): move src={:?} dest_slot={:?} error={:?}",
+                        src_cptr, dest_slot, e
+                    );
+                    e
+                })
+            } else {
+                // Validate destination cnode capability exists and has correct type.
+                let _ = resolve_dest_cnode(tcb, cnode, dest_cnode_cptr)?;
 
-            cnode.move_cap(src_cptr, dest_cptr).map_err(|e| {
-                error!("CNode::Move failed: src={:?} dest={:?} error={:?}", src_cptr, dest_cptr, e);
-                e
-            })
-        }
-        cnodemethod::RECYCLE => {
-            let cptr = CapPtr::from(utcb.mrs_regs[0]);
-            match cnode.recycle(cptr) {
-                Ok((paddr, pages)) => {
-                    utcb.mrs_regs[0] = paddr;
-                    utcb.mrs_regs[1] = pages;
-                    Ok(())
-                }
-                Err(e) => {
-                    error!("CNode::Recycle failed: cptr={:?} error={:?}", cptr, e);
-                    Err(e)
-                }
+                // Perform true move semantics on root cspace:
+                // - move slot content without cloning/dropping cap
+                // - preserve and re-link CDT ownership tree
+                let dest_cptr = CapPtr::concat(dest_cnode_cptr, dest_slot);
+                tcb.get_cspace_mut().ok_or(Error::InvalidCapability)?.transfer(src_cptr, dest_cptr).map_err(
+                    |e| {
+                        error!(
+                            "CNode::Transfer failed: move src={:?} dest_cnode={:?} dest_slot={:?} (abs={:?}) error={:?}",
+                            src_cptr,
+                            dest_cnode_cptr,
+                            dest_slot,
+                            dest_cptr,
+                            e
+                        );
+                        e
+                    },
+                )
             }
         }
         cnodemethod::DEBUG_PRINT => {
