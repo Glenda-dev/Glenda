@@ -13,6 +13,42 @@
             "compatible": [
                 "virtio,mmio"
             ]
+        },
+        {
+            "name": "virtio-gpu",
+            "binary": "virtio-gpu",
+            "compatible": [
+                "virtio-gpu"
+            ]
+        },
+        {
+            "name": "virtio-net",
+            "binary": "virtio-net",
+            "compatible": [
+                "virtio-net"
+            ]
+        },
+        {
+            "name": "virtio-blk",
+            "binary": "virtio-blk",
+            "compatible": [
+                "virtio-block"
+            ]
+        },
+        {
+            "name": "goldfish-rtc",
+            "binary": "goldfish-rtc",
+            "compatible": [
+                "google,goldfish-rtc"
+            ]
+        },
+        {
+            "name": "ns16550a",
+            "binary": "ns16550a",
+            "compatible": [
+                "ns16550a",
+                "snps,dw-apb-uart"
+            ]
         }
     ]
 }
