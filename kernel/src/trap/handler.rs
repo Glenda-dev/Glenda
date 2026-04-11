@@ -100,7 +100,9 @@ fn fault_handler(
     {
         vcpu.exit_reason = match e {
             TrapException::GuestPageFault => crate::proc::virt::VcpuExitReason::GuestPageFault,
-            TrapException::VirtualInstruction => crate::proc::virt::VcpuExitReason::VirtualInstruction,
+            TrapException::VirtualInstruction => {
+                crate::proc::virt::VcpuExitReason::VirtualInstruction
+            }
             _ => crate::proc::virt::VcpuExitReason::HostTrap,
         };
         vcpu.exit_detail0 = value;

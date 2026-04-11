@@ -389,10 +389,11 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
 ///
 /// 场景：Client (Badge A) -> Proxy -> Server (看到 Badge A)
 pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Result<(), Error> {
-    let utcb = current.get_utcb().ok_or(Error::MappingFailed)?;
-    // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
-    let badge = utcb.badge;
-    let reply_window = utcb.reply_window;
+    let (badge, reply_window) = {
+        let utcb = current.get_utcb().ok_or(Error::MappingFailed)?;
+        // 1. 从当前 UTCB 获取 Badge (通常是上一条接收到的消息的 Badge)
+        (utcb.badge, utcb.reply_window)
+    };
 
     if let Some(slot_ptr) = current.lookup_slot(reply_window) {
         log!(
@@ -415,6 +416,19 @@ pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Resul
         slot.cap = Capability::empty(); // 转移出 Reply Cap，防止被多次转发
         // 获取原始调用者 TCB
         let original_caller = unsafe { reply_cap.obj_ptr().as_mut::<TCB>() };
+
+        // 使用代理线程当前 UTCB payload 覆盖原始调用者 UTCB，
+        // 使后续转发使用“已翻译后的消息”。
+        let src_utcb_ptr = get_utcb_ptr(current).ok_or(Error::MappingFailed)?;
+        let dst_utcb_ptr = get_utcb_ptr(original_caller).ok_or(Error::MappingFailed)?;
+        if src_utcb_ptr != dst_utcb_ptr {
+            unsafe {
+                let src = &mut *src_utcb_ptr;
+                let dst = &mut *dst_utcb_ptr;
+                src.copy_to(dst);
+            }
+        }
+
         call(original_caller, ep, badge, cap)?;
     } else {
         log!("ipc: Proxy current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);

@@ -6,8 +6,7 @@
             "binary": "initrdfs",
             "compatible": [
                 "initrdfs"
-            ],
-            "autostart": true
+            ]
         },
         {
             "name": "fatfs",
@@ -16,8 +15,7 @@
                 "fat16",
                 "fat32",
                 "exfat"
-            ],
-            "autostart": false
+            ]
         },
         {
             "name": "extfs",
@@ -26,8 +24,7 @@
                 "ext2",
                 "ext3",
                 "ext4"
-            ],
-            "autostart": false
+            ]
         }
     ],
     "replacement_policy": "lru",
