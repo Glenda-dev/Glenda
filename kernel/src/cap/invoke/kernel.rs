@@ -144,25 +144,18 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
             utcb.mrs_regs[0] = crate::hal::timer::get_freq();
             Ok(())
         }
-        kernelmethod::SET_CONSOLE_ENDPOINT => {
+        kernelmethod::SYSTEM_RESET => {
             if !cap.has_rights(Rights::EXECUTE) {
-                error!("Kernel::SET_CONSOLE_ENDPOINT failed: permission denied");
+                error!("Kernel::SYSTEM_RESET failed: permission denied");
                 return Err(Error::PermissionDenied);
             }
-            let ep_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let ep_cap = match tcb.cap_lookup(ep_cptr) {
-                Some(c) => c,
-                None => {
-                    error!("Kernel::SET_CONSOLE_ENDPOINT: endpoint not found");
-                    return Err(Error::InvalidCapability);
-                }
-            };
-            if ep_cap.cap_type() != CapType::Endpoint {
-                error!("Kernel::SET_CONSOLE_ENDPOINT: not an endpoint");
-                return Err(Error::InvalidCapability);
+            let reset_type = utcb.mrs_regs[0];
+            warn!("Kernel::SYSTEM_RESET requested, type={}", reset_type);
+            if reset_type == 0 {
+                crate::hal::platform::shutdown();
+            } else {
+                crate::hal::platform::reboot();
             }
-            crate::printk::set_console_endpoint(Some(ep_cap.clone()));
-            Ok(())
         }
         _ => {
             error!("Kernel::invoke failed: invalid method {}", method);

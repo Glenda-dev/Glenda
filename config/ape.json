@@ -1,4 +1,4 @@
 {
-    "init_path": "/bin/busybox",
+    "init_path": "/bin/sh",
     "root_partition": "disk0p0"
 }

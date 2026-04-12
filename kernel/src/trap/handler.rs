@@ -201,6 +201,14 @@ fn fault_handler(
         // 4. 如果是Syscall，跳过epc
         if e == TrapException::Syscall {
             ctx.advance_pc();
+            if let Some(utcb) = tcb.get_utcb() {
+                ctx.set_return_value(utcb.mrs_regs[0]);
+            } else {
+                warn!(
+                    "trap: Syscall fault handler returned but UTCB is missing. Returning error to caller."
+                );
+                ctx.set_return_value(usize::MAX);
+            }
         }
     } else {
         unhandled_exception(e, cause, pc, value, status);

@@ -82,12 +82,15 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
     hal::irq::mask(id, cpuid);
     hal::irq::complete(id, cpuid);
 
-    let tbl = IRQ_TABLE.read();
-    if id >= MAX_IRQS {
-        return Err(Error::InvalidAddress);
-    }
+    let notification = {
+        let tbl = IRQ_TABLE.read();
+        if id >= MAX_IRQS {
+            return Err(Error::InvalidAddress);
+        }
+        tbl[id].notification.clone()
+    };
 
-    if let Some(cap) = &tbl[id].notification {
+    if let Some(cap) = notification {
         if cap.cap_type() == cap::CapType::Endpoint {
             let ep_ptr = cap.obj_ptr();
             let badge = cap.get_badge();

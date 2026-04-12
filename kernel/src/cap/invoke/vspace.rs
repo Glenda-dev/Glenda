@@ -146,16 +146,6 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 error!("vspace: VSpace map failed: insufficient rights for EXECUTE");
                 return Err(Error::PermissionDenied);
             }
-            // Enforce that executable mappings must have READ permission
-            if perms.contains(Perms::EXECUTE) && !perms.contains(Perms::READ) {
-                error!("vspace: VSpace map failed: EXECUTE permission requires READ permission");
-                return Err(Error::PermissionDenied);
-            }
-            // Enforce that writable mappings must have READ permission
-            if perms.contains(Perms::WRITE) && !perms.contains(Perms::READ) {
-                error!("vspace: VSpace map failed: WRITE permission requires READ permission");
-                return Err(Error::PermissionDenied);
-            }
             // Enforce W^X check: if executable, must not be writable
             if perms.contains(Perms::EXECUTE) && perms.contains(Perms::WRITE) {
                 error!(
