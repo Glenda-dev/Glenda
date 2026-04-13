@@ -114,7 +114,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     // Display handling
     if let Some(display) = &cfg.qemu.display.as_str().split(',').next() {
         if *display == "nographic" {
-            cmd.arg("-nographic");
+            cmd.arg("-display").arg("none");
         } else if *display == "none" {
             cmd.arg("-display").arg("none");
         } else {
@@ -126,11 +126,18 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
             // cmd.arg("-device").arg("virtio-tablet-pci");
 
             cmd.arg("-display").arg(display);
-
-            // Add serial to stdio even if graphical
-            cmd.arg("-serial").arg("stdio");
         }
     }
+
+    let serial_port = cfg.qemu.serial_port.unwrap_or(5555);
+    // serial0: debug/output channel bound to stdio
+    cmd.arg("-serial").arg("stdio");
+    // serial1: guest-enumerable UART via PCI serial controller
+    cmd.arg("-chardev").arg(format!(
+        "socket,id=uart1,host=127.0.0.1,port={serial_port},server=on,wait=off,telnet=on"
+    ));
+    cmd.arg("-device").arg("pci-serial,chardev=uart1");
+
     let data_disk = cfg.qemu.disk.as_ref();
     if let Some(disk) = data_disk {
         if !disk.is_empty() {
@@ -184,6 +191,32 @@ pub fn qemu_gdb(cfg: &Config, port: u16) -> anyhow::Result<()> {
     cmd.arg("-S");
     eprintln!("QEMU started. In another shell:");
     run(&mut cmd)
+}
+
+pub fn qemu_attach(cfg: &Config, port: Option<u16>) -> anyhow::Result<()> {
+    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
+    let host = "127.0.0.1";
+    eprintln!("[ INFO ] Attaching to PCI UART backend at {host}:{port} ...");
+
+    if which("telnet").is_ok() {
+        let mut cmd = Command::new("telnet");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    if which("nc").is_ok() {
+        let mut cmd = Command::new("nc");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    if which("ncat").is_ok() {
+        let mut cmd = Command::new("ncat");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    anyhow::bail!("[ ERROR ] No attach client found. Please install one of: telnet, nc, ncat")
 }
 
 pub fn qemu_dump_dtb(cfg: &Config) -> anyhow::Result<()> {

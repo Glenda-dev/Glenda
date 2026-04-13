@@ -34,6 +34,11 @@ enum Cmd {
         #[arg(long, default_value_t = 1234)]
         port: u16,
     },
+    /// Attach to the PCI UART backend TCP endpoint
+    Attach {
+        #[arg(long)]
+        port: Option<u16>,
+    },
     /// Disassemble the kernel ELF
     Objdump,
     /// Show section sizes
@@ -86,6 +91,9 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Gdb { port } => {
             qemu::qemu_gdb(&cfg, port)?;
+        }
+        Cmd::Attach { port } => {
+            qemu::qemu_attach(&cfg, port)?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,

@@ -63,6 +63,8 @@ pub struct QemuConfig {
     pub hostfwd: Option<Vec<String>>,
     #[serde(default)]
     pub bios: Option<String>,
+    #[serde(default)]
+    pub serial_port: Option<u16>,
 }
 
 impl Default for QemuConfig {
@@ -77,6 +79,7 @@ impl Default for QemuConfig {
             mac: None,
             hostfwd: None,
             bios: None,
+            serial_port: None,
         }
     }
 }

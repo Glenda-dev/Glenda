@@ -8,6 +8,7 @@ cpus = 1
 mem = "2G"
 display = "nographic"
 disk = "./platform/qemu/alpine-linux-riscv64-ext4fs.img"
+serial_port = 5555
 net = true
 mac = "52:54:00:11:22:33"
 hostfwd = ["tcp::8080-:80"]
@@ -176,3 +177,4 @@ path = "config/ape.json"
 kernel = []
 musl-glenda = ["--disable-shared", "--prefix=../../target"]
 libape = ["runtime"]
+ape = ["strace"]
