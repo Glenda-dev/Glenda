@@ -19,6 +19,39 @@ pub fn parse(fdt: &fdt::Fdt) {
 
     crate::hal::riscv64::timer::init(timer_frequency);
 
+    let preferred_uart_addr = {
+        let mut addr = None;
+
+        if let Some(chosen) = fdt.find_node("/chosen")
+            && let Some(raw_stdout) = chosen.property("stdout-path").and_then(|p| p.as_str())
+        {
+            let raw_stdout = raw_stdout.trim_end_matches('\0');
+            let mut stdout_path = raw_stdout.split(':').next().unwrap_or(raw_stdout);
+
+            // stdout-path may be an alias name like "serial0" instead of an absolute path.
+            if !stdout_path.starts_with('/')
+                && let Some(aliases) = fdt.find_node("/aliases")
+                && let Some(alias_target) = aliases.property(stdout_path).and_then(|p| p.as_str())
+            {
+                let alias_target = alias_target.trim_end_matches('\0');
+                stdout_path = alias_target.split(':').next().unwrap_or(alias_target);
+            }
+
+            if let Some(stdout_node) = fdt.find_node(stdout_path)
+                && let Some(reg) = stdout_node.reg().and_then(|mut r| r.next())
+            {
+                addr = Some(reg.starting_address as usize);
+                log!(
+                    "hal: /chosen/stdout-path resolved to {} @ {:#x}",
+                    stdout_path,
+                    reg.starting_address as usize
+                );
+            }
+        }
+
+        addr
+    };
+
     for node in fdt.all_nodes() {
         if let Some(compatibles) = node.compatible() {
             for compat in compatibles.all() {
@@ -52,6 +85,21 @@ pub fn parse(fdt: &fdt::Fdt) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x100);
 
+                        if let Some(preferred) = preferred_uart_addr
+                            && preferred != addr
+                        {
+                            log!(
+                                "hal: Skip UART {:#x} (stdout-path prefers {:#x})",
+                                addr,
+                                preferred
+                            );
+                            break;
+                        }
+
+                        if UART.get().is_some() {
+                            break;
+                        }
+
                         let cfg = generic_drivers::uart::ns16550a::Config::new(addr, 0, 5, 0x20);
                         UART.call_once(|| {
                             UartDriver::Ns16550a(
@@ -66,6 +114,21 @@ pub fn parse(fdt: &fdt::Fdt) {
                     if let Some(reg) = node.reg().and_then(|mut r| r.next()) {
                         let addr = reg.starting_address as usize;
                         let size = reg.size.unwrap_or(0x1000);
+
+                        if let Some(preferred) = preferred_uart_addr
+                            && preferred != addr
+                        {
+                            log!(
+                                "hal: Skip UART {:#x} (stdout-path prefers {:#x})",
+                                addr,
+                                preferred
+                            );
+                            break;
+                        }
+
+                        if UART.get().is_some() {
+                            break;
+                        }
 
                         UART.call_once(|| {
                             UartDriver::Pl011(generic_drivers::uart::pl011::Pl011::new(addr, size))
