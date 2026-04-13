@@ -54,8 +54,6 @@ pub struct QemuConfig {
     #[serde(default)]
     pub disk: Option<String>,
     #[serde(default)]
-    pub drive: Option<String>,
-    #[serde(default)]
     pub net: bool,
     #[serde(default)]
     pub net_type: Option<String>,
@@ -74,7 +72,6 @@ impl Default for QemuConfig {
             mem: default_mem(),
             display: default_display(),
             disk: None,
-            drive: None,
             net: false,
             net_type: None,
             mac: None,

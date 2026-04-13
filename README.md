@@ -58,6 +58,14 @@ cargo xtask --config config/hello.toml run
 
 # 进入 GDB 远程调试模式
 cargo xtask gdb
+
+# 挂载 rootfs 镜像到项目目录 mnt/
+cargo xtask mount
+
+# 卸载项目目录 mnt/
+cargo xtask umount
+
+# mount/umount 会自动触发提权（通过 sudo）
 ```
 
 ## 开发路线图 (Roadmap)

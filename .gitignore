@@ -29,3 +29,4 @@ target
 *.bak
 *.bin
 firmware/
+mnt

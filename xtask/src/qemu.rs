@@ -131,7 +131,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
             cmd.arg("-serial").arg("stdio");
         }
     }
-    let data_disk = cfg.qemu.disk.as_ref().or(cfg.qemu.drive.as_ref());
+    let data_disk = cfg.qemu.disk.as_ref();
     if let Some(disk) = data_disk {
         if !disk.is_empty() {
             cmd.arg("-drive").arg(format!("file={disk},if=none,format=raw,id=disk0"));

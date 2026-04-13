@@ -10,3 +10,4 @@ anyhow = "1.0"
 tempfile = "3.10"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.7"
+privilege = "0.3"

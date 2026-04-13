@@ -3,6 +3,7 @@ mod arch;
 mod build;
 mod check;
 mod config;
+mod mount;
 mod qemu;
 mod util;
 
@@ -41,6 +42,10 @@ enum Cmd {
     DumpDtb,
     /// Dump QEMU ACPI tables to target/acpi/
     DumpAcpi,
+    /// Mount rootfs image to workspace mnt/
+    Mount,
+    /// Unmount workspace mnt/
+    Umount,
     /// Generate bootable disk image (ISO or FAT32)
     Image {
         #[arg(long)]
@@ -86,6 +91,8 @@ fn main() -> anyhow::Result<()> {
         Cmd::Size => util::size(&cfg)?,
         Cmd::DumpDtb => qemu::qemu_dump_dtb(&cfg)?,
         Cmd::DumpAcpi => qemu::qemu_dump_acpi(&cfg)?,
+        Cmd::Mount => mount::mount_rootfs(&cfg, &root)?,
+        Cmd::Umount => mount::umount_rootfs(&root)?,
         Cmd::Image { iso } => {
             if iso {
                 build::image_iso(&cfg)?;
