@@ -175,6 +175,6 @@ pub fn bootstrap() {
 }
 
 unsafe extern "C" fn master_trampoline() -> ! {
-    let cpuid = hal::cpu::cpuid();
+    let cpuid = hal::cpu::cpu_id();
     crate::glenda_boot(cpuid);
 }
