@@ -135,6 +135,12 @@ build = "cargo"
 output = "build/dtb.elf"
 kind = "driver"
 [[services]]
+name = "pci"
+path = "drivers/bus/pci"
+build = "cargo"
+output = "build/pci.elf"
+kind = "driver"
+[[services]]
 name = "virtio-mmio"
 path = "drivers/virtio/mmio"
 build = "cargo"
@@ -177,3 +183,4 @@ path = "config/ape.json"
 kernel = []
 musl-glenda = ["--disable-shared", "--prefix=../../target"]
 libape = ["runtime"]
+ape = ["strace"]

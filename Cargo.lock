@@ -1373,6 +1373,7 @@ name = "unicorn"
 version = "0.1.0"
 dependencies = [
  "libglenda-rs",
+ "postcard",
  "serde",
  "serde_json",
 ]

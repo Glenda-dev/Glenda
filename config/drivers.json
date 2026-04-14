@@ -8,6 +8,13 @@
             ]
         },
         {
+            "name": "pci",
+            "binary": "pci",
+            "compatible": [
+                "pci-host-ecam-generic"
+            ]
+        },
+        {
             "name": "virtio-mmio",
             "binary": "virtio-mmio",
             "compatible": [
@@ -18,21 +25,29 @@
             "name": "virtio-gpu",
             "binary": "virtio-gpu",
             "compatible": [
-                "virtio-gpu"
+                "virtio-gpu",
+                "virtio-gpu-pci",
+                "pciid:1af4:1050"
             ]
         },
         {
-            "name": "virtio-net",
+            "name": "virtio-net-pci",
             "binary": "virtio-net",
             "compatible": [
-                "virtio-net"
+                "virtio-net",
+                "virtio-net-pci",
+                "pciid:1af4:1000",
+                "pciid:1af4:1041"
             ]
         },
         {
             "name": "virtio-blk",
             "binary": "virtio-blk",
             "compatible": [
-                "virtio-block"
+                "virtio-block",
+                "virtio-block-pci",
+                "pciid:1af4:1001",
+                "pciid:1af4:1042"
             ]
         },
         {
@@ -47,7 +62,9 @@
             "binary": "ns16550a",
             "compatible": [
                 "ns16550a",
-                "snps,dw-apb-uart"
+                "snps,dw-apb-uart",
+                "pci-serial16550",
+                "pciid:1b36:0002"
             ]
         }
     ]

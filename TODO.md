@@ -6,3 +6,6 @@
 [ ] CAP_TRANSFER语义改为移动
 [ ] 原生Syscall改为负数
 [ ] 多个终端
+[ ] Fastpath 优化
+[ ] 内核更多syscall语义支持
+[ ] PCI子系统拆分
