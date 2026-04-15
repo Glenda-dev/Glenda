@@ -13,3 +13,14 @@ pub fn set_cpuid(cpuid: usize) {
         asm::write_tp(cpuid);
     }
 }
+
+pub fn init() {
+    unsafe {
+        // Enable Zicbom
+        // Bit 6: CBCFE
+        // Bit 7: CBIE
+        // senvcfg CSR = 0x10A
+        asm::senvcfg_set(6);
+        asm::senvcfg_set(7);
+    }
+}

@@ -12,12 +12,14 @@ use crate::cap::{CapType, Capability};
 use crate::error::Error;
 
 pub fn dispatch(cap: &mut Capability, method: usize, cptr: usize) -> Result<(), Error> {
+    let cap_type = cap.cap_type();
+
     if method == 0 {
         printk!("{}\n", cap);
         return Ok(());
     }
     // 4. 根据对象类型分发
-    match cap.cap_type() {
+    match cap_type {
         CapType::Endpoint => ipc::invoke_ipc(cap, method),
         CapType::TCB => tcb::invoke_tcb(cap, method),
         CapType::PageTable => vspace::invoke_pagetable(cap, method),

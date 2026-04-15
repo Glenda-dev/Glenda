@@ -40,6 +40,7 @@ pub struct TrapFrame {
     pub t4: usize,
     pub t5: usize,
     pub t6: usize,
+    pub fast_ipc: usize,
 }
 
 impl TrapFrame {
@@ -81,6 +82,7 @@ impl TrapFrame {
             t4: 0,
             t5: 0,
             t6: 0,
+            fast_ipc: 0,
         }
     }
     pub fn configure(&mut self, entry_point: usize, stack_pointer: usize, thread_pointer: usize) {
@@ -112,8 +114,23 @@ impl TrapFrame {
     pub fn set_return_value(&mut self, value: usize) {
         self.a0 = value;
     }
-    pub const fn get_syscall_args(&self) -> (usize, usize) {
-        (self.a0, self.a7)
+    #[inline(always)]
+    pub fn set_fast_ipc_hint(&mut self, enabled: bool) {
+        self.fast_ipc = enabled as usize;
+    }
+    pub const fn get_syscall_args(&self) -> (isize, usize) {
+        (self.a7 as isize, self.a0)
+    }
+    pub const fn get_syscall_ipc_args(&self) -> (usize, usize, [usize; 4]) {
+        (self.a1, self.a2, [self.a3, self.a4, self.a5, self.a6])
+    }
+    pub fn set_syscall_ipc_ret(&mut self, msgtag: usize, badge: usize, mrs: [usize; 4]) {
+        self.a1 = msgtag;
+        self.a2 = badge;
+        self.a3 = mrs[0];
+        self.a4 = mrs[1];
+        self.a5 = mrs[2];
+        self.a6 = mrs[3];
     }
     pub fn advance_pc(&mut self) {
         self.kernel_epc += 4;
@@ -128,7 +145,7 @@ impl TrapFrame {
         [self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6, self.a7]
     }
     pub fn get_syscall_registers(&self) -> MsgArgs {
-        [self.a7, self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6]
+        [self.a0, self.a1, self.a2, self.a3, self.a4, self.a5, self.a6, self.a7]
     }
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         self.a0 = regs[0];

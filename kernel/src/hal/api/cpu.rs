@@ -13,3 +13,8 @@ pub fn read_cycle() -> usize {
 pub fn set_cpuid(cpuid: usize) {
     unimplemented!()
 }
+
+/// 初始化 CPU 相关功能（如启用特定指令集扩展等）
+pub fn init() {
+    unimplemented!()
+}

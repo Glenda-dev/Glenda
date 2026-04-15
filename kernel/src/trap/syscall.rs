@@ -11,7 +11,26 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
     let cspace = tcb.get_cspace();
     match unsafe { cspace.lookup_slot_ptr(cptr) } {
         None => {
-            error!("syscall: Invalid slot at cptr {:#x}", cptr.bits());
+            let tcb_ptr = tcb as *mut _;
+            if let Some(utcb) = tcb.get_utcb() {
+                error!(
+                    "syscall: Invalid slot: thread={:p}, cptr={:#x}, method={}, msg_tag={:#x}, badge={:#x}, recv_window={}, reply_window={}",
+                    tcb_ptr,
+                    cptr.bits(),
+                    method,
+                    utcb.msg_tag.as_usize(),
+                    utcb.badge.bits(),
+                    utcb.recv_window,
+                    utcb.reply_window,
+                );
+            } else {
+                error!(
+                    "syscall: Invalid slot: thread={:p}, cptr={:#x}, method={}, utcb=none",
+                    tcb_ptr,
+                    cptr.bits(),
+                    method,
+                );
+            }
             Error::InvalidSlot as usize
         }
         // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）
@@ -21,6 +40,24 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
             let mut cap = unsafe { (*slot_ptr).cap.clone() };
 
             if cap.is_null() {
+                if cptr.bits() == 0x6 && method == 1 {
+                    let tcb_ptr = tcb as *mut _;
+                    if let Some(utcb) = tcb.get_utcb() {
+                        warn!(
+                            "syscall: reply slot empty on thread {:p}; msg_tag={:#x}, badge={:#x}, recv_window={}, reply_window={}",
+                            tcb_ptr,
+                            utcb.msg_tag.as_usize(),
+                            utcb.badge.bits(),
+                            utcb.recv_window,
+                            utcb.reply_window,
+                        );
+                    } else {
+                        warn!(
+                            "syscall: reply slot empty on thread {:p}; UTCB unavailable",
+                            tcb_ptr
+                        );
+                    }
+                }
                 error!(
                     "syscall: Null capability at {:p}, cptr: {:#x}, method: {}",
                     slot_ptr,

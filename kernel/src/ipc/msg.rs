@@ -64,5 +64,6 @@ bitflags! {
         const ERROR = 1 << 1;
         const HAS_CAP = 1 << 2;
         const HAS_BUFFER = 1 << 3;
+        const HAS_MRS = 1 << 4;
     }
 }

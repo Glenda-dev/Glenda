@@ -42,6 +42,11 @@ pub fn get_utcb_ptr(tcb: &TCB) -> Option<*mut UTCB> {
     None
 }
 
+fn sender_mrs_count(sender: &TCB) -> Result<usize, Error> {
+    let src_ptr = get_utcb_ptr(sender).ok_or(Error::MappingFailed)?;
+    Ok(unsafe { (*src_ptr).mrs })
+}
+
 /// 检查 IPC 调用是否会导致循环等待死锁
 fn check_deadlock(sender: &TCB, receiver: &TCB) -> bool {
     let mut curr = receiver;
@@ -78,6 +83,25 @@ fn propagate_priority(priority: u8, target_ptr: *mut TCB) {
     }
 }
 
+fn donate_sched_context(sender: &mut TCB, receiver: &mut TCB) {
+    let src_addr = sender as *const TCB as usize;
+    let dst_addr = receiver as *const TCB as usize;
+    let receiver_ptr = receiver as *mut TCB;
+    if src_addr < dst_addr {
+        let _g1 = sender.lock.lock();
+        let _g2 = receiver.lock.lock();
+        propagate_priority(sender.priority, receiver_ptr);
+        receiver.timeslice += sender.timeslice;
+        sender.timeslice = 0; // Donated
+    } else {
+        let _g1 = receiver.lock.lock();
+        let _g2 = sender.lock.lock();
+        propagate_priority(sender.priority, receiver_ptr);
+        receiver.timeslice += sender.timeslice;
+        sender.timeslice = 0; // Donated
+    }
+}
+
 /// 执行消息拷贝 (Sender UTCB -> Receiver UTCB)
 /// 同时传递 Badge 到接收者的上下文，并可选地传递一个 Capability
 unsafe fn copy_msg(
@@ -90,24 +114,7 @@ unsafe fn copy_msg(
     log!("ipc: Copy_msg sender={:p} receiver={:p} badge={:?}", sender, receiver, badge);
 
     // 优先级继承与时间片捐赠 (避免 ABBA 死锁，按地址顺序加锁)
-    {
-        let src_addr = sender as *const TCB as usize;
-        let dst_addr = receiver as *const TCB as usize;
-        let receiver_ptr = receiver as *mut TCB;
-        if src_addr < dst_addr {
-            let _g1 = sender.lock.lock();
-            let _g2 = receiver.lock.lock();
-            propagate_priority(sender.priority, receiver_ptr);
-            receiver.timeslice += sender.timeslice;
-            sender.timeslice = 0; // Donated
-        } else {
-            let _g1 = receiver.lock.lock();
-            let _g2 = sender.lock.lock();
-            propagate_priority(sender.priority, receiver_ptr);
-            receiver.timeslice += sender.timeslice;
-            sender.timeslice = 0; // Donated
-        }
-    }
+    donate_sched_context(sender, receiver);
     let src_ptr = get_utcb_ptr(sender).ok_or(Error::MappingFailed)?;
     let dst_ptr = get_utcb_ptr(receiver).ok_or(Error::MappingFailed)?;
     let src = unsafe { &mut *src_ptr };
@@ -154,6 +161,139 @@ unsafe fn copy_msg(
             }
         }
     }
+    Ok(())
+}
+
+/// 仅使用寄存器中的 msgtag/mr0..mr3 直拷到接收者 UTCB。
+/// 适用于无 cap 传递、无 buffer、无扩展 MRs 的快路径。
+unsafe fn copy_msg_inline(
+    sender: &mut TCB,
+    receiver: &mut TCB,
+    msg_tag: MsgTag,
+    badge: Badge,
+    mrs: [usize; 4],
+    sender_mrs: usize,
+    reply_cap: Option<Capability>,
+) -> Result<(), Error> {
+    donate_sched_context(sender, receiver);
+
+    let dst_ptr = get_utcb_ptr(receiver).ok_or(Error::MappingFailed)?;
+    let dst = unsafe { &mut *dst_ptr };
+
+    dst.msg_tag = msg_tag;
+    dst.mrs = sender_mrs;
+    dst.mrs_regs[0] = mrs[0];
+    dst.mrs_regs[1] = mrs[1];
+    dst.mrs_regs[2] = mrs[2];
+    dst.mrs_regs[3] = mrs[3];
+    for i in 4..utcb::MAX_MRS {
+        dst.mrs_regs[i] = 0;
+    }
+    dst.badge = badge;
+
+    // Call 路径上的 reply cap 传递
+    if let Some(rc) = reply_cap {
+        let reply_window = dst.reply_window;
+        let cspace = receiver.get_cspace();
+        match cspace.insert(reply_window, &rc) {
+            Err(e) => {
+                error!(
+                    "ipc: Failed to transfer reply capability to receiver at {}: {:?}",
+                    reply_window, e
+                );
+                return Err(e);
+            }
+            Ok(_) => {
+                log!("ipc: Transferred reply capability to receiver at {}", reply_window);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// SEND 快路径：仅当已有接收者等待时，直接使用寄存器内联消息完成传递。
+/// 返回 Ok(true) 表示已完成；Ok(false) 表示未命中接收者，调用方应回退常规路径。
+pub fn send_inline_if_ready(
+    current: &mut TCB,
+    ep: &Endpoint,
+    badge: Badge,
+    msg_tag: MsgTag,
+    mrs: [usize; 4],
+) -> Result<bool, Error> {
+    let Some(receiver_ptr) = ep.dequeue_recv() else {
+        return Ok(false);
+    };
+
+    let receiver = unsafe { &mut *receiver_ptr };
+    let sender_mrs = sender_mrs_count(current)?;
+    unsafe { copy_msg_inline(current, receiver, msg_tag, badge, mrs, sender_mrs, None)? };
+    scheduler::wake_up(receiver);
+    Ok(true)
+}
+
+/// CALL 快路径：仅当已有接收者等待时，直接使用寄存器内联消息完成传递并等待回复。
+/// 返回 Ok(true) 表示已完成；Ok(false) 表示未命中接收者，调用方应回退常规路径。
+pub fn call_inline_if_ready(
+    current: &mut TCB,
+    ep: &Endpoint,
+    badge: Badge,
+    msg_tag: MsgTag,
+    mrs: [usize; 4],
+) -> Result<bool, Error> {
+    let Some(receiver_ptr) = ep.dequeue_recv() else {
+        return Ok(false);
+    };
+
+    let receiver = unsafe { &mut *receiver_ptr };
+
+    if check_deadlock(current, receiver) {
+        error!("ipc: Deadlock detected in call!");
+        ep.enqueue_recv(receiver_ptr);
+        return Err(Error::InvalidCapability);
+    }
+
+    let reply_cap = Capability::create_reply(current, Rights::ALL);
+    let sender_mrs = sender_mrs_count(current)?;
+    unsafe {
+        copy_msg_inline(current, receiver, msg_tag, badge, mrs, sender_mrs, Some(reply_cap))?
+    };
+
+    current.ipc_partner = Some(receiver as *mut _);
+    current.state = ThreadState::BlockedCall;
+    scheduler::wake_up(receiver);
+
+    if current.state == ThreadState::BlockedCall {
+        scheduler::block_current_thread();
+    }
+
+    current.ipc_partner = None;
+    Ok(true)
+}
+
+/// REPLY 快路径：使用寄存器内联消息回复被阻塞的 CALL 线程。
+pub fn reply_inline(
+    current: &mut TCB,
+    target: &mut TCB,
+    msg_tag: MsgTag,
+    mrs: [usize; 4],
+) -> Result<(), Error> {
+    if target.state != ThreadState::BlockedCall {
+        error!(
+            "ipc: Reply current={:p} target={:p} failed target state {:?}",
+            current, target, target.state
+        );
+        return Err(Error::InvalidCapability);
+    }
+
+    let sender_mrs = sender_mrs_count(current)?;
+    unsafe { copy_msg_inline(current, target, msg_tag, Badge::null(), mrs, sender_mrs, None)? };
+
+    {
+        let _guard = current.lock.lock();
+        current.priority = current.base_priority;
+    }
+    scheduler::wake_up(target);
     Ok(())
 }
 

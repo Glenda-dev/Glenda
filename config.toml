@@ -183,4 +183,3 @@ path = "config/ape.json"
 kernel = []
 musl-glenda = ["--disable-shared", "--prefix=../../target"]
 libape = ["runtime"]
-ape = ["strace"]

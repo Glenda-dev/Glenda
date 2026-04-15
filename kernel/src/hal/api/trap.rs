@@ -41,8 +41,22 @@ impl TrapFrame {
     pub fn set_return_value(&mut self, value: usize) {
         unimplemented!()
     }
+    /// 设置 fast IPC 提示位（架构可选择实现，未实现时可为空操作）
+    pub fn set_fast_ipc_hint(&mut self, enabled: bool) {
+        let _ = enabled;
+        unimplemented!()
+    }
     /// 获取系统调用的参数
-    pub const fn get_syscall_args(&self) -> (usize, usize) {
+    pub const fn get_syscall_args(&self) -> (isize, usize) {
+        unimplemented!()
+    }
+    /// 获取 IPC fastpath 的寄存器参数 (msgtag, badge, mr0..mr3)
+    pub const fn get_syscall_ipc_args(&self) -> (usize, usize, [usize; 4]) {
+        unimplemented!()
+    }
+    /// 写回 IPC fastpath 的寄存器返回值 (msgtag, badge, mr0..mr3)
+    pub fn set_syscall_ipc_ret(&mut self, msgtag: usize, badge: usize, mrs: [usize; 4]) {
+        let _ = (msgtag, badge, mrs);
         unimplemented!()
     }
     /// 推进程序计数器，跳过当前指令

@@ -15,6 +15,8 @@ pub struct UTCB {
     pub msg_tag: MsgTag,
     /// 消息寄存器 (MR1-MR7) - 对应 CPU 寄存器
     pub mrs_regs: MsgArgs,
+    /// 用户态维护的 MR 使用计数（与 libglenda-rs UTCB 布局保持一致）
+    pub mrs: usize,
     /// Capability 传递描述符 (CPTR)
     pub cap_transfer: CapPtr,
     /// 接收窗口描述符 (CNode CPTR)
@@ -36,7 +38,20 @@ impl UTCB {
     pub fn copy_to(&mut self, dest: &mut UTCB) {
         // 只复制消息相关的字段
         dest.msg_tag = self.msg_tag;
-        dest.mrs_regs = self.mrs_regs;
+        dest.mrs = self.mrs;
+        dest.mrs_regs[0] = self.mrs_regs[0];
+        dest.mrs_regs[1] = self.mrs_regs[1];
+        dest.mrs_regs[2] = self.mrs_regs[2];
+        dest.mrs_regs[3] = self.mrs_regs[3];
+        if self.msg_tag.flags().contains(MsgFlags::HAS_MRS) {
+            for i in 4..MAX_MRS {
+                dest.mrs_regs[i] = self.mrs_regs[i];
+            }
+        } else {
+            for i in 4..MAX_MRS {
+                dest.mrs_regs[i] = 0;
+            }
+        }
         if self.msg_tag.flags().contains(MsgFlags::HAS_BUFFER) {
             log!("ipc: Copying buffer of size {} from sender to receiver", self.size);
             dest.head = self.head;

@@ -103,11 +103,10 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
         tcbmethod::SET_FAULT_HANDLER => {
             // SetFaultHandler: (ep_cptr)
             let ep_cptr = CapPtr::from(utcb.mrs_regs[0]);
-            let native = utcb.mrs_regs[1] != 0;
             if let Some(ep_cap) = current_tcb.cap_lookup(ep_cptr) {
                 // Only accept ipc::Endpoint caps
                 if ep_cap.cap_type() == CapType::Endpoint {
-                    tcb.set_fault_handler(ep_cap, native);
+                    tcb.set_fault_handler(ep_cap);
                     Ok(())
                 } else {
                     error!("TCB::SetFaultHandler failed: invalid obj type {:?}", ep_cap.cap_type());

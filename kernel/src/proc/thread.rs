@@ -224,9 +224,8 @@ impl TCB {
         self.trapframe_va = trapframe_va;
     }
 
-    pub fn set_fault_handler(&mut self, ep: Capability, native: bool) {
+    pub fn set_fault_handler(&mut self, ep: Capability) {
         self.fault_handler = Some(ep);
-        self.native = native;
     }
 
     pub fn set_bound_vcpu(&mut self, vcpu: Capability) {

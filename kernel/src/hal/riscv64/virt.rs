@@ -1,7 +1,6 @@
+use super::asm;
 use crate::error::Error;
 use crate::mem::PhysAddr;
-
-use super::asm;
 
 const SSTATUS_VS_BIT: usize = 9;
 const HSTATUS_SPV_BIT: usize = 7;
@@ -65,7 +64,6 @@ pub fn init_cpu() {
     asm::write_hedeleg(HEDELEG_DEFAULT);
     asm::write_hideleg(HIDELEG_DEFAULT);
     asm::write_hgatp(0);
-
     log!("virt: rvh detected and initialized on cpu {}", super::cpu::cpu_id());
 }
 
