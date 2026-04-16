@@ -2,7 +2,7 @@ use super::super::method::*;
 use crate::cap::{Badge, CapPtr, CapType, Capability, Rights};
 use crate::error::Error;
 use crate::hal::mem::PGSIZE;
-use crate::mem::{PhysAddr, PhysFrame};
+use crate::mem::{PhysAddr, PhysPage};
 use crate::platform::MemoryType;
 use crate::proc::scheduler;
 
@@ -89,9 +89,14 @@ pub fn invoke_kernel(cap: &mut Capability, method: usize, cptr: usize) -> Result
                 }
             }
 
-            // 创建 Frame 能力 (标记为 is_device)
-            let frame = PhysFrame { paddr, pages };
-            let new_cap = Capability::create_frame(&frame, Rights::ALL, true);
+            let level = Capability::pages_to_level(pages).ok_or_else(|| {
+                error!("Kernel::GET_MMIO failed: pages {} is not power-of-two", pages);
+                Error::InvalidArgs
+            })?;
+
+            // 创建 Page 能力 (标记为 is_device)
+            let page = PhysPage { paddr, level };
+            let new_cap = Capability::create_page(&page, Rights::ALL, true);
 
             // 插入到目标槽位
             let root_cnode = tcb.get_cspace_mut().ok_or(Error::InvalidCapability)?;

@@ -28,6 +28,99 @@ impl PageTable {
         unsafe { vaddr.as_mut::<PageTable>() }
     }
 
+    fn page_size_for_level(level: usize) -> usize {
+        hal::mem::page_size_for_level(level)
+    }
+
+    fn split_leaf_for_update(&mut self, va: VirtAddr, level: usize) -> Result<(), Error> {
+        if level == 0 || level >= PT_LEVELS {
+            return Err(Error::InvalidArgs);
+        }
+
+        let pte_ptr = self.walk_level(va, level).ok_or(Error::MappingFailed)?;
+        let old_pte = unsafe { *pte_ptr };
+        if !old_pte.is_valid() || !old_pte.is_leaf() {
+            return Err(Error::MappingFailed);
+        }
+
+        let old_flags = old_pte.get_flags();
+        let old_pa_base = old_pte.pa().align_down(Self::page_size_for_level(level));
+
+        let new_pt_pa = pmem::alloc_page().ok_or(Error::OutOfMemory)?;
+        let new_pt_va = phys_to_virt(new_pt_pa);
+        let new_pt = unsafe { new_pt_va.as_mut::<PageTable>() };
+        unsafe {
+            core::ptr::write_bytes(new_pt as *mut PageTable as *mut u8, 0, PGSIZE);
+        }
+
+        let child_level = level - 1;
+        let child_size = Self::page_size_for_level(child_level);
+        for i in 0..PGNUM {
+            let child_pa = old_pa_base + i * child_size;
+            new_pt.entries[i] = Pte::from(child_pa, old_flags);
+        }
+
+        unsafe {
+            *pte_ptr = Pte::from(new_pt_pa, Perms::VALID);
+        }
+        Ok(())
+    }
+
+    /// 查找虚拟地址对应的 PTE 指针和层级
+    ///
+    /// 返回：
+    /// * `Some((pte, level))`: 找到 PTE；level=0 表示 4KB 页，level=1/2 表示大页
+    /// * `None`: 遍历过程中断 (中间页表不存在)
+    pub fn walk_with_level(&mut self, va: VirtAddr) -> Option<(*mut Pte, usize)> {
+        let mut table = self;
+
+        for level in (1..PT_LEVELS).rev() {
+            let idx = hal::mem::get_vpn_index(va, level).as_usize();
+            let pte_val = table.entries[idx];
+
+            if !pte_val.is_valid() {
+                return None;
+            }
+
+            if pte_val.is_leaf() {
+                return Some((&mut table.entries[idx] as *mut Pte, level));
+            }
+
+            let next_pa = pte_val.pa();
+            let next_va = phys_to_virt(next_pa);
+            table = unsafe { next_va.as_mut::<PageTable>() };
+        }
+
+        let idx0 = hal::mem::get_vpn_index(va, 0).as_usize();
+        Some((&mut table.entries[idx0] as *mut Pte, 0))
+    }
+
+    /// 查找虚拟地址在指定层级对应的 PTE 指针。
+    ///
+    /// 要求从根到目标层级的父级页表都已存在且不是叶子节点。
+    fn walk_level(&mut self, va: VirtAddr, target_level: usize) -> Option<*mut Pte> {
+        if target_level >= PT_LEVELS {
+            return None;
+        }
+
+        let mut table = self;
+        for level in ((target_level + 1)..PT_LEVELS).rev() {
+            let idx = hal::mem::get_vpn_index(va, level).as_usize();
+            let pte_val = table.entries[idx];
+
+            if !pte_val.is_valid() || pte_val.is_leaf() {
+                return None;
+            }
+
+            let next_pa = pte_val.pa();
+            let next_va = phys_to_virt(next_pa);
+            table = unsafe { next_va.as_mut::<PageTable>() };
+        }
+
+        let idx = hal::mem::get_vpn_index(va, target_level).as_usize();
+        Some(&mut table.entries[idx] as *mut Pte)
+    }
+
     /// 查找虚拟地址对应的 PTE 指针
     ///
     /// * `va`: 虚拟地址
@@ -36,34 +129,7 @@ impl PageTable {
     /// * `Some(pte)`: 找到对应的 PTE (可能是叶子节点，也可能是中间节点)
     /// * `None`: 遍历过程中断 (中间页表不存在)
     pub fn walk(&mut self, va: VirtAddr) -> Option<*mut Pte> {
-        let mut table = self;
-
-        // 遍历 3 级页表 (Level 2 -> Level 1 -> Level 0)
-        // 最后一级 (Level 0) 的 PTE 将被返回
-        for level in (1..PT_LEVELS).rev() {
-            let idx = hal::mem::get_vpn_index(va, level).as_usize();
-            let pte_val = table.entries[idx];
-
-            if !pte_val.is_valid() {
-                // 中间页表不存在，直接返回 None
-                // 在微内核中，这意味着用户必须先 Map 一个 PageTable 到这个位置
-                return None;
-            }
-
-            if pte_val.is_leaf() {
-                // 遇到大页 (Huge Page)，直接返回该 PTE
-                // 注意：调用者需要知道这是一个大页 PTE
-                return Some(&mut table.entries[idx] as *mut Pte);
-            }
-
-            // 进入下一级页表
-            let next_pa = pte_val.pa();
-            let next_va = phys_to_virt(next_pa);
-            table = unsafe { next_va.as_mut::<PageTable>() };
-        }
-
-        // 返回 Level 0 的 PTE
-        Some(&mut table.entries[hal::mem::get_vpn_index(va, 0).as_usize()] as *mut Pte)
+        self.walk_with_level(va).map(|(pte, _)| pte)
     }
 
     /// 映射内存区域 (机制)
@@ -95,17 +161,77 @@ impl PageTable {
         let mut current_va = va;
         let mut current_pa = pa;
         let end_va = va + size;
+
         while current_va < end_va {
-            let pte_ptr = if let Some(ptr) = self.walk(current_va) {
-                ptr
+            let remaining = end_va.as_usize().saturating_sub(current_va.as_usize());
+            let mut mapped_huge = false;
+            let mut huge_step = PGSIZE;
+
+            for level in (1..PT_LEVELS).rev() {
+                let level_page_size = Self::page_size_for_level(level);
+                let can_try_huge = remaining >= level_page_size
+                    && current_va.is_aligned(level_page_size)
+                    && current_pa.is_aligned(level_page_size);
+
+                if !can_try_huge {
+                    continue;
+                }
+
+                if let Some(pte_ptr) = self.walk_level(current_va, level) {
+                    unsafe {
+                        let old_pte = *pte_ptr;
+                        if !old_pte.is_valid() {
+                            *pte_ptr = Pte::from(current_pa, flags);
+                            mapped_huge = true;
+                            huge_step = level_page_size;
+                            break;
+                        }
+
+                        if old_pte.is_leaf() {
+                            if old_pte.pa() != current_pa {
+                                error!(
+                                    "vm: PageTable::map failed: huge collision at va={:?} level={} old_pa={:?} new_pa={:?}",
+                                    current_va,
+                                    level,
+                                    old_pte.pa(),
+                                    current_pa
+                                );
+                                return Err(Error::AlreadyExists);
+                            }
+
+                            *pte_ptr = Pte::from(current_pa, flags);
+                            mapped_huge = true;
+                            huge_step = level_page_size;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if mapped_huge {
+                current_va += huge_step;
+                current_pa += huge_step;
+                continue;
+            }
+
+            let (pte_ptr, hit_level) = if let Some((ptr, level)) = self.walk_with_level(current_va)
+            {
+                (ptr, level)
             } else {
                 error!("vm: PageTable::map failed: intermediate missing for va={:?}", current_va);
                 return Err(Error::MappingFailed);
             };
 
+            if hit_level != 0 {
+                error!(
+                    "vm: PageTable::map failed: collided with huge-page mapping at va={:?} level={}",
+                    current_va, hit_level
+                );
+                return Err(Error::AlreadyExists);
+            }
+
             unsafe {
                 let old_pte = *pte_ptr;
-                // 如果已经存在映射，且不是更新权限，则报错 (防止覆盖)
                 if old_pte.is_valid() && (old_pte.pa() != current_pa) {
                     error!(
                         "vm: PageTable::map failed: collision at va={:?} old_pa={:?} new_pa={:?}",
@@ -116,7 +242,6 @@ impl PageTable {
                     return Err(Error::AlreadyExists);
                 }
 
-                // 写入新的 PTE
                 *pte_ptr = Pte::from(current_pa, flags);
             }
 
@@ -144,12 +269,21 @@ impl PageTable {
         let mut current_va = va;
         let end_va = va + size;
         while current_va < end_va {
-            let pte_ptr = if let Some(ptr) = self.walk(current_va) {
-                ptr
+            let (pte_ptr, level) = if let Some(v) = self.walk_with_level(current_va) {
+                v
             } else {
                 error!("vm: PageTable::update failed: mapping missing for va={:?}", current_va);
                 return Err(Error::MappingFailed);
             };
+
+            let step = Self::page_size_for_level(level);
+            let chunk_base = current_va.align_down(step);
+            let chunk_end = chunk_base + step;
+            if level > 0 && (current_va != chunk_base || chunk_end.as_usize() > end_va.as_usize()) {
+                // 细粒度权限更新命中大页时，先拆分为下一级再重试本轮。
+                self.split_leaf_for_update(chunk_base, level)?;
+                continue;
+            }
 
             unsafe {
                 let mut pte = *pte_ptr;
@@ -160,7 +294,7 @@ impl PageTable {
                 pte.set_flags(flags | Perms::VALID);
                 *pte_ptr = pte;
             }
-            current_va += PGSIZE;
+            current_va += step;
         }
         Ok(())
     }
@@ -179,11 +313,27 @@ impl PageTable {
 
         while current_va < end_va {
             // 如果 walk 返回 None，说明中间页表都不存在，自然也不存在映射，忽略即可
-            if let Some(pte_ptr) = self.walk(current_va) {
+            if let Some((pte_ptr, level)) = self.walk_with_level(current_va) {
+                let step = Self::page_size_for_level(level);
+                let chunk_base = current_va.align_down(step);
+                if level > 0
+                    && (current_va != chunk_base
+                        || current_va.as_usize() + step > end_va.as_usize())
+                {
+                    error!(
+                        "vm: PageTable::unmap failed: partial huge-page unmap not supported va={:?} level={} size={:#x}",
+                        current_va, level, size
+                    );
+                    return Err(Error::InvalidArgs);
+                }
+
                 unsafe {
                     // 无论之前是否有效，直接清零
                     *pte_ptr = Pte::null();
                 }
+
+                current_va += step;
+                continue;
             }
             current_va += PGSIZE;
         }
@@ -301,11 +451,44 @@ impl PageTable {
         let mut va = start;
         let mut pa = pa.align_down(PGSIZE);
         'map_loop: while va < end {
+            let remaining = end.as_usize().saturating_sub(va.as_usize());
+
             // 手动遍历页表，如果中间层级缺失则分配
             let mut table = self as *mut PageTable;
             for level in (1..PT_LEVELS).rev() {
                 let idx = hal::mem::get_vpn_index(va, level).as_usize();
                 let entry = unsafe { &mut (*table).entries[idx] };
+                let level_page_size = Self::page_size_for_level(level);
+                let can_try_huge = remaining >= level_page_size
+                    && va.is_aligned(level_page_size)
+                    && pa.is_aligned(level_page_size);
+
+                if can_try_huge {
+                    if !entry.is_valid() {
+                        *entry = Pte::from(pa, flags | Perms::VALID);
+                        va += level_page_size;
+                        pa += level_page_size;
+                        continue 'map_loop;
+                    }
+
+                    if entry.is_leaf() {
+                        let entry_pa = entry.pa();
+                        if entry_pa == pa.align_down(level_page_size) {
+                            // 已有等价大页映射，直接跳过该块。
+                            let next_boundary = va.align_down(level_page_size) + level_page_size;
+                            let dist_to_boundary = next_boundary.as_usize() - va.as_usize();
+                            let step = core::cmp::min(dist_to_boundary, remaining);
+                            va += step;
+                            pa += step;
+                            continue 'map_loop;
+                        }
+
+                        panic!(
+                            "map_with_alloc: Huge page collision not splittable. level={}, va={:?}, entry_pa={:?}, new_pa={:?}",
+                            level, va, entry_pa, pa
+                        );
+                    }
+                }
 
                 if !entry.is_valid() {
                     let frame_pa = pmem::alloc_page().expect("Failed to alloc page for page table");
@@ -316,7 +499,7 @@ impl PageTable {
 
                 if entry.is_leaf() {
                     // Check if existing huge page covers our range compatible
-                    let page_size = 1usize << (12 + level * 9);
+                    let page_size = Self::page_size_for_level(level);
                     let huge_page_start_pa = pa.align_down(page_size);
                     let entry_pa = entry.pa();
 
@@ -355,6 +538,7 @@ impl PageTable {
             pa += PGSIZE;
         }
     }
+
     pub fn debug_print(&self) {
         let pgtbl_2 = self as *const PageTable as usize;
         printk!("L2 PT @ {:#x}\n", pgtbl_2);

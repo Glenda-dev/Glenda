@@ -8,10 +8,11 @@ pub const VA_MAX: usize = 1 << 38;
 pub const USER_VA: usize = 0x10000;
 pub const PT_LEVELS: usize = 3;
 pub const PGNUM: usize = 512;
+pub const PT_INDEX_BITS: usize = 9;
 pub const PTEFLAGS_MASK: usize = 0x3FF;
 pub const MAX_ASID: usize = 1 << 16;
 pub const ASID_MASK: usize = 0xFFFF;
-pub const KSTACK_PAGES: usize = 4; // 16KB
+pub const KSTACK_PAGES: usize = 1;
 
 use super::asm;
 use crate::mem::TRAMPOLINE_VA;
@@ -92,8 +93,12 @@ pub fn flush_tlb(vaddr: Option<VirtAddr>, size: usize, asid: Option<usize>) {
     }
 }
 pub fn get_vpn_index(va: VirtAddr, level: usize) -> VPN {
-    let shift = 12 + level * 9;
+    let shift = 12 + level * PT_INDEX_BITS;
     VPN::from((va.as_usize() >> shift) & 0x1FF)
+}
+
+pub const fn page_size_for_level(level: usize) -> usize {
+    1usize << (12 + level * PT_INDEX_BITS)
 }
 
 pub fn kpt_setup(kpt: &mut PageTable) {

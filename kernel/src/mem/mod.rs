@@ -6,7 +6,7 @@ pub const TRAMPOLINE_VA: usize = VA_MAX - PGSIZE; // Trampoline 映射地址
 
 pub use addr::{PPN, PhysAddr, VPN, VirtAddr};
 pub use pagetable::PageTable;
-pub use pmem::PhysFrame;
+pub use pmem::PhysPage;
 pub use untyped::UntypedRegion;
 
 pub mod addr;

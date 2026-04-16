@@ -24,7 +24,7 @@ impl Pte {
         convert_to_perms(self.0 & PTEFLAGS_MASK)
     }
     pub fn set_flags(&mut self, flags: Perms) {
-        self.0 = (self.0 & PTEFLAGS_MASK) | convert_flags(flags)
+        self.0 = (self.0 & !PTEFLAGS_MASK) | convert_flags(flags)
     }
     pub fn is_valid(&self) -> bool {
         let flags = self.get_flags();

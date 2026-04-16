@@ -14,6 +14,10 @@ pub const PT_LEVELS: usize = 3;
 #[cfg(target_pointer_width = "32")]
 pub const PT_LEVELS: usize = 2;
 #[cfg(target_pointer_width = "64")]
+pub const PT_INDEX_BITS: usize = 9;
+#[cfg(target_pointer_width = "32")]
+pub const PT_INDEX_BITS: usize = 10;
+#[cfg(target_pointer_width = "64")]
 pub const PGNUM: usize = 512;
 #[cfg(target_pointer_width = "32")]
 pub const PGNUM: usize = 1024;
@@ -113,15 +117,16 @@ pub fn flush_tlb(vaddr: Option<VirtAddr>, size: usize, asid: Option<usize>) {
     }
 }
 pub fn get_vpn_index(va: VirtAddr, level: usize) -> VPN {
-    #[cfg(target_pointer_width = "64")]
-    let shift = 12 + level * 9;
+    let shift = 12 + level * PT_INDEX_BITS;
     #[cfg(target_pointer_width = "64")]
     let mask = 0x1FF;
     #[cfg(target_pointer_width = "32")]
-    let shift = 12 + level * 10;
-    #[cfg(target_pointer_width = "32")]
     let mask = 0x3FF;
     VPN::from((va.as_usize() >> shift) & mask)
+}
+
+pub const fn page_size_for_level(level: usize) -> usize {
+    1usize << (12 + level * PT_INDEX_BITS)
 }
 
 pub fn kpt_setup(kpt: &mut PageTable) {

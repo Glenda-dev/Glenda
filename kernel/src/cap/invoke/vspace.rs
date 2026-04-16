@@ -122,7 +122,7 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 }
             };
 
-            let frame_paddr = if frame_cap.cap_type() == CapType::Frame {
+            let frame_paddr = if frame_cap.cap_type() == CapType::Page {
                 frame_cap.paddr()
             } else {
                 error!(
@@ -154,10 +154,19 @@ pub fn invoke_vspace(cap: &mut Capability, method: usize) -> Result<(), Error> {
                 return Err(Error::PermissionDenied);
             }
 
-            let cap_pages = frame_cap.get_data();
+            let cap_pages = frame_cap.page_pages().ok_or_else(|| {
+                error!("vspace: VSpace map failed: page metadata missing");
+                Error::InvalidCapability
+            })?;
             let mut num_pages = utcb.mrs_regs[3];
-            if num_pages == 0 || num_pages > cap_pages {
+            if num_pages == 0 {
                 num_pages = cap_pages;
+            } else if num_pages > cap_pages {
+                error!(
+                    "vspace: VSpace map failed: requested pages {} exceeds page cap span {}",
+                    num_pages, cap_pages
+                );
+                return Err(Error::InvalidArgs);
             }
 
             // 执行映射

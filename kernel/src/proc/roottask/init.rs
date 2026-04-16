@@ -7,7 +7,7 @@ use crate::boot;
 use crate::cap::{CNode, CapPtr, Capability, Rights};
 use crate::error::Error;
 use crate::hal;
-use crate::hal::mem::{KSTACK_PAGES, PGSIZE};
+use crate::hal::mem::PGSIZE;
 use crate::mem::PageTable;
 use crate::mem::addr::virt_to_phys;
 use crate::mem::pmem;
@@ -30,14 +30,28 @@ pub struct RootCaps {
 pub fn alloc_root_caps() -> Result<RootCaps, Error> {
     Ok(RootCaps {
         vspace: pmem::alloc_vspace_cap().ok_or(Error::OutOfMemory)?,
-        cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
-        tcb: pmem::alloc_tcb_cap().ok_or(Error::OutOfMemory)?,
-        utcb: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
-        tf: pmem::alloc_frame_cap(1).ok_or(Error::OutOfMemory)?,
-        kstack: pmem::alloc_frame_cap(KSTACK_PAGES).ok_or(Error::OutOfMemory)?,
-        bootinfo: pmem::alloc_frame_cap(BOOTINFO_PAGES).ok_or(Error::OutOfMemory)?,
+        cspace: {
+            pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?
+        },
+        tcb: {
+            pmem::alloc_tcb_cap().ok_or(Error::OutOfMemory)?
+        },
+        utcb: {
+            pmem::alloc_page_cap(1).ok_or(Error::OutOfMemory)?
+        },
+        tf: {
+            pmem::alloc_page_cap(1).ok_or(Error::OutOfMemory)?
+        },
+        kstack: {
+            pmem::alloc_page_cap(1).ok_or(Error::OutOfMemory)?
+        },
+        bootinfo: {
+            pmem::alloc_page_cap(1).ok_or(Error::OutOfMemory)?
+        },
         kernel: Capability::create_kernel(Rights::ALL),
-        untyped_cspace: pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?,
+        untyped_cspace: {
+            pmem::alloc_cnode_cap().ok_or(Error::OutOfMemory)?
+        },
         console: Capability::create_console(Rights::ALL),
         irq_control: Capability::create_irqhandler(0, Rights::ALL),
     })

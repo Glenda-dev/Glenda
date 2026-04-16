@@ -212,11 +212,16 @@ pub fn initialize_regions() {
     PMEM.lock().init(kernel_end);
 }
 
-/// 分配一个物理页 Capability
-pub fn alloc_frame_cap(pages: usize) -> Option<Capability> {
-    PMEM.lock()
-        .alloc_addr(pages * PGSIZE, PGSIZE)
-        .map(|paddr| Capability::create_frame(&PhysFrame { paddr, pages }, Rights::ALL, false))
+/// 分配一个物理页 Capability（flags 为 page level，0=4KiB, 1=8KiB, ...）
+pub fn alloc_page_cap(level: usize) -> Option<Capability> {
+    if level >= usize::BITS as usize {
+        return None;
+    }
+    let pages = 1usize << level;
+    let size = pages * PGSIZE;
+    PMEM.lock().alloc_addr(size, PGSIZE).map(|paddr| {
+        Capability::create_page(&PhysPage { paddr, level }, Rights::ALL, false)
+    })
 }
 
 /// 分配一个 Untyped Capability
@@ -279,9 +284,9 @@ pub fn get_untyped() -> ([UntypedRegion; MAX_PMEM_REGIONS], usize) {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PhysFrame {
+pub struct PhysPage {
     pub paddr: PhysAddr,
-    pub pages: usize,
+    pub level: usize,
 }
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]

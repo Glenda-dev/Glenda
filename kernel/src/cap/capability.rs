@@ -6,7 +6,7 @@ use crate::hal::mem::{ASID_MASK, PGSIZE};
 use crate::ipc::Endpoint;
 use crate::mem::PageTable;
 use crate::mem::addr::{phys_to_virt, virt_to_phys};
-use crate::mem::{PhysAddr, PhysFrame, UntypedRegion, VirtAddr};
+use crate::mem::{PhysAddr, PhysPage, UntypedRegion, VirtAddr};
 use crate::proc::TCB;
 use crate::proc::asid::Asid;
 use core::fmt::Display;
@@ -57,14 +57,13 @@ impl Display for Capability {
                 let tcb_ptr = VirtAddr::from(self.words[0]);
                 s.field("tcb_ptr", &tcb_ptr);
             }
-            CapType::Frame => {
+            CapType::Page => {
                 let paddr = PhysAddr::from(self.words[0]);
+                let level = self.page_level().unwrap_or(0);
+                let pages = self.page_pages().unwrap_or(0);
                 s.field("paddr", &paddr);
-                s.field(
-                    "pages",
-                    &((self.words[1] >> DATA_SHIFT)
-                        & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1)),
-                );
+                s.field("level", &level);
+                s.field("pages", &pages);
                 s.field("device", &self.is_device());
             }
             CapType::PageTable => {
@@ -118,6 +117,8 @@ pub const TYPE_MASK: usize = 0x1F; // 5 bits (32 types)
 pub const RIGHTS_SHIFT: usize = 5;
 pub const RIGHTS_MASK: usize = 0xFF; // 8 bits
 pub const DATA_SHIFT: usize = 13;
+const PAGE_DEVICE_BIT: usize = 1usize << (usize::BITS as usize - 1);
+const PAGE_LEVEL_MASK: usize = (1usize << (usize::BITS as usize - 1 - DATA_SHIFT)) - 1;
 const ASID_BITS: usize = 16;
 
 impl Capability {
@@ -241,7 +242,7 @@ impl Capability {
             CapType::Reply => VirtAddr::from(self.words[0]),
             CapType::CNode => VirtAddr::from(self.words[0]),
             CapType::Untyped => phys_to_virt(PhysAddr::from(self.words[0])),
-            CapType::Frame => phys_to_virt(PhysAddr::from(self.words[0])),
+            CapType::Page => phys_to_virt(PhysAddr::from(self.words[0])),
             CapType::PageTable => phys_to_virt(PhysAddr::from(self.words[0])),
             CapType::VSpace => phys_to_virt(PhysAddr::from(self.words[0])),
             CapType::VCPU => VirtAddr::from(self.words[0]),
@@ -254,7 +255,7 @@ impl Capability {
     pub fn paddr(&self) -> PhysAddr {
         match self.cap_type() {
             CapType::Untyped => PhysAddr::from(self.words[0]),
-            CapType::Frame => PhysAddr::from(self.words[0]),
+            CapType::Page => PhysAddr::from(self.words[0]),
             CapType::PageTable => PhysAddr::from(self.words[0]),
             CapType::VSpace => PhysAddr::from(self.words[0]),
             CapType::VMSpace => PhysAddr::from(self.words[0]),
@@ -288,15 +289,15 @@ impl Capability {
     }
 
     pub const fn is_device(&self) -> bool {
-        (self.words[1] & TYPE_MASK) == (CapType::Frame as usize)
-            && (self.words[1] & (1 << (usize::BITS - 1))) != 0
+        (self.words[1] & TYPE_MASK) == (CapType::Page as usize)
+            && (self.words[1] & PAGE_DEVICE_BIT) != 0
     }
 
     pub fn set_is_device(&mut self, is_device: bool) {
         if is_device {
-            self.words[1] |= 1 << (usize::BITS - 1);
+            self.words[1] |= PAGE_DEVICE_BIT;
         } else {
-            self.words[1] &= !(1 << (usize::BITS - 1));
+            self.words[1] &= !PAGE_DEVICE_BIT;
         }
     }
 
@@ -330,17 +331,56 @@ impl Capability {
     }
 
     pub const fn get_data(&self) -> usize {
-        let mut data = self.words[1] >> DATA_SHIFT;
-        // 如果是 Frame 类型，需要排除第 63 位 (is_device)
-        if (self.words[1] & TYPE_MASK) == (CapType::Frame as usize) {
-            data &= (1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1;
+        if (self.words[1] & TYPE_MASK) == (CapType::Page as usize) {
+            (self.words[1] >> DATA_SHIFT) & PAGE_LEVEL_MASK
+        } else {
+            self.words[1] >> DATA_SHIFT
         }
-        data
     }
 
     pub fn set_data(&mut self, data: usize) {
-        let mask = !((!0usize) << DATA_SHIFT);
-        self.words[1] = (self.words[1] & mask) | (data << DATA_SHIFT);
+        if self.cap_type() == CapType::Page {
+            let low_mask = (1usize << DATA_SHIFT) - 1;
+            self.words[1] = (self.words[1] & (low_mask | PAGE_DEVICE_BIT))
+                | ((data & PAGE_LEVEL_MASK) << DATA_SHIFT);
+        } else {
+            let mask = !((!0usize) << DATA_SHIFT);
+            self.words[1] = (self.words[1] & mask) | (data << DATA_SHIFT);
+        }
+    }
+
+    #[inline(always)]
+    pub const fn pages_to_level(pages: usize) -> Option<usize> {
+        if pages == 0 { None } else { Some(pages) }
+    }
+
+    #[inline(always)]
+    pub const fn level_to_pages(level: usize) -> Option<usize> {
+        if level == 0 { None } else { Some(level) }
+    }
+
+    pub fn page_level(&self) -> Option<usize> {
+        if self.cap_type() == CapType::Page {
+            Some((self.words[1] >> DATA_SHIFT) & PAGE_LEVEL_MASK)
+        } else {
+            None
+        }
+    }
+
+    pub fn page_pages(&self) -> Option<usize> {
+        if let Some(level) = self.page_level() {
+            Self::level_to_pages(level)
+        } else {
+            None
+        }
+    }
+
+    pub fn page_size(&self) -> Option<usize> {
+        if let Some(pages) = self.page_pages() {
+            Some(pages * PGSIZE)
+        } else {
+            None
+        }
     }
 
     pub fn create_untyped(untyped: &UntypedRegion, rights: Rights) -> Self {
@@ -412,16 +452,19 @@ impl Capability {
         }
     }
 
-    pub fn create_frame(frame: &PhysFrame, rights: Rights, is_device: bool) -> Self {
-        assert!(frame.paddr.is_aligned(PGSIZE), "Frame paddr must be page-aligned");
-        let w0 = frame.paddr.as_usize();
-        let pages = frame.pages & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1); // 50 bits (excluding bit 63)
-        let mut w1 = (CapType::Frame as usize) & TYPE_MASK
+    pub fn create_page(page: &PhysPage, rights: Rights, is_device: bool) -> Self {
+        assert!(
+            page.paddr.is_aligned(PGSIZE),
+            "Page paddr must be page-aligned"
+        );
+        let w0 = page.paddr.as_usize();
+        let level = page.level & PAGE_LEVEL_MASK;
+        let mut w1 = (CapType::Page as usize) & TYPE_MASK
             | ((rights.bits() as usize) & RIGHTS_MASK) << RIGHTS_SHIFT
-            | (pages << DATA_SHIFT);
+            | (level << DATA_SHIFT);
 
         if is_device {
-            w1 |= 1 << (usize::BITS - 1);
+            w1 |= PAGE_DEVICE_BIT;
         }
 
         #[cfg(target_pointer_width = "64")]
@@ -595,13 +638,12 @@ impl Capability {
         }
     }
 
-    pub fn frame_info(&self) -> Option<(PhysAddr, usize, bool)> {
-        if self.cap_type() == CapType::Frame {
+    pub fn page_info(&self) -> Option<(PhysAddr, usize, bool)> {
+        if self.cap_type() == CapType::Page {
             let paddr = PhysAddr::from(self.words[0]);
-            let pages =
-                (self.words[1] >> DATA_SHIFT) & ((1 << (usize::BITS - 1 - DATA_SHIFT as u32)) - 1);
+            let level = (self.words[1] >> DATA_SHIFT) & PAGE_LEVEL_MASK;
             let is_device = self.is_device();
-            Some((paddr, pages, is_device))
+            Some((paddr, level, is_device))
         } else {
             None
         }

@@ -22,7 +22,7 @@ const CNODE_METADATA_BASE_SIZE: usize = core::mem::size_of::<AtomicUsize>()
 const CNODE_METADATA_PADDING_SIZE: usize = SLOT_SIZE - CNODE_METADATA_BASE_SIZE;
 
 // 静态断言：CNode/Slot 的布局契约必须在编译期成立。
-const _: [(); 64] = [(); SLOT_SIZE];
+const _: [(); 1] = [(); (SLOT_SIZE % core::mem::align_of::<usize>() == 0) as usize];
 const _: [(); SLOT_SIZE * CNODE_SLOTS] = [(); CNODE_SIZE];
 const _: [(); 1] = [(); (CNODE_BITMAP_WORDS * CNODE_BITMAP_WORD_BITS >= CNODE_SLOTS) as usize];
 const _: [(); 1] = [(); (CNODE_METADATA_BASE_SIZE <= SLOT_SIZE) as usize];
@@ -88,7 +88,6 @@ pub struct CDTNode {
     pub parent: VirtAddr,
     pub first_child: VirtAddr,
     pub next_sibling: VirtAddr,
-    pub prev_sibling: VirtAddr,
 }
 
 impl CDTNode {
@@ -97,8 +96,21 @@ impl CDTNode {
             parent: VirtAddr::null(),
             first_child: VirtAddr::null(),
             next_sibling: VirtAddr::null(),
-            prev_sibling: VirtAddr::null(),
         }
+    }
+}
+
+/// seL4-style MDB node，用于记录删除/撤销时的双向派生链。
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MDBNode {
+    pub prev: VirtAddr,
+    pub next: VirtAddr,
+}
+
+impl MDBNode {
+    pub const fn new() -> Self {
+        Self { prev: VirtAddr::null(), next: VirtAddr::null() }
     }
 }
 
@@ -108,7 +120,7 @@ pub struct Slot {
     pub cap: Capability,
     pub cdt: CDTNode,
     pub cnode_lock: VirtAddr, // Pointer to CNode::lock
-    pub _padding: [u8; 8],    // 16 (Cap) + 32 (CDT) + 8 + 8 = 64 字节
+    pub mdb: MDBNode,
 }
 
 impl Slot {
@@ -561,10 +573,12 @@ impl CNode {
         unsafe {
             core::ptr::copy_nonoverlapping(&src_slot.cap, &mut dest_slot.cap, 1);
             core::ptr::copy_nonoverlapping(&src_slot.cdt, &mut dest_slot.cdt, 1);
+            core::ptr::copy_nonoverlapping(&src_slot.mdb, &mut dest_slot.mdb, 1);
 
             // 清理原槽位 (手动构造，不触发旧值的 Drop)
             core::ptr::write(&mut src_slot.cap, Capability::empty());
             core::ptr::write(&mut src_slot.cdt, CDTNode::new());
+            core::ptr::write(&mut src_slot.mdb, MDBNode::new());
 
             Self::bitmap_update_by_slot(src_slot_ptr, false);
             Self::bitmap_update_by_slot(dest_slot_ptr, true);
@@ -575,18 +589,22 @@ impl CNode {
         let cdt = &dest_slot.cdt;
 
         // 更新父节点的 first_child 或前一个兄弟的 next_sibling
-        if cdt.prev_sibling != VirtAddr::null() {
-            let prev_slot = unsafe { &mut *cdt.prev_sibling.as_mut::<Slot>() };
-            prev_slot.cdt.next_sibling = VirtAddr::from(dest_ptr_val);
-        } else if cdt.parent != VirtAddr::null() {
+        if cdt.parent != VirtAddr::null() {
             let parent_slot = unsafe { &mut *cdt.parent.as_mut::<Slot>() };
-            parent_slot.cdt.first_child = VirtAddr::from(dest_ptr_val);
+            if parent_slot.cdt.first_child == VirtAddr::from(src_slot_ptr as usize) {
+                parent_slot.cdt.first_child = VirtAddr::from(dest_ptr_val);
+            }
+        }
+        if dest_slot.mdb.prev != VirtAddr::null() {
+            let prev_slot = unsafe { &mut *dest_slot.mdb.prev.as_mut::<Slot>() };
+            prev_slot.cdt.next_sibling = VirtAddr::from(dest_ptr_val);
+            prev_slot.mdb.next = VirtAddr::from(dest_ptr_val);
         }
 
         // 更新下一个兄弟的 prev_sibling
-        if cdt.next_sibling != VirtAddr::null() {
-            let next_slot = unsafe { &mut *cdt.next_sibling.as_mut::<Slot>() };
-            next_slot.cdt.prev_sibling = VirtAddr::from(dest_ptr_val);
+        if dest_slot.mdb.next != VirtAddr::null() {
+            let next_slot = unsafe { &mut *dest_slot.mdb.next.as_mut::<Slot>() };
+            next_slot.mdb.prev = VirtAddr::from(dest_ptr_val);
         }
 
         // 更新所有子节点的 parent
@@ -664,11 +682,13 @@ impl CNode {
                 None
             };
 
-            next_sib_slot.cdt.prev_sibling = VirtAddr::from(slot as *mut Slot as usize);
+            next_sib_slot.mdb.prev = VirtAddr::from(slot as *mut Slot as usize);
         }
         parent_slot_ref.cdt.first_child = VirtAddr::from(slot as *mut Slot as usize);
 
         slot.cdt = cdt;
+        slot.mdb.prev = VirtAddr::null();
+        slot.mdb.next = slot.cdt.next_sibling;
 
         // 4. 更新位图（目标槽位可能在子 CNode 中）
         unsafe {
@@ -793,7 +813,7 @@ fn revoke_recursive(slot_ptr: *mut Slot) {
         let child_slot = unsafe { &mut *child_addr.as_mut::<Slot>() };
         let child_slot_ptr = unsafe { child_addr.as_mut::<Slot>() };
 
-        let next_sibling = child_slot.cdt.next_sibling;
+        let next_sibling = child_slot.mdb.next;
 
         let child_cnode_lock = child_slot.cnode_lock;
 
@@ -817,6 +837,7 @@ fn revoke_recursive(slot_ptr: *mut Slot) {
 
         // Clear slot
         child_slot.cdt = CDTNode::new();
+        child_slot.mdb = MDBNode::new();
         child_slot.cap = Capability::empty();
         unsafe {
             CNode::bitmap_update_by_slot(child_slot_ptr, false);
@@ -828,8 +849,8 @@ fn revoke_recursive(slot_ptr: *mut Slot) {
 fn delete_recursive(slot_ptr: *mut Slot) {
     let slot = unsafe { &mut *slot_ptr };
     // 2. 从 CDT 兄弟链表中移除
-    let prev = slot.cdt.prev_sibling;
-    let next = slot.cdt.next_sibling;
+    let prev = slot.mdb.prev;
+    let next = slot.mdb.next;
     let parent = slot.cdt.parent;
 
     // Use raw pointer for lock comparison
@@ -847,6 +868,7 @@ fn delete_recursive(slot_ptr: *mut Slot) {
         };
 
         prev_slot.cdt.next_sibling = next;
+        prev_slot.mdb.next = next;
     } else if parent != VirtAddr::null() {
         let parent_slot = unsafe { &mut *parent.as_mut::<Slot>() };
         // Lock Parent
@@ -872,12 +894,13 @@ fn delete_recursive(slot_ptr: *mut Slot) {
             None
         };
 
-        next_slot.cdt.prev_sibling = prev;
+        next_slot.mdb.prev = prev;
     }
 
     // 3. 清空槽位 (触发 Capability::drop)
     slot.cap = Capability::empty();
     slot.cdt = CDTNode::new();
+    slot.mdb = MDBNode::new();
     unsafe {
         CNode::bitmap_update_by_slot(slot_ptr, false);
     }

@@ -124,13 +124,22 @@ pub fn invoke_vmspace(cap: &mut Capability, method: usize) -> Result<(), Error> 
                 error!("VMSpace::MapStage2 failed: frame cap not found cptr={}", frame_cptr);
                 Error::InvalidCapability
             })?;
-            if frame_cap.cap_type() != CapType::Frame {
+            if frame_cap.cap_type() != CapType::Page {
                 error!("VMSpace::MapStage2 failed: cap is not Frame");
                 return Err(Error::InvalidType);
             }
-            let frame_pages = frame_cap.get_data();
-            if pages == 0 || pages > frame_pages {
+            let frame_pages = frame_cap.page_pages().ok_or_else(|| {
+                error!("VMSpace::MapStage2 failed: page metadata missing");
+                Error::InvalidCapability
+            })?;
+            if pages == 0 {
                 pages = frame_pages;
+            } else if pages > frame_pages {
+                error!(
+                    "VMSpace::MapStage2 failed: requested pages {} exceeds page span {}",
+                    pages, frame_pages
+                );
+                return Err(Error::InvalidArgs);
             }
 
             vm_pt

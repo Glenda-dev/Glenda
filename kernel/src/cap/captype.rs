@@ -11,7 +11,7 @@ pub enum CapType {
     TCB = 2,
     Endpoint = 3,
     Reply = 4,
-    Frame = 5,
+    Page = 5,
     PageTable = 6,
     CNode = 7,
     IrqHandler = 8,

@@ -4,7 +4,7 @@ use crate::cap::{CNode, CapType, Capability, Rights};
 use crate::hal::mem::PGSIZE;
 use crate::ipc;
 use crate::mem::PageTable;
-use crate::mem::PhysFrame;
+use crate::mem::PhysPage;
 use crate::mem::addr::phys_to_virt;
 use crate::proc::virt::VcpuState;
 use crate::proc::{TCB, asid};
@@ -49,7 +49,13 @@ impl UntypedRegion {
             CapType::CNode => CNODE_PAGES,
             CapType::TCB => sizes::TCB,
             CapType::Endpoint => sizes::ENDPOINT,
-            CapType::Frame => flags,
+            CapType::Page => match Capability::level_to_pages(flags) {
+                Some(p) => p,
+                None => {
+                    error!("Untyped::Retype failed: invalid Page level {}", flags);
+                    return None;
+                }
+            },
             CapType::PageTable => sizes::PAGETABLE,
             CapType::VSpace => sizes::VSPACE,
             CapType::VCPU => sizes::VCPU,
@@ -106,9 +112,9 @@ impl UntypedRegion {
                 unsafe { ep_ptr.write(ipc::Endpoint::new()) };
                 Capability::create_endpoint(unsafe { &*ep_ptr }, Rights::ALL)
             }
-            CapType::Frame => {
-                let frame = PhysFrame { paddr: obj_paddr, pages: obj_pages };
-                Capability::create_frame(&frame, Rights::ALL, false)
+            CapType::Page => {
+                let page = PhysPage { paddr: obj_paddr, level: flags };
+                Capability::create_page(&page, Rights::ALL, false)
             }
             CapType::PageTable => {
                 let pt_ptr = obj_vaddr.as_mut_ptr::<PageTable>();

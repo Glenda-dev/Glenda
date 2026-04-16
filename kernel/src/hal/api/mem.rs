@@ -66,6 +66,11 @@ pub fn get_vpn_index(va: VirtAddr, level: usize) -> VPN {
     unimplemented!()
 }
 
+/// 获取指定页表层级对应页大小
+pub const fn page_size_for_level(level: usize) -> usize {
+    PGSIZE << (level * 9)
+}
+
 /// 设置内核页表
 pub fn kpt_setup(kpt: &mut PageTable) {
     unimplemented!()
