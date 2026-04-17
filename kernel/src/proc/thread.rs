@@ -68,6 +68,12 @@ pub struct TCB {
     // 正在与之通信的目标线程 (用于 Send/Recv 握手)
     pub ipc_partner: Option<*mut TCB>,
 
+    // 当前线程正在处理的入站 IPC Endpoint（用于检测递归自调用）
+    pub ipc_active_ep: Option<usize>,
+
+    // 当前请求对应的调用方线程（若由 Call 触发），用于等待环检测
+    pub ipc_caller: Option<*mut TCB>,
+
     // IPC state when blocked
     pub ipc_badge: Badge,
     pub ipc_cap: Option<Capability>,
@@ -87,6 +93,9 @@ pub struct TCB {
     pub global_prev: Option<*mut TCB>,
     pub global_next: Option<*mut TCB>,
 }
+
+// 编译期约束：TCB 必须控制在单页内，避免线程元数据越界侵占。
+const _: [(); PGSIZE - core::mem::size_of::<TCB>()] = [(); PGSIZE - core::mem::size_of::<TCB>()];
 
 pub static mut ALL_THREADS: Option<*mut TCB> = None;
 
@@ -114,6 +123,8 @@ impl TCB {
             prev: None,
             next: None,
             ipc_partner: None,
+            ipc_active_ep: None,
+            ipc_caller: None,
             ipc_badge: Badge::null(),
             ipc_cap: None,
             utcb_frame: None,
