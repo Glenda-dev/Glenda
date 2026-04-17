@@ -5,7 +5,7 @@
         "vt_name": "vt0",
         "seat_id": 0,
         "devices": [
-            "uart0"
+            "uart1"
         ]
     }
 }

@@ -40,24 +40,6 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
             let mut cap = unsafe { (*slot_ptr).cap.clone() };
 
             if cap.is_null() {
-                if cptr.bits() == 0x6 && method == 1 {
-                    let tcb_ptr = tcb as *mut _;
-                    if let Some(utcb) = tcb.get_utcb() {
-                        warn!(
-                            "syscall: reply slot empty on thread {:p}; msg_tag={:#x}, badge={:#x}, recv_window={}, reply_window={}",
-                            tcb_ptr,
-                            utcb.msg_tag.as_usize(),
-                            utcb.badge.bits(),
-                            utcb.recv_window,
-                            utcb.reply_window,
-                        );
-                    } else {
-                        warn!(
-                            "syscall: reply slot empty on thread {:p}; UTCB unavailable",
-                            tcb_ptr
-                        );
-                    }
-                }
                 error!(
                     "syscall: Null capability at {:p}, cptr: {:#x}, method: {}",
                     slot_ptr,
