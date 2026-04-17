@@ -33,6 +33,7 @@ members = [
     "drivers/sys/loop",
     "service/fossil",
     "service/nexus",
+    "service/factotum",
     "service/march",
     "service/prism",
 ]

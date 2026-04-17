@@ -36,6 +36,14 @@
             "name": "nexus",
             "path": "nexus",
             "auto_start": true,
+            "dependencies": [
+                "factotum"
+            ]
+        },
+        {
+            "name": "factotum",
+            "path": "factotum",
+            "auto_start": true,
             "dependencies": []
         },
         {
@@ -56,7 +64,8 @@
                 "march",
                 "prism",
                 "gopher",
-                "fossil"
+                "fossil",
+                "factotum"
             ]
         }
     ]
