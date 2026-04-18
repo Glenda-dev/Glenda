@@ -11,7 +11,7 @@ pub use endpoint::Endpoint;
 pub use msg::{MsgFlags, MsgTag};
 pub use utcb::{MsgArgs, UTCB};
 
-pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
+pub fn transfer_cap(tcb: &mut TCB) -> Option<Capability> {
     let utcb = match get_utcb_ptr(tcb) {
         Some(ptr) => unsafe { &*ptr },
         None => return None,
@@ -19,15 +19,24 @@ pub fn transfer_cap(tcb: &TCB) -> Option<Capability> {
 
     let tag = utcb.msg_tag;
     if tag.flags().contains(MsgFlags::HAS_CAP) {
-        if let Some(cap) = tcb.cap_lookup(utcb.cap_transfer) {
+        let src = utcb.cap_transfer;
+        if let Some(cap) = tcb.cap_lookup(src) {
             if cap.has_rights(Rights::GRANT) {
-                log!("ipc: Transfer cap {:?}", utcb.cap_transfer);
+                let Some(cspace) = tcb.get_cspace_mut() else {
+                    warn!("ipc: Warning: sender cspace missing for transfer {:?}", src);
+                    return None;
+                };
+                if let Err(e) = cspace.delete(src) {
+                    warn!("ipc: Warning: failed to consume transfer cap {:?}: {:?}", src, e);
+                    return None;
+                }
+                log!("ipc: Transfer cap {:?} (consumed from sender)", src);
                 return Some(cap);
             } else {
-                warn!("ipc: Warning: cannot grant cap {:?}", utcb.cap_transfer);
+                warn!("ipc: Warning: cannot grant cap {:?}", src);
             }
         } else {
-            warn!("ipc: Warning: cap to transfer not found {:?}", utcb.cap_transfer);
+            warn!("ipc: Warning: cap to transfer not found {:?}", src);
         }
     }
     None
@@ -51,6 +60,27 @@ fn is_current_tcb(tcb: &TCB) -> bool {
 fn sender_mrs_count(sender: &TCB) -> Result<usize, Error> {
     let src_ptr = get_utcb_ptr(sender).ok_or(Error::MappingFailed)?;
     Ok(unsafe { (*src_ptr).mrs })
+}
+
+#[inline]
+fn ensure_slot_insertable(receiver: &TCB, slot: crate::cap::CapPtr, kind: &str) -> Result<(), Error> {
+    let Some(slot_ptr) = receiver.lookup_slot(slot) else {
+        error!("ipc: {} insert failed: slot {} not found", kind, slot);
+        return Err(Error::InvalidSlot);
+    };
+
+    let slot_ref = unsafe { &*slot_ptr };
+    let _guard = unsafe { slot_ref.lock_cnode() };
+    if slot_ref.cap.cap_type() != CapType::Empty {
+        error!(
+            "ipc: {} insert failed: slot {} not empty, current={:?}",
+            kind,
+            slot,
+            slot_ref.cap.cap_type()
+        );
+        return Err(Error::AlreadyExists);
+    }
+    Ok(())
 }
 
 /// 检查 IPC 调用是否会导致循环等待死锁
@@ -151,6 +181,7 @@ unsafe fn copy_msg(
 
     if let Some(c) = cap {
         let recv_window = dst.recv_window;
+        ensure_slot_insertable(receiver, recv_window, "capability")?;
         let cspace = receiver.get_cspace();
         match cspace.insert(recv_window, &c) {
             Err(e) => {
@@ -169,6 +200,7 @@ unsafe fn copy_msg(
     // 4. 如果是 Call，还需要传递 Reply Cap
     if let Some(rc) = reply_cap {
         let reply_window = dst.reply_window;
+        ensure_slot_insertable(receiver, reply_window, "reply capability")?;
         let cspace = receiver.get_cspace();
         match cspace.insert(reply_window, &rc) {
             Err(e) => {
@@ -216,6 +248,7 @@ unsafe fn copy_msg_inline(
     // Call 路径上的 reply cap 传递
     if let Some(rc) = reply_cap {
         let reply_window = dst.reply_window;
+        ensure_slot_insertable(receiver, reply_window, "reply capability")?;
         let cspace = receiver.get_cspace();
         match cspace.insert(reply_window, &rc) {
             Err(e) => {
