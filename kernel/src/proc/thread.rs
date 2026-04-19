@@ -89,6 +89,10 @@ pub struct TCB {
     // 是否为原生线程
     pub native: bool,
 
+    // 用户态 upcall 跳转已注入（由 TCB::DeliverUpcall 设置）。
+    // 在 syscall fault 返回路径消费一次后清除，避免被默认的 advance_pc/ret 覆盖。
+    pub upcall_delivery_armed: bool,
+
     // Global thread list for debugging
     pub global_prev: Option<*mut TCB>,
     pub global_next: Option<*mut TCB>,
@@ -132,6 +136,7 @@ impl TCB {
             trapframe_va: 0,
             privileged: false,
             native: true,
+            upcall_delivery_armed: false,
             global_prev: None,
             global_next: None,
         }
@@ -155,6 +160,11 @@ impl TCB {
     pub fn get_tf(&mut self) -> &mut TrapFrame {
         let tf_cap = self.trapframe.as_ref().expect("TrapFrame not configured");
         unsafe { tf_cap.obj_ptr().as_mut::<TrapFrame>() }
+    }
+
+    pub fn get_tf_ref(&self) -> &TrapFrame {
+        let tf_cap = self.trapframe.as_ref().expect("TrapFrame not configured");
+        unsafe { tf_cap.obj_ptr().as_ref::<TrapFrame>() }
     }
 
     pub fn get_tf_va(&self) -> VirtAddr {
@@ -250,6 +260,30 @@ impl TCB {
     pub fn set_registers(&mut self, regs: &MsgArgs) {
         let tf = self.get_tf();
         tf.set_registers(regs);
+    }
+
+    pub fn fork_from(&mut self, parent: &TCB) -> Result<(), crate::error::Error> {
+        let parent_tf = *parent.get_tf_ref();
+        let kstack_top = self.get_kstack_top().as_usize();
+        let mmu = self.mmu_register();
+        let parent_epc = parent_tf.get_epc();
+
+        let tf = self.get_tf();
+        *tf = parent_tf;
+        tf.set_return_value(0);
+        tf.set_epc(parent_epc.wrapping_add(4));
+
+        tf.configure_kernel(
+            mmu,
+            hal::cpu::cpu_id(),
+            kstack_top,
+            trap_user_handler as *const () as usize,
+        );
+
+        let ra = trap_user_return as *const () as usize;
+        self.context.configure(ra, kstack_top);
+
+        Ok(())
     }
 
     pub fn resume(&mut self) -> bool {

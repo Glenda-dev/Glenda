@@ -4,6 +4,7 @@ use crate::trap::TrapCause;
 use core::arch::naked_asm;
 /// 陷阱帧结构体
 /// 保存陷阱发生时的寄存器状态
+#[derive(Clone, Copy)]
 pub struct TrapFrame;
 
 impl TrapFrame {
@@ -65,6 +66,11 @@ impl TrapFrame {
     }
     /// 获取返回地址寄存器的值
     pub const fn get_ra(&self) -> usize {
+        unimplemented!()
+    }
+    /// 设置返回地址寄存器的值
+    pub fn set_ra(&mut self, ra: usize) {
+        let _ = ra;
         unimplemented!()
     }
     /// 获取栈指针寄存器的值

@@ -134,6 +134,9 @@ impl TrapFrame {
     pub const fn get_ra(&self) -> usize {
         self.ra
     }
+    pub fn set_ra(&mut self, ra: usize) {
+        self.ra = ra;
+    }
     pub const fn get_sp(&self) -> usize {
         self.sp
     }

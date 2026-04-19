@@ -22,6 +22,10 @@ pub mod tcbmethod {
     pub const RESUME: usize = 9;
     pub const SUSPEND: usize = 10;
     pub const YIELD: usize = 11;
+    pub const FORK_FROM: usize = 12;
+    pub const DELIVER_UPCALL: usize = 13;
+    // Backward-compatible alias for legacy signal-only path.
+    pub const DELIVER_SIGNAL: usize = DELIVER_UPCALL;
 }
 
 pub mod pagetablemethod {

@@ -187,6 +187,7 @@ path = "config/ape.json"
 
 [features]
 kernel = []
-musl-glenda = ["--disable-shared", "--prefix=../../target"]
+libglenda-rs = ["rt-bare"]
 libape = ["runtime"]
+musl-glenda = ["--disable-shared", "--prefix=../../target/sysroot"]
 ape = ["strace"]

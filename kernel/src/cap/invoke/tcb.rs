@@ -128,6 +128,43 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
             tcb.set_registers(&utcb.mrs_regs);
             Ok(())
         }
+        tcbmethod::FORK_FROM => {
+            // ForkFrom: (source_tcb_cptr)
+            let source_cptr = CapPtr::from(utcb.mrs_regs[0]);
+            let source_cap = current_tcb.cap_lookup(source_cptr).ok_or(Error::InvalidCapability)?;
+            if source_cap.cap_type() != CapType::TCB {
+                error!("TCB::ForkFrom failed: invalid source type {:?}", source_cap.cap_type());
+                return Err(Error::InvalidType);
+            }
+
+            let source_tcb = unsafe { source_cap.obj_ptr().as_ref::<TCB>() };
+            tcb.fork_from(source_tcb)
+        }
+        tcbmethod::DELIVER_UPCALL => {
+            // DeliverUpcall: (handler_pc, arg0, arg1, arg2, arg3)
+            let handler_pc = utcb.mrs_regs[0];
+            let arg0 = utcb.mrs_regs[1];
+            let arg1 = utcb.mrs_regs[2];
+            let arg2 = utcb.mrs_regs[3];
+            let arg3 = utcb.mrs_regs[4];
+            if handler_pc == 0 || handler_pc == 1 {
+                error!("TCB::DeliverUpcall failed: invalid handler handler={:#x}", handler_pc);
+                return Err(Error::InvalidArgs);
+            }
+
+            let tf = tcb.get_tf();
+            let old_epc = tf.get_epc();
+            tf.set_ra(old_epc);
+            let mut regs = tf.get_syscall_registers();
+            regs[0] = arg0;
+            regs[1] = arg1;
+            regs[2] = arg2;
+            regs[3] = arg3;
+            tf.set_registers(&regs);
+            tf.set_epc(handler_pc);
+            tcb.upcall_delivery_armed = true;
+            Ok(())
+        }
         tcbmethod::YIELD => {
             if tcb as *mut TCB == current_tcb as *mut TCB {
                 scheduler::yield_proc();

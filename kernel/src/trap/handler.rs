@@ -200,14 +200,20 @@ fn fault_handler(
 
         // 4. 如果是Syscall，跳过epc
         if e == TrapException::Syscall {
-            ctx.advance_pc();
-            if let Some(utcb) = tcb.get_utcb() {
-                ctx.set_return_value(utcb.mrs_regs[0]);
+            if tcb.upcall_delivery_armed {
+                // 已由 TCB::DeliverUpcall 预设用户态返回现场（epc/ra/a0..a3）。
+                // 这里必须避免默认 syscall 返回流程覆盖寄存器。
+                tcb.upcall_delivery_armed = false;
             } else {
-                warn!(
-                    "trap: Syscall fault handler returned but UTCB is missing. Returning error to caller."
-                );
-                ctx.set_return_value(usize::MAX);
+                ctx.advance_pc();
+                if let Some(utcb) = tcb.get_utcb() {
+                    ctx.set_return_value(utcb.mrs_regs[0]);
+                } else {
+                    warn!(
+                        "trap: Syscall fault handler returned but UTCB is missing. Returning error to caller."
+                    );
+                    ctx.set_return_value(usize::MAX);
+                }
             }
         }
     } else {

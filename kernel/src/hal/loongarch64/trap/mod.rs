@@ -1,6 +1,6 @@
 use super::csr;
-use core::arch::global_asm;
 use crate::trap::cause::TrapCause;
+use core::arch::global_asm;
 
 global_asm!(
     r#"
@@ -23,12 +23,7 @@ pub struct TrapFrame {
 
 impl TrapFrame {
     pub const fn new() -> Self {
-        Self {
-            regs: [0; 32],
-            era: 0,
-            prmd: 0,
-            badv: 0,
-        }
+        Self { regs: [0; 32], era: 0, prmd: 0, badv: 0 }
     }
 
     pub fn configure(&mut self, entry: usize, sp: usize, _tp: usize) {
@@ -36,7 +31,13 @@ impl TrapFrame {
         self.regs[3] = sp;
     }
 
-    pub fn configure_kernel(&mut self, _mmu: usize, _cpuid: usize, _kstack: usize, _handler: usize) {
+    pub fn configure_kernel(
+        &mut self,
+        _mmu: usize,
+        _cpuid: usize,
+        _kstack: usize,
+        _handler: usize,
+    ) {
     }
 
     pub fn set_cpuid(&mut self, _id: usize) {}
@@ -53,9 +54,18 @@ impl TrapFrame {
         (self.regs[4], self.regs[11])
     }
 
-    pub fn get_epc(&self) -> usize { self.era }
-    pub fn get_ra(&self) -> usize { self.regs[1] }
-    pub fn get_sp(&self) -> usize { self.regs[3] }
+    pub fn get_epc(&self) -> usize {
+        self.era
+    }
+    pub fn get_ra(&self) -> usize {
+        self.regs[1]
+    }
+    pub fn set_ra(&mut self, ra: usize) {
+        self.regs[1] = ra;
+    }
+    pub fn get_sp(&self) -> usize {
+        self.regs[3]
+    }
 
     pub fn set_registers(&mut self, regs: &[usize]) {
         let len = regs.len().min(32);
@@ -69,11 +79,21 @@ impl TrapFrame {
     }
 }
 
-pub fn get_cause() -> usize { csr::read_csr(csr::CSR_ESTAT) }
-pub fn get_pc() -> usize { csr::read_csr(csr::CSR_ERA) }
-pub fn get_value() -> usize { csr::read_csr(csr::CSR_BADV) }
-pub fn get_status() -> usize { csr::read_csr(csr::CSR_CRMD) }
-pub fn is_user_mode(status: usize) -> bool { (status & 0x3) != 0 }
+pub fn get_cause() -> usize {
+    csr::read_csr(csr::CSR_ESTAT)
+}
+pub fn get_pc() -> usize {
+    csr::read_csr(csr::CSR_ERA)
+}
+pub fn get_value() -> usize {
+    csr::read_csr(csr::CSR_BADV)
+}
+pub fn get_status() -> usize {
+    csr::read_csr(csr::CSR_CRMD)
+}
+pub fn is_user_mode(status: usize) -> bool {
+    (status & 0x3) != 0
+}
 
 pub fn match_cause(_cause: usize) -> TrapCause {
     TrapCause::Unknown(0)
