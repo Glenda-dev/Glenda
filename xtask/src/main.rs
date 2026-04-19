@@ -39,6 +39,29 @@ enum Cmd {
         #[arg(long)]
         port: Option<u16>,
     },
+    /// Execute a shell script line-by-line via the mapped serial TCP endpoint
+    Exec {
+        /// Path to sh script file
+        script: String,
+        /// Override serial TCP port (defaults to qemu.serial_port or 5555)
+        #[arg(long)]
+        port: Option<u16>,
+        /// Start `run` in background before executing script
+        #[arg(long)]
+        run: bool,
+        /// Timeout (seconds) for background `run` (same default as `run` command)
+        #[arg(long, default_value_t = 60)]
+        run_timeout: u64,
+        /// Log file for background `run` output
+        #[arg(long, default_value = "glenda.log")]
+        log: String,
+        /// Timeout (seconds) waiting for initial shell prompt after connect
+        #[arg(long, default_value_t = 30)]
+        connect_timeout: u64,
+        /// Timeout (seconds) waiting for prompt after each command
+        #[arg(long, default_value_t = 30)]
+        prompt_timeout: u64,
+    },
     /// Disassemble the kernel ELF
     Objdump,
     /// Show section sizes
@@ -93,7 +116,19 @@ fn main() -> anyhow::Result<()> {
             qemu::qemu_gdb(&cfg, port)?;
         }
         Cmd::Attach { port } => {
-            qemu::qemu_attach(&cfg, port)?;
+            util::attach(&cfg, port)?;
+        }
+        Cmd::Exec { script, port, run, run_timeout, log, connect_timeout, prompt_timeout } => {
+            util::exec(
+                &cfg,
+                Path::new(&script),
+                port,
+                run,
+                Path::new(&log),
+                run_timeout,
+                connect_timeout,
+                prompt_timeout,
+            )?;
         }
         Cmd::Objdump => util::objdump(&cfg)?,
         Cmd::Size => util::size(&cfg)?,

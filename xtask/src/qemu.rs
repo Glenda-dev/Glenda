@@ -193,32 +193,6 @@ pub fn qemu_gdb(cfg: &Config, port: u16) -> anyhow::Result<()> {
     run(&mut cmd)
 }
 
-pub fn qemu_attach(cfg: &Config, port: Option<u16>) -> anyhow::Result<()> {
-    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
-    let host = "127.0.0.1";
-    eprintln!("[ INFO ] Attaching to PCI UART backend at {host}:{port} ...");
-
-    if which("telnet").is_ok() {
-        let mut cmd = Command::new("telnet");
-        cmd.arg(host).arg(port.to_string());
-        return run(&mut cmd);
-    }
-
-    if which("nc").is_ok() {
-        let mut cmd = Command::new("nc");
-        cmd.arg(host).arg(port.to_string());
-        return run(&mut cmd);
-    }
-
-    if which("ncat").is_ok() {
-        let mut cmd = Command::new("ncat");
-        cmd.arg(host).arg(port.to_string());
-        return run(&mut cmd);
-    }
-
-    anyhow::bail!("[ ERROR ] No attach client found. Please install one of: telnet, nc, ncat")
-}
-
 pub fn qemu_dump_dtb(cfg: &Config) -> anyhow::Result<()> {
     let mut cmd = qemu_cmd(cfg)?;
     let dtb_path = "target/virt.dtb";

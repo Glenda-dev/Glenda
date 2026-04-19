@@ -1,7 +1,44 @@
 use crate::config::Config;
+use anyhow::Context;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+use telnet::{Event, Telnet};
 use which::which;
+
+const TX_CHAR_DELAY_MS: u64 = 100;
+
+struct BackgroundRun {
+    child: Child,
+    started_at: Instant,
+    timeout: Duration,
+    cmd_debug: String,
+}
+
+impl BackgroundRun {
+    fn ensure_alive_within_timeout(&mut self) -> anyhow::Result<()> {
+        if let Some(status) = self.child.try_wait()? {
+            return Err(anyhow::anyhow!(
+                "[ ERROR ] command failed with status {}: {}",
+                status,
+                self.cmd_debug
+            ));
+        }
+
+        if self.started_at.elapsed() >= self.timeout {
+            self.child.kill()?;
+            return Err(anyhow::anyhow!(
+                "[ ERROR ] command timed out after {} seconds: {}",
+                self.timeout.as_secs(),
+                self.cmd_debug
+            ));
+        }
+
+        Ok(())
+    }
+}
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
     run_with_timeout(cmd, None)
@@ -119,4 +156,264 @@ pub fn strip(cfg: &Config, file: &Path) -> anyhow::Result<()> {
     let mut cmd = Command::new(tool);
     cmd.arg("--strip-all").arg(file);
     run(&mut cmd)
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut iter = s.chars().peekable();
+    while let Some(ch) = iter.next() {
+        if ch == '\u{1b}' {
+            if iter.peek() == Some(&'[') {
+                let _ = iter.next();
+                for c in iter.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn tail_for_prompt(s: &str, max_chars: usize) -> String {
+    let collected: Vec<char> = s.chars().rev().take(max_chars).collect();
+    collected.into_iter().rev().collect()
+}
+
+fn looks_like_shell_prompt(buf: &str) -> bool {
+    let sanitized = strip_ansi(buf);
+    let tail = tail_for_prompt(&sanitized, 1024);
+    let mut lines = tail.lines().rev();
+    let last_line = lines.next().unwrap_or("").trim_end_matches('\r');
+    let prompt_line = if last_line.is_empty() { lines.next().unwrap_or("") } else { last_line };
+    let prompt_line = prompt_line.trim_end_matches('\r');
+
+    prompt_line.ends_with("# ")
+        || prompt_line.ends_with("#")
+        || prompt_line.ends_with("$ ")
+        || prompt_line.ends_with("$")
+}
+
+fn wait_for_prompt(
+    conn: &mut Telnet,
+    rolling: &mut String,
+    timeout: Duration,
+    background_run: &mut Option<BackgroundRun>,
+) -> anyhow::Result<()> {
+    let start = Instant::now();
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+
+    loop {
+        if let Some(bg) = background_run.as_mut() {
+            bg.ensure_alive_within_timeout()?;
+        }
+
+        match conn.read_timeout(Duration::from_millis(100)) {
+            Ok(Event::Data(payload)) => {
+                if payload.is_empty() {
+                    continue;
+                }
+
+                lock.write_all(&payload)?;
+                lock.flush()?;
+
+                rolling.push_str(&String::from_utf8_lossy(&payload));
+                if rolling.chars().count() > 16 * 1024 {
+                    *rolling = tail_for_prompt(rolling, 8 * 1024);
+                }
+
+                if looks_like_shell_prompt(rolling) {
+                    return Ok(());
+                }
+            }
+            Ok(Event::TimedOut) => {}
+            Ok(Event::Error(msg)) => {
+                return Err(anyhow::anyhow!("[ ERROR ] telnet stream error: {}", msg));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                return Err(anyhow::anyhow!("[ ERROR ] failed to read serial stream: {}", e));
+            }
+        }
+
+        if start.elapsed() >= timeout {
+            let tail = tail_for_prompt(rolling, 400);
+            return Err(anyhow::anyhow!(
+                "[ ERROR ] timed out waiting for shell prompt after {}s\n[ DEBUG ] serial tail:\n{}",
+                timeout.as_secs(),
+                tail
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn telnet_write_all(conn: &mut Telnet, data: &[u8]) -> anyhow::Result<()> {
+    let per_char_delay = Duration::from_millis(TX_CHAR_DELAY_MS);
+    for byte in data {
+        let mut sent = false;
+        while !sent {
+            let n = conn.write(core::slice::from_ref(byte))?;
+            if n == 0 {
+                return Err(anyhow::anyhow!("[ ERROR ] serial write returned 0 bytes"));
+            }
+            sent = true;
+        }
+
+        if TX_CHAR_DELAY_MS > 0 {
+            std::thread::sleep(per_char_delay);
+        }
+    }
+    Ok(())
+}
+
+pub fn attach(cfg: &Config, port: Option<u16>) -> anyhow::Result<()> {
+    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
+    let host = "127.0.0.1";
+    eprintln!("[ INFO ] Attaching to PCI UART backend at {host}:{port} ...");
+
+    if which("telnet").is_ok() {
+        let mut cmd = Command::new("telnet");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    if which("nc").is_ok() {
+        let mut cmd = Command::new("nc");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    if which("ncat").is_ok() {
+        let mut cmd = Command::new("ncat");
+        cmd.arg(host).arg(port.to_string());
+        return run(&mut cmd);
+    }
+
+    anyhow::bail!("[ ERROR ] No attach client found. Please install one of: telnet, nc, ncat")
+}
+
+pub fn exec(
+    cfg: &Config,
+    script: &Path,
+    port: Option<u16>,
+    run_in_background: bool,
+    run_log: &Path,
+    run_timeout_secs: u64,
+    connect_timeout_secs: u64,
+    prompt_timeout_secs: u64,
+) -> anyhow::Result<()> {
+    let script_text = std::fs::read_to_string(script)
+        .with_context(|| format!("[ ERROR ] failed to read script: {}", script.display()))?;
+
+    let commands: Vec<String> = script_text
+        .lines()
+        .map(|line| line.trim_end_matches('\r'))
+        .filter(|line| !line.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    if commands.is_empty() {
+        return Err(anyhow::anyhow!(
+            "[ ERROR ] script contains no executable lines: {}",
+            script.display()
+        ));
+    }
+
+    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
+    let host = "127.0.0.1";
+    let run_timeout = Duration::from_secs(run_timeout_secs.max(1));
+    let connect_timeout = Duration::from_secs(connect_timeout_secs.max(1));
+    let prompt_timeout = Duration::from_secs(prompt_timeout_secs.max(1));
+    let mut background_run: Option<BackgroundRun> = None;
+
+    if run_in_background {
+        let log_path = if run_log.is_absolute() {
+            run_log.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(run_log)
+        };
+        if let Some(parent) = log_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        let mut cmd = crate::qemu::qemu_cmd(cfg)?;
+        let log = OpenOptions::new().create(true).write(true).truncate(true).open(&log_path)?;
+        let log_err = log.try_clone()?;
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::from(log));
+        cmd.stderr(Stdio::from(log_err));
+        let cmd_debug = format!("{:?}", cmd);
+
+        eprintln!(
+            "[ INFO ] Starting `run` in background and logging to {} (timeout={}s)",
+            log_path.display(),
+            run_timeout.as_secs()
+        );
+        let child = cmd
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("[ ERROR ] Failed to start command {:?}: {}", cmd, e))?;
+        eprintln!("[ INFO ] Background run started (pid={})", child.id());
+        background_run = Some(BackgroundRun {
+            child,
+            started_at: Instant::now(),
+            timeout: run_timeout,
+            cmd_debug,
+        });
+    }
+
+    eprintln!(
+        "[ INFO ] Connecting to serial endpoint {}:{} (script: {})",
+        host,
+        port,
+        script.display()
+    );
+
+    let connect_start = Instant::now();
+    let mut conn = loop {
+        if let Some(bg) = background_run.as_mut() {
+            bg.ensure_alive_within_timeout()?;
+        }
+
+        match Telnet::connect((host, port), 4096) {
+            Ok(c) => break c,
+            Err(e) => {
+                if connect_start.elapsed() >= connect_timeout {
+                    return Err(anyhow::anyhow!(
+                        "[ ERROR ] failed to connect {}:{} within {}s: {}",
+                        host,
+                        port,
+                        connect_timeout.as_secs(),
+                        e
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    };
+    let mut rolling = String::new();
+
+    eprintln!("[ INFO ] Waiting for initial shell prompt...");
+    wait_for_prompt(&mut conn, &mut rolling, prompt_timeout, &mut background_run)?;
+
+    for (idx, line) in commands.iter().enumerate() {
+        if let Some(bg) = background_run.as_mut() {
+            bg.ensure_alive_within_timeout()?;
+        }
+
+        eprintln!("\n[ EXEC ] ({}/{}) {}", idx + 1, commands.len(), line);
+        telnet_write_all(&mut conn, line.as_bytes())?;
+        telnet_write_all(&mut conn, b"\n")?;
+        wait_for_prompt(&mut conn, &mut rolling, prompt_timeout, &mut background_run)?;
+    }
+
+    eprintln!("\n[ INFO ] Script execution finished: {}", script.display());
+    Ok(())
 }
