@@ -1,1 +1,1 @@
-uname -a
+uptime
