@@ -7,8 +7,6 @@ mod printk;
 mod boot;
 mod cap;
 mod cpu;
-#[cfg(feature = "gdb")]
-mod debug;
 mod drivers;
 mod error;
 mod hal;

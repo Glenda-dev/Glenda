@@ -1,5 +1,5 @@
-use crate::cap::CapPtr;
 use crate::cap::invoke;
+use crate::cap::{CapPtr, CapType};
 use crate::error::Error;
 
 use crate::proc::scheduler;
@@ -35,9 +35,11 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
         }
         // 1. 获取 Slot 指针（指向 CSpace 中的真实位置）
         Some(slot_ptr) => {
-            // 2. 读取 Capability 副本进行操作
-            //    必须使用副本，因为 Rust 不允许同时持有 &mut Slot 和其它引用
-            let mut cap = unsafe { (*slot_ptr).cap.clone() };
+            let mut cap = {
+                let slot = unsafe { &*slot_ptr };
+                let _guard = unsafe { slot.lock_cnode() };
+                slot.cap.clone()
+            };
 
             if cap.is_null() {
                 error!(
@@ -49,13 +51,25 @@ pub fn dispatch(cptr: usize, method: usize) -> usize {
                 return Error::InvalidCapability as usize;
             }
 
+            let original_type = cap.cap_type();
+            let original_obj = cap.obj_ptr();
+
             // 3. 执行分发 (invoke_untyped 会修改 cap 的 watermark)
             match invoke::dispatch(&mut cap, method, cptr.bits()) {
                 Ok(_) => {
-                    // 4. 【关键】写回逻辑
-                    //    仅当操作成功，且 Capability 类型为 Untyped 时需要写回
-                    unsafe {
-                        (*slot_ptr).cap = cap;
+                    if matches!(original_type, CapType::Untyped | CapType::Reply) {
+                        let slot = unsafe { &mut *slot_ptr };
+                        let _guard = unsafe { slot.lock_cnode() };
+                        if slot.cap.cap_type() == original_type
+                            && slot.cap.obj_ptr() == original_obj
+                        {
+                            slot.cap = cap;
+                        } else {
+                            warn!(
+                                "syscall: capability changed during invoke cptr={:#x}, skip writeback",
+                                cptr.bits()
+                            );
+                        }
                     }
                     Error::Success as usize
                 }

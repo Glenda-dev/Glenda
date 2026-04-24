@@ -22,7 +22,6 @@ chrono = "0.4"
 default = ["logging"]
 logging = []
 shell = []
-gdb = []
 bl-limine = ["limine"]
 bl-uboot = []
 bl-multiboot2 = ["multiboot2"]

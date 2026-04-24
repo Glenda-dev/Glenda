@@ -62,8 +62,76 @@ fn sender_mrs_count(sender: &TCB) -> Result<usize, Error> {
     Ok(unsafe { (*src_ptr).mrs })
 }
 
+fn restore_running_if_ready(current: &mut TCB) {
+    let _guard = current.lock.lock();
+    if current.wake_pending || current.state == ThreadState::Ready {
+        current.wake_pending = false;
+        current.state = ThreadState::Running;
+    }
+}
+
+fn set_blocked(current: &mut TCB, state: ThreadState, badge: Badge, cap: Option<Capability>) {
+    let _guard = current.lock.lock();
+    current.wake_pending = false;
+    current.state = state;
+    current.ipc_badge = badge;
+    current.ipc_cap = cap;
+}
+
+fn set_blocked_call_partner(current: &mut TCB, receiver: *mut TCB) {
+    let _guard = current.lock.lock();
+    current.wake_pending = false;
+    current.state = ThreadState::BlockedCall;
+    current.ipc_partner = Some(receiver);
+}
+
+fn clear_partner(current: &mut TCB) {
+    let _guard = current.lock.lock();
+    current.ipc_partner = None;
+}
+
+fn should_block(current: &mut TCB, blocked_state: ThreadState) -> bool {
+    let _guard = current.lock.lock();
+    current.state == blocked_state && !current.wake_pending
+}
+
+fn set_receiver_call_context(receiver: &mut TCB, ep: &Endpoint, caller: *mut TCB) {
+    let _guard = receiver.lock.lock();
+    receiver.ipc_active_ep = Some(ep as *const Endpoint as usize);
+    receiver.ipc_caller = Some(caller);
+}
+
+fn clear_current_call_context(current: &mut TCB) {
+    let _guard = current.lock.lock();
+    current.ipc_active_ep = None;
+    current.ipc_caller = None;
+}
+
+fn set_current_recv_context(current: &mut TCB, ep: &Endpoint, caller: Option<*mut TCB>) {
+    let _guard = current.lock.lock();
+    current.ipc_active_ep = Some(ep as *const Endpoint as usize);
+    current.ipc_caller = caller;
+}
+
+fn set_blocked_recv(current: &mut TCB) {
+    let _guard = current.lock.lock();
+    current.ipc_active_ep = None;
+    current.ipc_caller = None;
+    current.wake_pending = false;
+    current.state = ThreadState::BlockedRecv;
+}
+
+fn clear_receiver_caller(receiver: &mut TCB) {
+    let _guard = receiver.lock.lock();
+    receiver.ipc_caller = None;
+}
+
 #[inline]
-fn ensure_slot_insertable(receiver: &TCB, slot: crate::cap::CapPtr, kind: &str) -> Result<(), Error> {
+fn ensure_slot_insertable(
+    receiver: &TCB,
+    slot: crate::cap::CapPtr,
+    kind: &str,
+) -> Result<(), Error> {
     let Some(slot_ptr) = receiver.lookup_slot(slot) else {
         error!("ipc: {} insert failed: slot {} not found", kind, slot);
         return Err(Error::InvalidSlot);
@@ -314,17 +382,16 @@ pub fn call_inline_if_ready(
         copy_msg_inline(current, receiver, msg_tag, badge, mrs, sender_mrs, Some(reply_cap))?
     };
 
-    receiver.ipc_active_ep = Some(ep as *const Endpoint as usize);
-    receiver.ipc_caller = Some(current as *mut _);
-    current.ipc_partner = Some(receiver as *mut _);
-    current.state = ThreadState::BlockedCall;
-    scheduler::wake_up(receiver);
+    set_receiver_call_context(receiver, ep, current as *mut _);
+    set_blocked_call_partner(current, receiver as *mut _);
+    scheduler::wake_up_deferred(receiver);
 
-    if current.state == ThreadState::BlockedCall {
+    if should_block(current, ThreadState::BlockedCall) {
         scheduler::block_current_thread();
     }
+    restore_running_if_ready(current);
 
-    current.ipc_partner = None;
+    clear_partner(current);
     Ok(true)
 }
 
@@ -335,10 +402,14 @@ pub fn reply_inline(
     msg_tag: MsgTag,
     mrs: [usize; 4],
 ) -> Result<(), Error> {
-    if target.state != ThreadState::BlockedCall {
+    let target_state = {
+        let _guard = target.lock.lock();
+        target.state
+    };
+    if target_state != ThreadState::BlockedCall {
         error!(
             "ipc: Reply current={:p} target={:p} failed target state {:?}",
-            current, target, target.state
+            current, target, target_state
         );
         return Err(Error::InvalidCapability);
     }
@@ -350,8 +421,7 @@ pub fn reply_inline(
         let _guard = current.lock.lock();
         current.priority = current.base_priority;
     }
-    current.ipc_active_ep = None;
-    current.ipc_caller = None;
+    clear_current_call_context(current);
     scheduler::wake_up(target);
     Ok(())
 }
@@ -381,22 +451,23 @@ pub fn send(
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, None)? };
-        receiver.ipc_caller = None;
+        clear_receiver_caller(receiver);
 
         // 唤醒接收者
         scheduler::wake_up(receiver);
     } else {
         log!("ipc: Send current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
         // --- 慢速路径: 阻塞 ---
-        current.state = ThreadState::BlockedSend;
-        current.ipc_badge = badge;
-        current.ipc_cap = cap;
+        set_blocked(current, ThreadState::BlockedSend, badge, cap);
 
         // 将自己加入 Endpoint 的发送队列，同时保存 Badge 和要传递的能力
         ep.enqueue_send(current as *mut _);
 
         // 让出 CPU，触发调度
-        scheduler::block_current_thread();
+        if should_block(current, ThreadState::BlockedSend) {
+            scheduler::block_current_thread();
+        }
+        restore_running_if_ready(current);
     }
     Ok(())
 }
@@ -425,10 +496,14 @@ pub fn call_on_behalf(
     badge: Badge,
     cap: Option<Capability>,
 ) -> Result<(), Error> {
-    if blocked_caller.state != ThreadState::BlockedCall {
+    let blocked_caller_state = {
+        let _guard = blocked_caller.lock.lock();
+        blocked_caller.state
+    };
+    if blocked_caller_state != ThreadState::BlockedCall {
         error!(
             "ipc: call_on_behalf sender={:p} invalid state {:?}",
-            blocked_caller, blocked_caller.state
+            blocked_caller, blocked_caller_state
         );
         return Err(Error::InvalidCapability);
     }
@@ -480,27 +555,25 @@ fn call_internal(
 
         // --- 快速路径: 匹配成功 ---
         unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap))? };
-        receiver.ipc_active_ep = Some(ep as *const Endpoint as usize);
-        receiver.ipc_caller = Some(current as *mut _);
+        set_receiver_call_context(receiver, ep, current as *mut _);
 
         // 设置通信伙伴，用于死锁检查
-        current.ipc_partner = Some(receiver as *mut _);
-
-        // 当前线程进入 BlockedCall 状态，等待回复
-        // 必须在 wake_up 之前设置，否则如果 wake_up 导致抢占，当前线程会被错误地置为 Ready
-        current.state = ThreadState::BlockedCall;
+        set_blocked_call_partner(current, receiver as *mut _);
 
         // 唤醒接收者
-        scheduler::wake_up(receiver);
+        scheduler::wake_up_deferred(receiver);
 
         // 如果 wake_up 没有导致抢占（或者抢占后又回来了），我们需要检查是否还需要阻塞
         // 如果已经被 Reply 唤醒，状态会变成 Running，就不需要再阻塞了
-        if block_running_thread && current.state == ThreadState::BlockedCall {
+        if block_running_thread && should_block(current, ThreadState::BlockedCall) {
             scheduler::block_current_thread();
+        }
+        if block_running_thread {
+            restore_running_if_ready(current);
         }
 
         // 返回后清空通信伙伴
-        current.ipc_partner = None;
+        clear_partner(current);
     } else {
         log!("ipc: Call current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
         if check_wait_cycle_on_block(current, ep) {
@@ -512,13 +585,14 @@ fn call_internal(
         }
 
         // --- 慢速路径: 阻塞在发送队列 ---
-        current.state = ThreadState::BlockedCall;
-        current.ipc_badge = badge;
-        current.ipc_cap = cap;
+        set_blocked(current, ThreadState::BlockedCall, badge, cap);
 
         ep.enqueue_send(current as *mut _);
         if block_running_thread {
-            scheduler::block_current_thread();
+            if should_block(current, ThreadState::BlockedCall) {
+                scheduler::block_current_thread();
+            }
+            restore_running_if_ready(current);
         }
     }
     Ok(())
@@ -528,7 +602,11 @@ fn call_internal(
 /// 向指定的 TCB 发送回复消息
 pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
     // 只有处于 BlockedCall 状态的线程才能接收 Reply
-    if target.state == ThreadState::BlockedCall {
+    let target_state = {
+        let _guard = target.lock.lock();
+        target.state
+    };
+    if target_state == ThreadState::BlockedCall {
         log!("ipc: Reply current={:p} target={:p} success", current, target);
         // Reply 不产生新的 Reply Cap
         unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
@@ -541,13 +619,12 @@ pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Re
 
         // 唤醒目标线程
         scheduler::wake_up(target);
-        current.ipc_active_ep = None;
-        current.ipc_caller = None;
+        clear_current_call_context(current);
         Ok(())
     } else {
         error!(
             "ipc: Reply current={:p} target={:p} failed target state {:?}",
-            current, target, target.state
+            current, target, target_state
         );
         Err(Error::InvalidCapability)
     }
@@ -606,9 +683,13 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
             sender_ptr
         );
         let sender = unsafe { &mut *sender_ptr };
-        let badge = sender.ipc_badge;
-        let cap = sender.ipc_cap.take();
-        let sender_waiting_reply = sender.state == ThreadState::BlockedCall;
+        let (badge, cap, sender_waiting_reply) = {
+            let _guard = sender.lock.lock();
+            let badge = sender.ipc_badge;
+            let cap = sender.ipc_cap.take();
+            let waiting_reply = sender.state == ThreadState::BlockedCall;
+            (badge, cap, waiting_reply)
+        };
 
         // 如果发送者是在执行 Call，我们需要为接收者生成一个 Reply Cap
         let reply_cap = if sender_waiting_reply {
@@ -620,14 +701,17 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
         // --- 快速路径: 匹配成功 ---
         // 从等待的发送者那里拷贝数据
         unsafe { copy_msg(sender, current, badge, cap, reply_cap)? };
-        current.ipc_active_ep = Some(ep as *const Endpoint as usize);
-        current.ipc_caller = if sender_waiting_reply { Some(sender as *mut _) } else { None };
+        set_current_recv_context(
+            current,
+            ep,
+            if sender_waiting_reply { Some(sender as *mut _) } else { None },
+        );
 
         // 唤醒发送者
         // 如果是 Call，发送者已经处于 BlockedCall，不需要在这里唤醒？
         // 不对，如果是 Call，发送者在等待 Reply，所以不应该在这里唤醒。
         // 如果是 Send，发送者在等待消息被接收，所以应该在这里唤醒。
-        if sender.state != ThreadState::BlockedCall {
+        if !sender_waiting_reply {
             scheduler::wake_up(sender);
         }
 
@@ -635,15 +719,16 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
     } else {
         log!("ipc: Recv current={:p} ep={:p} blocking", current, ep as *const _);
         // --- 慢速路径: 阻塞 ---
-        current.ipc_active_ep = None;
-        current.ipc_caller = None;
-        current.state = ThreadState::BlockedRecv;
+        set_blocked_recv(current);
 
         // 将自己加入 Endpoint 的接收队列
         ep.enqueue_recv(current as *mut _);
 
         // 让出 CPU，触发调度
-        scheduler::block_current_thread();
+        if should_block(current, ThreadState::BlockedRecv) {
+            scheduler::block_current_thread();
+        }
+        restore_running_if_ready(current);
     }
     Ok(())
 }
@@ -695,8 +780,7 @@ pub fn proxy(current: &mut TCB, ep: &Endpoint, cap: Option<Capability>) -> Resul
         }
 
         call_on_behalf(original_caller, ep, badge, cap)?;
-        current.ipc_active_ep = None;
-        current.ipc_caller = None;
+        clear_current_call_context(current);
     } else {
         log!("ipc: Proxy current={:p} ep={:p} badge={:?}", current, ep as *const _, badge);
         call(current, ep, badge, cap)?;

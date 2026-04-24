@@ -3,6 +3,7 @@ use super::thread::{TCB, ThreadState};
 use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub const DEFAULT_TIMESLICE_MS: usize = 100;
 pub const MAX_PRIORITY: usize = 256;
@@ -87,10 +88,14 @@ impl TcbQueue {
     }
 }
 
-static mut CURRENT_TCB: [Option<*mut TCB>; MAX_CPUS] = [None; MAX_CPUS];
+static CURRENT_TCB: [AtomicUsize; MAX_CPUS] = [const { AtomicUsize::new(0) }; MAX_CPUS];
 
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
+    add_thread_inner(tcb, true);
+}
+
+fn add_thread_inner(tcb: &mut TCB, send_ipi: bool) {
     let current_hart_id = hal::cpu::cpu_id();
     let ptr = tcb as *mut TCB;
     let _tcb_guard = tcb.lock.lock();
@@ -115,7 +120,7 @@ pub fn add_thread(tcb: &mut TCB) {
     drop(queues);
     // 如果目标核心不是当前核心，发送 IPI 唤醒它
     // 这样目标核心如果处于 WFI 状态会被唤醒，或者在运行其他线程时触发调度检查
-    if target_hart_id != current_hart_id {
+    if send_ipi && target_hart_id != current_hart_id {
         let mask = 1 << target_hart_id;
         let _ = hal::irq::send_ipi(mask, 0);
     }
@@ -301,6 +306,7 @@ pub fn scheduler() -> ! {
             unsafe {
                 hal::proc::switch_context(&mut cpu.context, &mut tcb.context);
             }
+            finish_pending_wakeup(tcb_ptr);
             set_current(core::ptr::null_mut());
 
             // --- 线程返回 ---
@@ -373,6 +379,20 @@ pub fn block_current_thread() {
 /// 唤醒指定线程
 /// 将线程状态设置为 Ready 并加入调度队列
 pub fn wake_up(tcb: &mut TCB) {
+    wake_up_inner(tcb, true, true);
+}
+
+/// 唤醒线程但不立即抢占当前线程；若目标在远端 CPU，仍发送 IPI。
+///
+/// 用于 IPC Call 的握手路径：caller 已经被标记为 BlockedCall，
+/// 但在真正切回调度器前仍在当前 CPU 上执行。若此时让 receiver
+/// 在其他 CPU 立即运行并 reply，caller 可能被重新入队并与当前栈并发运行。
+pub fn wake_up_deferred(tcb: &mut TCB) {
+    wake_up_inner(tcb, false, true);
+}
+
+fn wake_up_inner(tcb: &mut TCB, preempt: bool, send_ipi: bool) {
+    let ptr = tcb as *mut TCB;
     let _tcb_guard = tcb.lock.lock();
     // 只有处于阻塞状态的线程才能被唤醒。
     // 如果是 Suspended 状态，它保持 Suspended，直到被 Resume 系统调用显式恢复。
@@ -380,15 +400,20 @@ pub fn wake_up(tcb: &mut TCB) {
         || tcb.state == ThreadState::BlockedRecv
         || tcb.state == ThreadState::BlockedCall
     {
+        if is_current_on_any_cpu(ptr) {
+            tcb.wake_pending = true;
+            drop(_tcb_guard);
+            return;
+        }
         tcb.state = ThreadState::Ready;
         drop(_tcb_guard);
-        add_thread(tcb);
+        add_thread_inner(tcb, send_ipi);
 
         // 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
         let current_hart_id = hal::cpu::cpu_id();
         let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
 
-        if target_hart_id == current_hart_id {
+        if preempt && target_hart_id == current_hart_id {
             if let Some(curr_ptr) = current() {
                 let curr = unsafe { &*curr_ptr };
                 if tcb.priority >= curr.priority {
@@ -397,6 +422,27 @@ pub fn wake_up(tcb: &mut TCB) {
             }
         }
     }
+}
+
+fn finish_pending_wakeup(tcb_ptr: *mut TCB) {
+    let tcb = unsafe { &mut *tcb_ptr };
+    let _guard = tcb.lock.lock();
+    if tcb.wake_pending {
+        tcb.wake_pending = false;
+        tcb.state = ThreadState::Ready;
+        drop(_guard);
+        add_thread(tcb);
+    }
+}
+
+fn is_current_on_any_cpu(tcb_ptr: *mut TCB) -> bool {
+    let encoded = tcb_ptr as usize;
+    for cpu in 0..MAX_CPUS {
+        if CURRENT_TCB[cpu].load(Ordering::Acquire) == encoded {
+            return true;
+        }
+    }
+    false
 }
 
 /// 触发重新调度
@@ -410,8 +456,16 @@ pub fn reschedule() {
     let mut context = cpu::get().context;
     let tcb = unsafe { &mut *tcb_ptr };
     // 将当前线程状态设置为 Ready 并加入队列
-    if tcb.state == ThreadState::Running {
-        tcb.state = ThreadState::Ready;
+    let should_enqueue = {
+        let _guard = tcb.lock.lock();
+        if tcb.state == ThreadState::Running {
+            tcb.state = ThreadState::Ready;
+            true
+        } else {
+            false
+        }
+    };
+    if should_enqueue {
         add_thread(tcb);
     }
     // 切换回调度器
@@ -422,19 +476,13 @@ pub fn reschedule() {
 
 pub fn current() -> Option<*mut TCB> {
     let cpu = hal::cpu::cpu_id();
-    let tcb_ptr = unsafe { CURRENT_TCB[cpu] };
-    if let Some(ptr) = tcb_ptr { Some(ptr) } else { None }
+    let tcb_ptr = CURRENT_TCB[cpu].load(Ordering::Acquire) as *mut TCB;
+    if tcb_ptr.is_null() { None } else { Some(tcb_ptr) }
 }
 
 fn set_current(tcb_ptr: *mut TCB) {
     let cpu = hal::cpu::cpu_id();
-    unsafe {
-        if tcb_ptr.is_null() {
-            CURRENT_TCB[cpu] = None;
-        } else {
-            CURRENT_TCB[cpu] = Some(tcb_ptr);
-        }
-    }
+    CURRENT_TCB[cpu].store(tcb_ptr as usize, Ordering::Release);
 }
 
 pub fn ps() {

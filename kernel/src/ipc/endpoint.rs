@@ -121,21 +121,18 @@ impl Endpoint {
 
     pub fn destroy(&self) {
         use crate::proc::scheduler;
-        use crate::proc::thread::ThreadState;
         // Unblock all senders
         while let Some(tcb_ptr) = self.dequeue_send() {
             unsafe {
                 let tcb = &mut *tcb_ptr;
-                tcb.state = ThreadState::Ready;
-                scheduler::add_thread(tcb);
+                scheduler::wake_up(tcb);
             }
         }
         // Unblock all receivers
         while let Some(tcb_ptr) = self.dequeue_recv() {
             unsafe {
                 let tcb = &mut *tcb_ptr;
-                tcb.state = ThreadState::Ready;
-                scheduler::add_thread(tcb);
+                scheduler::wake_up(tcb);
             }
         }
     }

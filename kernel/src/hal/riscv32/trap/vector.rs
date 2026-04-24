@@ -196,7 +196,10 @@ pub unsafe extern "C" fn user_vector() {
         "ld tp, 32(a0)",
         "ld t0, 16(a0)",
         "ld t1, 0(a0)",
+        "csrr t2, satp",
+        "beq t1, t2, 2f",
         "csrw satp, t1",
+        "2:",
         "jr t0",
     );
 }
@@ -207,7 +210,10 @@ pub unsafe extern "C" fn user_vector() {
 #[unsafe(link_section = "trampsec")]
 pub unsafe extern "C" fn user_return(trapframe: usize, satp: usize) {
     naked_asm!(
+        "csrr t0, satp",
+        "beq a1, t0, 2f",
         "csrw satp, a1",
+        "2:",
         "csrw sscratch, a0",
         "ld ra, 40(a0)",
         "ld sp, 48(a0)",
@@ -287,7 +293,10 @@ pub unsafe extern "C" fn user_vector() {
         "lw tp, 16(a0)",
         "lw t0, 8(a0)",
         "lw t1, 0(a0)",
+        "csrr t2, satp",
+        "beq t1, t2, 2f",
         "csrw satp, t1",
+        "2:",
         "jr t0",
     );
 }
@@ -298,7 +307,10 @@ pub unsafe extern "C" fn user_vector() {
 #[unsafe(link_section = "trampsec")]
 pub unsafe extern "C" fn user_return(trapframe: usize, satp: usize) {
     naked_asm!(
+        "csrr t0, satp",
+        "beq a1, t0, 2f",
         "csrw satp, a1",
+        "2:",
         "csrw sscratch, a0",
         "lw ra, 20(a0)",
         "lw sp, 24(a0)",

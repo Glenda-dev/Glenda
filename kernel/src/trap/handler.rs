@@ -250,8 +250,29 @@ fn unhandled_interrupt(e: TrapInterrupt, cause: usize, pc: usize, value: usize, 
 
 fn lookup_fast_ipc_slot(tcb: &TCB, cptr: usize) -> Option<*mut Slot> {
     let slot_ptr = tcb.lookup_slot(CapPtr::from(cptr))?;
-    let cap_type = unsafe { (*slot_ptr).cap.cap_type() };
+    let cap_type = {
+        let slot = unsafe { &*slot_ptr };
+        let _guard = unsafe { slot.lock_cnode() };
+        slot.cap.cap_type()
+    };
     if matches!(cap_type, CapType::Endpoint | CapType::Reply) { Some(slot_ptr) } else { None }
+}
+
+fn clone_slot_cap(slot_ptr: *mut Slot) -> Capability {
+    let slot = unsafe { &*slot_ptr };
+    let _guard = unsafe { slot.lock_cnode() };
+    slot.cap.clone()
+}
+
+fn consume_reply_slot(slot_ptr: *mut Slot, target_tcb: *mut TCB) {
+    let slot = unsafe { &mut *slot_ptr };
+    let _guard = unsafe { slot.lock_cnode() };
+    if slot.cap.cap_type() == CapType::Reply && slot.cap.obj_ptr().as_mut_ptr::<TCB>() == target_tcb
+    {
+        slot.cap = Capability::empty();
+    } else {
+        warn!("trap: reply capability changed before fast-path consume, skip clearing slot");
+    }
 }
 
 #[inline(always)]
@@ -285,11 +306,11 @@ fn dispatch_fast_ipc_inline(
     fast_msgtag: MsgTag,
     fast_mrs: [usize; 4],
 ) -> Option<usize> {
-    let cap_type = unsafe { (*slot_ptr).cap.cap_type() };
+    let cap = clone_slot_cap(slot_ptr);
+    let cap_type = cap.cap_type();
 
     match cap_type {
         CapType::Endpoint => {
-            let cap = unsafe { &(*slot_ptr).cap };
             let ep_ptr = cap.obj_ptr();
             let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
             let badge = cap.get_badge();
@@ -330,13 +351,12 @@ fn dispatch_fast_ipc_inline(
                 return None;
             }
 
-            let target_tcb = unsafe { (*slot_ptr).cap.obj_ptr().as_mut::<TCB>() };
+            let target_tcb_ptr = cap.obj_ptr().as_mut_ptr::<TCB>();
+            let target_tcb = unsafe { &mut *target_tcb_ptr };
             let ret = ipc::reply_inline(tcb, target_tcb, fast_msgtag, fast_mrs);
 
             // Reply cap is one-shot; consume it regardless of delivery result.
-            unsafe {
-                (*slot_ptr).cap = Capability::empty();
-            }
+            consume_reply_slot(slot_ptr, target_tcb_ptr);
 
             Some(match ret {
                 Ok(_) => Error::Success as usize,
@@ -352,7 +372,7 @@ fn dispatch_fast_recv_notify_inline(slot_ptr: *mut Slot, method: usize) -> Optio
         return None;
     }
 
-    let cap = unsafe { &(*slot_ptr).cap };
+    let cap = clone_slot_cap(slot_ptr);
     if cap.cap_type() != CapType::Endpoint || !cap.has_rights(Rights::RECV) {
         return None;
     }
@@ -376,11 +396,11 @@ fn dispatch_fast_ipc(
     method: usize,
     fast_badge: Badge,
 ) -> Option<usize> {
-    let cap_type = unsafe { (*slot_ptr).cap.cap_type() };
+    let cap = clone_slot_cap(slot_ptr);
+    let cap_type = cap.cap_type();
 
     match cap_type {
         CapType::Endpoint => {
-            let cap = unsafe { &(*slot_ptr).cap };
             let ep_ptr = cap.obj_ptr();
             let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
             let badge = cap.get_badge();
@@ -437,14 +457,13 @@ fn dispatch_fast_ipc(
                 return Some(Error::InvalidMethod as usize);
             }
 
-            let target_tcb = unsafe { (*slot_ptr).cap.obj_ptr().as_mut::<TCB>() };
+            let target_tcb_ptr = cap.obj_ptr().as_mut_ptr::<TCB>();
+            let target_tcb = unsafe { &mut *target_tcb_ptr };
             let cap_to_send = ipc::transfer_cap(tcb);
             let ret = ipc::reply(tcb, target_tcb, cap_to_send);
 
             // Reply cap is one-shot; consume it regardless of delivery result.
-            unsafe {
-                (*slot_ptr).cap = Capability::empty();
-            }
+            consume_reply_slot(slot_ptr, target_tcb_ptr);
 
             Some(match ret {
                 Ok(_) => Error::Success as usize,

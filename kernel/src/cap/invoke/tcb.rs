@@ -72,13 +72,19 @@ pub fn invoke_tcb(cap: &mut Capability, method: usize) -> Result<(), Error> {
 
             // 如果修改了优先级，可能需要触发重新调度
             if prio != tcb.base_priority {
-                let was_ready = tcb.state == ThreadState::Ready;
+                let was_ready = {
+                    let _guard = tcb.lock.lock();
+                    tcb.state == ThreadState::Ready
+                };
                 if was_ready {
                     scheduler::remove_thread(tcb);
                 }
                 tcb.set_priority(prio);
                 if was_ready {
-                    tcb.state = ThreadState::Ready;
+                    {
+                        let _guard = tcb.lock.lock();
+                        tcb.state = ThreadState::Ready;
+                    }
                     scheduler::add_thread(tcb);
                 }
                 scheduler::reschedule();

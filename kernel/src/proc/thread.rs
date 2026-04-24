@@ -39,6 +39,7 @@ pub struct TCB {
     pub timeslice: usize,       // 剩余时间片
     pub timeslice_limit: usize, // 时间片限制 (Refill 值)
     pub state: ThreadState,     // 当前状态
+    pub wake_pending: bool,     // 线程仍在 CPU 上执行时收到的延迟唤醒
     pub affinity: usize,        // CPU 亲和性
     pub cpu_id: usize,          // 当前存在的CPU调度队列（用于remove）
 
@@ -114,6 +115,7 @@ impl TCB {
             timeslice: 0,
             timeslice_limit: 0,
             state: ThreadState::Inactive,
+            wake_pending: false,
             affinity: usize::MAX,
             cpu_id: 0,
             kstack: None,
@@ -287,8 +289,10 @@ impl TCB {
     }
 
     pub fn resume(&mut self) -> bool {
+        let _guard = self.lock.lock();
         if self.state == ThreadState::Suspended || self.state == ThreadState::Inactive {
             self.state = ThreadState::Ready;
+            self.wake_pending = false;
             true
         } else {
             false
@@ -296,6 +300,8 @@ impl TCB {
     }
 
     pub fn suspend(&mut self) {
+        let _guard = self.lock.lock();
+        self.wake_pending = false;
         self.state = ThreadState::Suspended;
     }
 
