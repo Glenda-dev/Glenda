@@ -1,25 +1,68 @@
 use crate::config::Config;
 use anyhow::Context;
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{self, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use telnet::{Event, Telnet};
 use which::which;
 
-const TX_CHAR_DELAY_MS: u64 = 100;
+const BACKGROUND_TERM_GRACE: Duration = Duration::from_millis(1500);
 
 struct BackgroundRun {
     child: Child,
     started_at: Instant,
     timeout: Duration,
     cmd_debug: String,
+    terminated: bool,
 }
 
 impl BackgroundRun {
+    fn terminate(&mut self) -> anyhow::Result<()> {
+        if self.terminated {
+            return Ok(());
+        }
+
+        if self.child.try_wait()?.is_some() {
+            self.terminated = true;
+            return Ok(());
+        }
+
+        #[cfg(unix)]
+        {
+            let pgid = self.child.id() as i32;
+            signal_process_group(pgid, libc::SIGTERM)?;
+
+            let start = Instant::now();
+            while start.elapsed() < BACKGROUND_TERM_GRACE {
+                if self.child.try_wait()?.is_some() {
+                    self.terminated = true;
+                    return Ok(());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+
+            signal_process_group(pgid, libc::SIGKILL)?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            self.child.kill()?;
+        }
+
+        // Ensure the process is fully reaped.
+        let _ = self.child.wait();
+        self.terminated = true;
+        Ok(())
+    }
+
     fn ensure_alive_within_timeout(&mut self) -> anyhow::Result<()> {
         if let Some(status) = self.child.try_wait()? {
+            self.terminated = true;
             return Err(anyhow::anyhow!(
                 "[ ERROR ] command failed with status {}: {}",
                 status,
@@ -28,7 +71,7 @@ impl BackgroundRun {
         }
 
         if self.started_at.elapsed() >= self.timeout {
-            self.child.kill()?;
+            self.terminate()?;
             return Err(anyhow::anyhow!(
                 "[ ERROR ] command timed out after {} seconds: {}",
                 self.timeout.as_secs(),
@@ -38,6 +81,158 @@ impl BackgroundRun {
 
         Ok(())
     }
+}
+
+impl Drop for BackgroundRun {
+    fn drop(&mut self) {
+        if let Err(e) = self.terminate() {
+            eprintln!("[ WARN ] failed to terminate background run ({}): {e:#}", self.cmd_debug);
+        }
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group(pgid: i32, sig: i32) -> io::Result<()> {
+    let rc = unsafe { libc::kill(-pgid, sig) };
+    if rc == 0 {
+        return Ok(());
+    }
+
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+
+    Err(err)
+}
+
+#[cfg(unix)]
+fn signal_pid(pid: i32, sig: i32) -> io::Result<()> {
+    let rc = unsafe { libc::kill(pid, sig) };
+    if rc == 0 {
+        return Ok(());
+    }
+
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+
+    Err(err)
+}
+
+#[cfg(unix)]
+fn pid_exists(pid: i32) -> io::Result<bool> {
+    let rc = unsafe { libc::kill(pid, 0) };
+    if rc == 0 {
+        return Ok(true);
+    }
+
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(false);
+    }
+
+    // EPERM means the process exists but we lack permission to signal it.
+    if err.raw_os_error() == Some(libc::EPERM) {
+        return Ok(true);
+    }
+
+    Err(err)
+}
+
+#[cfg(unix)]
+fn terminate_pid(pid: i32) -> io::Result<()> {
+    signal_pid(pid, libc::SIGTERM)?;
+
+    let start = Instant::now();
+    while start.elapsed() < BACKGROUND_TERM_GRACE {
+        if !pid_exists(pid)? {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    signal_pid(pid, libc::SIGKILL)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn is_qemu_pid(pid: i32) -> bool {
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline"))
+        .map(|data| String::from_utf8_lossy(&data).replace('\0', " "))
+        .unwrap_or_default();
+
+    let mut text = String::new();
+    text.push_str(&comm);
+    text.push(' ');
+    text.push_str(&cmdline);
+    text.to_ascii_lowercase().contains("qemu")
+}
+
+#[cfg(unix)]
+fn kill_qemu_on_port_via_lsof(port: u16) -> anyhow::Result<()> {
+    if which("lsof").is_err() {
+        eprintln!("[ WARN ] `lsof` not found, skip pre-exec qemu cleanup on tcp:{}", port);
+        return Ok(());
+    }
+
+    let target = format!("-iTCP:{port}");
+    let output = Command::new("lsof")
+        .args(["-t", &target])
+        .output()
+        .with_context(|| format!("[ ERROR ] failed to run lsof for tcp:{}", port))?;
+
+    // lsof returns non-zero when there is no match; treat as empty result.
+    if output.stdout.is_empty() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pids = BTreeSet::new();
+    for line in stdout.lines() {
+        if let Ok(pid) = line.trim().parse::<i32>() {
+            if pid > 0 {
+                pids.insert(pid);
+            }
+        }
+    }
+
+    if pids.is_empty() {
+        return Ok(());
+    }
+
+    let mut killed = Vec::new();
+    let mut skipped = Vec::new();
+
+    for pid in pids {
+        if is_qemu_pid(pid) {
+            terminate_pid(pid)
+                .with_context(|| format!("[ ERROR ] failed to terminate qemu pid {}", pid))?;
+            killed.push(pid);
+        } else {
+            skipped.push(pid);
+        }
+    }
+
+    if !killed.is_empty() {
+        eprintln!("[ INFO ] pre-exec cleaned qemu on tcp:{} (pids={:?})", port, killed);
+    }
+
+    if !skipped.is_empty() {
+        eprintln!(
+            "[ WARN ] tcp:{} is also occupied by non-qemu pids (not killed): {:?}",
+            port, skipped
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn kill_qemu_on_port_via_lsof(_port: u16) -> anyhow::Result<()> {
+    Ok(())
 }
 
 pub fn run(cmd: &mut Command) -> anyhow::Result<()> {
@@ -227,7 +422,44 @@ fn wait_for_prompt(
                 }
 
                 if looks_like_shell_prompt(rolling) {
-                    return Ok(());
+                    // Give terminal-side prompt negotiation (e.g. CSI 6n/CPR) a brief
+                    // settle window so scripted input is not consumed by the probe parser.
+                    let settle_for = Duration::from_millis(180);
+                    let settle_start = Instant::now();
+                    let mut stable = true;
+                    while settle_start.elapsed() < settle_for {
+                        match conn.read_timeout(Duration::from_millis(30)) {
+                            Ok(Event::Data(extra)) => {
+                                if extra.is_empty() {
+                                    continue;
+                                }
+                                stable = false;
+                                lock.write_all(&extra)?;
+                                lock.flush()?;
+                                rolling.push_str(&String::from_utf8_lossy(&extra));
+                                if rolling.chars().count() > 16 * 1024 {
+                                    *rolling = tail_for_prompt(rolling, 8 * 1024);
+                                }
+                            }
+                            Ok(Event::TimedOut) => {}
+                            Ok(Event::Error(msg)) => {
+                                return Err(anyhow::anyhow!(
+                                    "[ ERROR ] telnet stream error: {}",
+                                    msg
+                                ));
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                return Err(anyhow::anyhow!(
+                                    "[ ERROR ] failed to read serial stream: {}",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                    if stable || looks_like_shell_prompt(rolling) {
+                        return Ok(());
+                    }
                 }
             }
             Ok(Event::TimedOut) => {}
@@ -254,20 +486,13 @@ fn wait_for_prompt(
 }
 
 fn telnet_write_all(conn: &mut Telnet, data: &[u8]) -> anyhow::Result<()> {
-    let per_char_delay = Duration::from_millis(TX_CHAR_DELAY_MS);
-    for byte in data {
-        let mut sent = false;
-        while !sent {
-            let n = conn.write(core::slice::from_ref(byte))?;
-            if n == 0 {
-                return Err(anyhow::anyhow!("[ ERROR ] serial write returned 0 bytes"));
-            }
-            sent = true;
+    let mut offset = 0;
+    while offset < data.len() {
+        let n = conn.write(&data[offset..])?;
+        if n == 0 {
+            return Err(anyhow::anyhow!("[ ERROR ] serial write returned 0 bytes"));
         }
-
-        if TX_CHAR_DELAY_MS > 0 {
-            std::thread::sleep(per_char_delay);
-        }
+        offset += n;
     }
     Ok(())
 }
@@ -308,6 +533,11 @@ pub fn exec(
     connect_timeout_secs: u64,
     prompt_timeout_secs: u64,
 ) -> anyhow::Result<()> {
+    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
+    if run_in_background {
+        kill_qemu_on_port_via_lsof(port)?;
+    }
+
     let script_text = std::fs::read_to_string(script)
         .with_context(|| format!("[ ERROR ] failed to read script: {}", script.display()))?;
 
@@ -325,7 +555,6 @@ pub fn exec(
         ));
     }
 
-    let port = port.unwrap_or(cfg.qemu.serial_port.unwrap_or(5555));
     let host = "127.0.0.1";
     let run_timeout = Duration::from_secs(run_timeout_secs.max(1));
     let connect_timeout = Duration::from_secs(connect_timeout_secs.max(1));
@@ -350,6 +579,19 @@ pub fn exec(
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::from(log));
         cmd.stderr(Stdio::from(log_err));
+
+        #[cfg(unix)]
+        unsafe {
+            cmd.pre_exec(|| {
+                let rc = libc::setpgid(0, 0);
+                if rc == 0 {
+                    Ok(())
+                } else {
+                    Err(io::Error::last_os_error())
+                }
+            });
+        }
+
         let cmd_debug = format!("{:?}", cmd);
 
         eprintln!(
@@ -366,6 +608,7 @@ pub fn exec(
             started_at: Instant::now(),
             timeout: run_timeout,
             cmd_debug,
+            terminated: false,
         });
     }
 
@@ -402,7 +645,6 @@ pub fn exec(
 
     eprintln!("[ INFO ] Waiting for initial shell prompt...");
     wait_for_prompt(&mut conn, &mut rolling, prompt_timeout, &mut background_run)?;
-
     for (idx, line) in commands.iter().enumerate() {
         if let Some(bg) = background_run.as_mut() {
             bg.ensure_alive_within_timeout()?;
@@ -411,9 +653,13 @@ pub fn exec(
         eprintln!("\n[ EXEC ] ({}/{}) {}", idx + 1, commands.len(), line);
         telnet_write_all(&mut conn, line.as_bytes())?;
         telnet_write_all(&mut conn, b"\n")?;
-        wait_for_prompt(&mut conn, &mut rolling, prompt_timeout, &mut background_run)?;
     }
 
     eprintln!("\n[ INFO ] Script execution finished: {}", script.display());
+
+    if let Some(mut bg) = background_run.take() {
+        bg.terminate()?;
+    }
+
     Ok(())
 }
