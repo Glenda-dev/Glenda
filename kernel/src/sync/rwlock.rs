@@ -1,10 +1,10 @@
 use crate::cpu;
-use core::sync::atomic::{AtomicUsize, Ordering};
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// 读写自旋锁
-/// 
+///
 /// 允许多个读者同时访问，或者一个写者独占访问。
 /// 策略：写者优先（或者公平策略），这里简单的实现可能偏向读者，
 /// 但在配合关中断使用时，由于临界区短，饿死几率较小。
@@ -23,10 +23,7 @@ const WRITE_LOCKED: usize = 1;
 
 impl<T> RwLock<T> {
     pub const fn new(data: T) -> Self {
-        Self {
-            lock: AtomicUsize::new(0),
-            data: UnsafeCell::new(data),
-        }
+        Self { lock: AtomicUsize::new(0), data: UnsafeCell::new(data) }
     }
 }
 
@@ -38,7 +35,11 @@ impl<T: ?Sized> RwLock<T> {
             // 如果只有读锁或者无锁 (没有 WRITE_LOCKED 位)
             if x & WRITE_LOCKED == 0 {
                 // 尝试增加读者计数
-                if self.lock.compare_exchange_weak(x, x + SHARE_INC, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+                if self
+                    .lock
+                    .compare_exchange_weak(x, x + SHARE_INC, Ordering::Acquire, Ordering::Relaxed)
+                    .is_ok()
+                {
                     break;
                 }
             } else {
@@ -53,7 +54,11 @@ impl<T: ?Sized> RwLock<T> {
         loop {
             // 尝试从 0 (无锁) 变为 WRITE_LOCKED
             // 这意味着必须等待所有读者退出
-            if self.lock.compare_exchange_weak(0, WRITE_LOCKED, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            if self
+                .lock
+                .compare_exchange_weak(0, WRITE_LOCKED, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
                 break;
             }
             core::hint::spin_loop();

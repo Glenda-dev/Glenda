@@ -21,6 +21,7 @@ pub fn init() {
 
 pub fn program_next_tick() {
     let now = hal::timer::get_time();
+    scheduler::watchdog_tick(now);
     let cpu = cpu::get();
     let last = cpu.last_tick_time;
     let elapsed = if now > last && last > 0 { now - last } else { 0 };

@@ -34,7 +34,7 @@ pub fn match_cause(cause: usize) -> TrapCause {
     if is_interrupt {
         match code {
             1 => TrapCause::Interrupt(TrapInterrupt::Software), // Supervisor Software Interrupt
-            5 => TrapCause::Interrupt(TrapInterrupt::Timer), // Supervisor Timer Interrupt
+            5 => TrapCause::Interrupt(TrapInterrupt::Timer),    // Supervisor Timer Interrupt
             6 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorTimer),
             9 => TrapCause::Interrupt(TrapInterrupt::External), // Supervisor External Interrupt
             10 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorExternal),

@@ -103,6 +103,7 @@ pub struct TCB {
 const _: [(); PGSIZE - core::mem::size_of::<TCB>()] = [(); PGSIZE - core::mem::size_of::<TCB>()];
 
 pub static mut ALL_THREADS: Option<*mut TCB> = None;
+pub static ALL_THREADS_LOCK: SpinLock<()> = SpinLock::new(());
 
 impl TCB {
     pub const fn new() -> Self {
@@ -145,10 +146,24 @@ impl TCB {
     }
 
     pub fn register(tcb: *mut TCB) {
+        let _guard = ALL_THREADS_LOCK.lock();
         unsafe {
+            let mut curr = ALL_THREADS;
+            let mut seen = 0usize;
+            while let Some(ptr) = curr {
+                if ptr == tcb {
+                    return;
+                }
+                curr = (*ptr).global_next;
+                seen += 1;
+                if seen > 4096 {
+                    break;
+                }
+            }
+            (*tcb).global_prev = None;
+            (*tcb).global_next = ALL_THREADS;
             if let Some(head) = ALL_THREADS {
                 (*head).global_prev = Some(tcb);
-                (*tcb).global_next = Some(head);
             }
             ALL_THREADS = Some(tcb);
         }
@@ -210,6 +225,7 @@ impl TCB {
         self.utcb_frame = Some(utcb_frame.clone());
         self.trapframe = Some(trapframe.clone());
         self.kstack = Some(kstack.clone());
+        TCB::register(self as *mut TCB);
     }
 
     pub fn set_priority(&mut self, prio: u8) {

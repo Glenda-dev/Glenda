@@ -25,11 +25,13 @@ pub fn init_cpu() {
 pub struct IrqSlot {
     pub notification: Option<Capability>,
     pub enabled: bool,
+    pub target_cpu: usize,
+    pub last_cpu: usize,
 }
 
 impl IrqSlot {
     const fn new() -> Self {
-        Self { notification: None, enabled: false }
+        Self { notification: None, enabled: false, target_cpu: 0, last_cpu: 0 }
     }
 }
 
@@ -59,6 +61,8 @@ pub fn bind_notification(irq: usize, cap: &Capability) -> Result<(), Error> {
 
     // Enable IRQ in PLIC
     let cpuid = hal::cpu::cpu_id();
+    tbl[irq].target_cpu = cpuid;
+    tbl[irq].last_cpu = cpuid;
     hal::irq::unmask(irq, cpuid);
 
     Ok(())
@@ -83,10 +87,11 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
     hal::irq::complete(id, cpuid);
 
     let notification = {
-        let tbl = IRQ_TABLE.read();
         if id >= MAX_IRQS {
             return Err(Error::InvalidAddress);
         }
+        let mut tbl = IRQ_TABLE.write();
+        tbl[id].last_cpu = cpuid;
         tbl[id].notification.clone()
     };
 
@@ -110,8 +115,17 @@ pub fn handle_claimed(cpuid: usize, id: usize) -> Result<(), Error> {
 }
 
 pub fn ack_irq(cpuid: usize, irq: usize) -> Result<(), Error> {
-    log!("irq: Acknowledging irq: {} on cpu {}", irq, cpuid);
-    // Only unmask. Completion was done in handle_claimed.
-    hal::irq::unmask(irq, cpuid);
+    let target_cpu = {
+        let tbl = IRQ_TABLE.read();
+        if irq >= MAX_IRQS {
+            return Err(Error::InvalidAddress);
+        }
+        tbl[irq].last_cpu
+    };
+    log!("irq: Acknowledging irq: {} on cpu {} target_cpu {}", irq, cpuid, target_cpu);
+    // Only unmask. Completion was done in handle_claimed.  The driver thread may have
+    // migrated since the interrupt was claimed, so unmask the PLIC context that actually
+    // received the interrupt rather than the caller's current CPU.
+    hal::irq::unmask(irq, target_cpu);
     Ok(())
 }

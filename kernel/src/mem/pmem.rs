@@ -219,9 +219,9 @@ pub fn alloc_page_cap(level: usize) -> Option<Capability> {
     }
     let pages = 1usize << level;
     let size = pages * PGSIZE;
-    PMEM.lock().alloc_addr(size, PGSIZE).map(|paddr| {
-        Capability::create_page(&PhysPage { paddr, level }, Rights::ALL, false)
-    })
+    PMEM.lock()
+        .alloc_addr(size, PGSIZE)
+        .map(|paddr| Capability::create_page(&PhysPage { paddr, level }, Rights::ALL, false))
 }
 
 /// 分配一个 Untyped Capability

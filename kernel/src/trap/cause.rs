@@ -77,7 +77,7 @@ pub enum TrapInterrupt {
 impl TrapInterrupt {
     pub fn as_usize(&self) -> usize {
         match self {
-            TrapInterrupt::Timer => 1,    // Supervisor Timer Interrupt
+            TrapInterrupt::Timer => 1, // Supervisor Timer Interrupt
             TrapInterrupt::VirtualSupervisorTimer => 4,
             TrapInterrupt::External => 2, // Supervisor External Interrupt
             TrapInterrupt::VirtualSupervisorExternal => 5,

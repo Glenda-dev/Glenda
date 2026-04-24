@@ -62,12 +62,8 @@ pub fn init_kernel_vm() {
     .expect("vm: failed to update .text permissions");
 
     // .rodata: Read-only
-    kpt.update(
-        rodata_start,
-        (rodata_end - rodata_start).as_usize(),
-        Perms::READ | Perms::VALID,
-    )
-    .expect("vm: failed to update .rodata permissions");
+    kpt.update(rodata_start, (rodata_end - rodata_start).as_usize(), Perms::READ | Perms::VALID)
+        .expect("vm: failed to update .rodata permissions");
 
     // .data & .bss: Read + Write
     kpt.update(

@@ -368,19 +368,11 @@ impl Capability {
     }
 
     pub fn page_pages(&self) -> Option<usize> {
-        if let Some(level) = self.page_level() {
-            Self::level_to_pages(level)
-        } else {
-            None
-        }
+        if let Some(level) = self.page_level() { Self::level_to_pages(level) } else { None }
     }
 
     pub fn page_size(&self) -> Option<usize> {
-        if let Some(pages) = self.page_pages() {
-            Some(pages * PGSIZE)
-        } else {
-            None
-        }
+        if let Some(pages) = self.page_pages() { Some(pages * PGSIZE) } else { None }
     }
 
     pub fn create_untyped(untyped: &UntypedRegion, rights: Rights) -> Self {
@@ -453,10 +445,7 @@ impl Capability {
     }
 
     pub fn create_page(page: &PhysPage, rights: Rights, is_device: bool) -> Self {
-        assert!(
-            page.paddr.is_aligned(PGSIZE),
-            "Page paddr must be page-aligned"
-        );
+        assert!(page.paddr.is_aligned(PGSIZE), "Page paddr must be page-aligned");
         let w0 = page.paddr.as_usize();
         let level = page.level & PAGE_LEVEL_MASK;
         let mut w1 = (CapType::Page as usize) & TYPE_MASK

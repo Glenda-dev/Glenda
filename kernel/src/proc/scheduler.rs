@@ -1,5 +1,6 @@
-use super::thread::ALL_THREADS;
+use super::thread::{ALL_THREADS, ALL_THREADS_LOCK};
 use super::thread::{TCB, ThreadState};
+use crate::boot;
 use crate::cpu;
 use crate::hal;
 use crate::hal::cpu::MAX_CPUS;
@@ -89,6 +90,24 @@ impl TcbQueue {
 }
 
 static CURRENT_TCB: [AtomicUsize; MAX_CPUS] = [const { AtomicUsize::new(0) }; MAX_CPUS];
+static LAST_WATCHDOG_DUMP: AtomicUsize = AtomicUsize::new(0);
+static LAST_WATCHDOG_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+static WATCHDOG_EVENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+const WATCHDOG_FIRST_DUMP_SECS: usize = 8;
+const WATCHDOG_INTERVAL_SECS: usize = 15;
+
+macro_rules! watchdog_event {
+    ($($arg:tt)*) => {{
+        if WATCHDOG_EVENT_COUNT.fetch_add(1, Ordering::Relaxed) < 64 {
+            debug!($($arg)*);
+        }
+    }};
+}
+
+fn mark_watchdog_progress() {
+    LAST_WATCHDOG_PROGRESS.store(hal::timer::get_time(), Ordering::Relaxed);
+}
 
 /// 将线程加入调度队列
 pub fn add_thread(tcb: &mut TCB) {
@@ -102,7 +121,7 @@ fn add_thread_inner(tcb: &mut TCB, send_ipi: bool) {
 
     // 根据 affinity 决定目标核心
     // 假设 TCB 中包含 affinity 字段。如果 affinity >= MAX_CPUS，则表示不绑定，默认使用当前核心
-    let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
+    let target_hart_id = select_target_cpu(tcb, current_hart_id);
 
     tcb.cpu_id = target_hart_id;
 
@@ -115,6 +134,7 @@ fn add_thread_inner(tcb: &mut TCB, send_ipi: bool) {
     // 确保状态正确
     if tcb.state == ThreadState::Ready {
         queues[prio].push_back(ptr);
+        mark_watchdog_progress();
     }
 
     drop(queues);
@@ -267,6 +287,7 @@ pub fn scheduler() -> ! {
         }
 
         if let Some(tcb_ptr) = next_thread {
+            mark_watchdog_progress();
             // Lock TCB to ensure atomic transition to Running
             unsafe {
                 let _tcb_guard = (*tcb_ptr).lock.lock();
@@ -306,14 +327,15 @@ pub fn scheduler() -> ! {
             unsafe {
                 hal::proc::switch_context(&mut cpu.context, &mut tcb.context);
             }
-            finish_pending_wakeup(tcb_ptr);
             set_current(core::ptr::null_mut());
+            finish_pending_wakeup(tcb_ptr);
 
             // --- 线程返回 ---
             // 当线程被抢占或主动 yield 后，会回到这里
         } else {
             // 没有可运行的线程，进入低功耗等待
             log!("scheduler: No ready threads found, entering idle state");
+            watchdog_idle();
             unsafe {
                 hal::irq::wfi();
                 hal::irq::enable();
@@ -402,6 +424,13 @@ fn wake_up_inner(tcb: &mut TCB, preempt: bool, send_ipi: bool) {
     {
         if is_current_on_any_cpu(ptr) {
             tcb.wake_pending = true;
+            watchdog_event!(
+                "watchdog: deferred wake target={:p} state={:?} cpu={} caller_cpu={}",
+                ptr,
+                tcb.state,
+                tcb.cpu_id,
+                hal::cpu::cpu_id()
+            );
             drop(_tcb_guard);
             return;
         }
@@ -411,7 +440,7 @@ fn wake_up_inner(tcb: &mut TCB, preempt: bool, send_ipi: bool) {
 
         // 如果被唤醒线程优先级高于当前线程，触发抢占 (reschedule)
         let current_hart_id = hal::cpu::cpu_id();
-        let target_hart_id = if tcb.affinity < MAX_CPUS { tcb.affinity } else { current_hart_id };
+        let target_hart_id = select_target_cpu(tcb, current_hart_id);
 
         if preempt && target_hart_id == current_hart_id {
             if let Some(curr_ptr) = current() {
@@ -430,6 +459,11 @@ fn finish_pending_wakeup(tcb_ptr: *mut TCB) {
     if tcb.wake_pending {
         tcb.wake_pending = false;
         tcb.state = ThreadState::Ready;
+        watchdog_event!(
+            "watchdog: finish pending wake target={:p} cpu={}",
+            tcb_ptr,
+            hal::cpu::cpu_id()
+        );
         drop(_guard);
         add_thread(tcb);
     }
@@ -443,6 +477,22 @@ fn is_current_on_any_cpu(tcb_ptr: *mut TCB) -> bool {
         }
     }
     false
+}
+
+fn select_target_cpu(tcb: &TCB, fallback_cpu: usize) -> usize {
+    if tcb.affinity < MAX_CPUS {
+        return tcb.affinity;
+    }
+
+    let cpus = boot::get_cpu_count().min(MAX_CPUS);
+    if tcb.cpu_id < cpus {
+        let cpu = unsafe { &cpu::CPUS[tcb.cpu_id] };
+        if cpu.enabled {
+            return tcb.cpu_id;
+        }
+    }
+
+    fallback_cpu
 }
 
 /// 触发重新调度
@@ -485,11 +535,145 @@ fn set_current(tcb_ptr: *mut TCB) {
     CURRENT_TCB[cpu].store(tcb_ptr as usize, Ordering::Release);
 }
 
+pub fn watchdog_tick(now: usize) {
+    if hal::cpu::cpu_id() != 0 {
+        return;
+    }
+
+    let freq = hal::timer::get_freq();
+    if freq == 0 {
+        return;
+    }
+
+    let progress = LAST_WATCHDOG_PROGRESS.load(Ordering::Relaxed);
+    if progress == 0 {
+        LAST_WATCHDOG_PROGRESS.store(now, Ordering::Relaxed);
+        return;
+    }
+
+    let stalled_for = now.saturating_sub(progress);
+    if stalled_for < freq.saturating_mul(WATCHDOG_FIRST_DUMP_SECS) {
+        return;
+    }
+
+    let interval = freq.saturating_mul(WATCHDOG_INTERVAL_SECS);
+    let last = LAST_WATCHDOG_DUMP.load(Ordering::Relaxed);
+    if now.saturating_sub(last) < interval {
+        return;
+    }
+
+    if LAST_WATCHDOG_DUMP.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_ok()
+    {
+        dump_watchdog(now);
+    }
+}
+
+pub fn watchdog_idle() {
+    watchdog_tick(hal::timer::get_time());
+}
+
+fn dump_watchdog(now: usize) {
+    let progress = LAST_WATCHDOG_PROGRESS.load(Ordering::Relaxed);
+    debug!(
+        "watchdog: now={} freq={} cpus={} cpu0_noff={} stalled_ticks={}",
+        now,
+        hal::timer::get_freq(),
+        boot::get_cpu_count(),
+        cpu::get().noff,
+        now.saturating_sub(progress)
+    );
+
+    for id in 0..boot::get_cpu_count().min(MAX_CPUS) {
+        let curr = CURRENT_TCB[id].load(Ordering::Acquire) as *mut TCB;
+        let cpu_ref = unsafe { &cpu::CPUS[id] };
+        let mut ready_total = 0usize;
+        let mut top_prio = 0usize;
+        let mut top_count = 0usize;
+        let ready_locked = if let Some(queues) = cpu_ref.ready_queues.try_lock() {
+            for prio in 0..MAX_PRIORITY {
+                let mut curr = queues[prio].head;
+                let mut count = 0usize;
+                while let Some(ptr) = curr {
+                    count += 1;
+                    ready_total += 1;
+                    curr = unsafe { (*ptr).next };
+                    if count > 4096 {
+                        debug!(
+                            "watchdog: cpu={} ready queue prio={} appears cyclic",
+                            id, prio
+                        );
+                        break;
+                    }
+                }
+                if count > 0 {
+                    top_prio = prio;
+                    top_count = count;
+                }
+            }
+            false
+        } else {
+            true
+        };
+        debug!(
+            "watchdog: cpu={} enabled={} noff={} intena={} current={:p} ready_total={} top_prio={} top_count={} ready_locked={}",
+            id,
+            cpu_ref.enabled,
+            cpu_ref.noff,
+            cpu_ref.intena,
+            curr,
+            ready_total,
+            top_prio,
+            top_count,
+            ready_locked,
+        );
+    }
+
+    unsafe {
+        let _all_threads_guard = ALL_THREADS_LOCK.lock();
+        let mut curr = ALL_THREADS;
+        let mut count = 0usize;
+        while let Some(ptr) = curr {
+            let tcb = &*ptr;
+            if let Some(_guard) = tcb.lock.try_lock() {
+                debug!(
+                    "watchdog: tcb={:p} state={:?} prio={}/{} cpu={} aff={} timeslice={} wake_pending={} prev={:p} next={:p} partner={:p} active_ep={:#x} caller={:p} badge={:?} cap={}",
+                    ptr,
+                    tcb.state,
+                    tcb.priority,
+                    tcb.base_priority,
+                    tcb.cpu_id,
+                    tcb.affinity,
+                    tcb.timeslice,
+                    tcb.wake_pending,
+                    tcb.prev.unwrap_or(core::ptr::null_mut()),
+                    tcb.next.unwrap_or(core::ptr::null_mut()),
+                    tcb.ipc_partner.unwrap_or(core::ptr::null_mut()),
+                    tcb.ipc_active_ep.unwrap_or(0),
+                    tcb.ipc_caller.unwrap_or(core::ptr::null_mut()),
+                    tcb.ipc_badge,
+                    tcb.ipc_cap.is_some(),
+                );
+                curr = tcb.global_next;
+            } else {
+                debug!("watchdog: tcb={:p} locked", ptr);
+                curr = (*ptr).global_next;
+            }
+
+            count += 1;
+            if count > 128 {
+                debug!("watchdog: aborting thread dump after {} entries", count);
+                break;
+            }
+        }
+    }
+}
+
 pub fn ps() {
     printk!("ID (Addr)  Prio  State       Aff\n");
     printk!("--------------------------------\n");
 
     unsafe {
+        let _all_threads_guard = ALL_THREADS_LOCK.lock();
         let mut curr = ALL_THREADS;
         while let Some(ptr) = curr {
             let tcb = &*ptr;

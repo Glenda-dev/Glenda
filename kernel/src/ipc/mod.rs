@@ -7,7 +7,7 @@ use crate::cap::{Badge, CapType, Capability, Rights};
 use crate::error::Error;
 use crate::proc::scheduler;
 use crate::proc::thread::{TCB, ThreadState};
-pub use endpoint::Endpoint;
+pub use endpoint::{Endpoint, NotifyResult, RecvQueueResult, SendQueueResult};
 pub use msg::{MsgFlags, MsgTag};
 pub use utcb::{MsgArgs, UTCB};
 
@@ -204,6 +204,7 @@ fn propagate_priority(priority: u8, target_ptr: *mut TCB) {
 }
 
 fn donate_sched_context(sender: &mut TCB, receiver: &mut TCB) {
+    let donated = sender.timeslice.min(scheduler::get_default_timeslice());
     let src_addr = sender as *const TCB as usize;
     let dst_addr = receiver as *const TCB as usize;
     let receiver_ptr = receiver as *mut TCB;
@@ -211,13 +212,13 @@ fn donate_sched_context(sender: &mut TCB, receiver: &mut TCB) {
         let _g1 = sender.lock.lock();
         let _g2 = receiver.lock.lock();
         propagate_priority(sender.priority, receiver_ptr);
-        receiver.timeslice += sender.timeslice;
+        receiver.timeslice = receiver.timeslice.max(donated);
         sender.timeslice = 0; // Donated
     } else {
         let _g1 = receiver.lock.lock();
         let _g2 = sender.lock.lock();
         propagate_priority(sender.priority, receiver_ptr);
-        receiver.timeslice += sender.timeslice;
+        receiver.timeslice = receiver.timeslice.max(donated);
         sender.timeslice = 0; // Donated
     }
 }
@@ -457,17 +458,20 @@ pub fn send(
         scheduler::wake_up(receiver);
     } else {
         log!("ipc: Send current={:p} ep={:p} badge={:?} blocking", current, ep as *const _, badge);
-        // --- 慢速路径: 阻塞 ---
-        set_blocked(current, ThreadState::BlockedSend, badge, cap);
-
-        // 将自己加入 Endpoint 的发送队列，同时保存 Badge 和要传递的能力
-        ep.enqueue_send(current as *mut _);
-
-        // 让出 CPU，触发调度
-        if should_block(current, ThreadState::BlockedSend) {
-            scheduler::block_current_thread();
+        match ep.match_recv_or_queue_send(current as *mut _, ThreadState::BlockedSend, badge, cap) {
+            SendQueueResult::MatchedReceiver(receiver_ptr, cap) => {
+                let receiver = unsafe { &mut *receiver_ptr };
+                unsafe { copy_msg(current, receiver, badge, cap, None)? };
+                clear_receiver_caller(receiver);
+                scheduler::wake_up(receiver);
+            }
+            SendQueueResult::Queued => {
+                if should_block(current, ThreadState::BlockedSend) {
+                    scheduler::block_current_thread();
+                }
+                restore_running_if_ready(current);
+            }
         }
-        restore_running_if_ready(current);
     }
     Ok(())
 }
@@ -530,7 +534,6 @@ fn call_internal(
         }
     }
 
-    log!("",);
     // 1. 检查是否有接收者在等待
     if let Some(receiver_ptr) = ep.dequeue_recv() {
         let receiver = unsafe { &mut *receiver_ptr };
@@ -584,15 +587,37 @@ fn call_internal(
             return Err(Error::ResourceBusy);
         }
 
-        // --- 慢速路径: 阻塞在发送队列 ---
-        set_blocked(current, ThreadState::BlockedCall, badge, cap);
+        match ep.match_recv_or_queue_send(current as *mut _, ThreadState::BlockedCall, badge, cap) {
+            SendQueueResult::MatchedReceiver(receiver_ptr, cap) => {
+                let receiver = unsafe { &mut *receiver_ptr };
+                if check_deadlock(current, receiver) {
+                    error!("ipc: Deadlock detected in call!");
+                    ep.enqueue_recv(receiver_ptr);
+                    return Err(Error::InvalidCapability);
+                }
 
-        ep.enqueue_send(current as *mut _);
-        if block_running_thread {
-            if should_block(current, ThreadState::BlockedCall) {
-                scheduler::block_current_thread();
+                let reply_cap = Capability::create_reply(current, Rights::ALL);
+                unsafe { copy_msg(current, receiver, badge, cap, Some(reply_cap))? };
+                set_receiver_call_context(receiver, ep, current as *mut _);
+                set_blocked_call_partner(current, receiver as *mut _);
+                scheduler::wake_up_deferred(receiver);
+
+                if block_running_thread && should_block(current, ThreadState::BlockedCall) {
+                    scheduler::block_current_thread();
+                }
+                if block_running_thread {
+                    restore_running_if_ready(current);
+                }
+                clear_partner(current);
             }
-            restore_running_if_ready(current);
+            SendQueueResult::Queued => {
+                if block_running_thread {
+                    if should_block(current, ThreadState::BlockedCall) {
+                        scheduler::block_current_thread();
+                    }
+                    restore_running_if_ready(current);
+                }
+            }
         }
     }
     Ok(())
@@ -635,21 +660,23 @@ pub fn notify(ep: &Endpoint, badge: Badge) -> Result<(), Error> {
     if badge.is_null() {
         warn!("ipc: Notify with null badge on ep={:p}", ep as *const _);
     }
-    if let Some(receiver_ptr) = ep.dequeue_recv() {
-        log!(
-            "ipc: Notify ep={:p} badge={:?} matched receiver={:p}",
-            ep as *const _,
-            badge,
-            receiver_ptr
-        );
-        let receiver = unsafe { &mut *receiver_ptr };
-        let utcb = receiver.get_utcb().ok_or(Error::MappingFailed)?;
-        utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
-        utcb.badge = badge;
-        scheduler::wake_up(receiver);
-    } else {
-        log!("ipc: Notify ep={:p} badge={:?} pending", ep as *const _, badge,);
-        ep.notify(badge);
+    match ep.notify_or_dequeue_recv(badge) {
+        NotifyResult::MatchedReceiver(receiver_ptr) => {
+            log!(
+                "ipc: Notify ep={:p} badge={:?} matched receiver={:p}",
+                ep as *const _,
+                badge,
+                receiver_ptr
+            );
+            let receiver = unsafe { &mut *receiver_ptr };
+            let utcb = receiver.get_utcb().ok_or(Error::MappingFailed)?;
+            utcb.msg_tag = MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
+            utcb.badge = badge;
+            scheduler::wake_up(receiver);
+        }
+        NotifyResult::Pending => {
+            log!("ipc: Notify ep={:p} badge={:?} pending", ep as *const _, badge,);
+        }
     }
     Ok(())
 }
@@ -718,17 +745,50 @@ pub fn recv(current: &mut TCB, ep: &Endpoint) -> Result<(), Error> {
         // 接收者收到数据，继续运行 (不阻塞)
     } else {
         log!("ipc: Recv current={:p} ep={:p} blocking", current, ep as *const _);
-        // --- 慢速路径: 阻塞 ---
-        set_blocked_recv(current);
+        match ep.match_send_or_queue_recv(current as *mut _) {
+            RecvQueueResult::MatchedNotification(pending) => {
+                if let Some(utcb_ptr) = get_utcb_ptr(current) {
+                    unsafe {
+                        (*utcb_ptr).msg_tag =
+                            MsgTag::new(protocol::KERNEL_PROTO, protocol::NOTIFY, MsgFlags::NONE);
+                        (*utcb_ptr).badge = pending;
+                    };
+                }
+            }
+            RecvQueueResult::MatchedSender(sender_ptr) => {
+                let sender = unsafe { &mut *sender_ptr };
+                let (badge, cap, sender_waiting_reply) = {
+                    let _guard = sender.lock.lock();
+                    let badge = sender.ipc_badge;
+                    let cap = sender.ipc_cap.take();
+                    let waiting_reply = sender.state == ThreadState::BlockedCall;
+                    (badge, cap, waiting_reply)
+                };
 
-        // 将自己加入 Endpoint 的接收队列
-        ep.enqueue_recv(current as *mut _);
+                let reply_cap = if sender_waiting_reply {
+                    Some(Capability::create_reply(sender, Rights::ALL))
+                } else {
+                    None
+                };
 
-        // 让出 CPU，触发调度
-        if should_block(current, ThreadState::BlockedRecv) {
-            scheduler::block_current_thread();
+                unsafe { copy_msg(sender, current, badge, cap, reply_cap)? };
+                set_current_recv_context(
+                    current,
+                    ep,
+                    if sender_waiting_reply { Some(sender as *mut _) } else { None },
+                );
+
+                if !sender_waiting_reply {
+                    scheduler::wake_up(sender);
+                }
+            }
+            RecvQueueResult::Queued => {
+                if should_block(current, ThreadState::BlockedRecv) {
+                    scheduler::block_current_thread();
+                }
+                restore_running_if_ready(current);
+            }
         }
-        restore_running_if_ready(current);
     }
     Ok(())
 }

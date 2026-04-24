@@ -6,7 +6,6 @@ const PPN_MASK: usize = PPN_MASK;
 #[cfg(target_pointer_width = "32")]
 const PPN_MASK: usize = 0x3FFFFF;
 
-
 #[derive(Clone, Copy, Debug)]
 pub struct Pte(usize);
 
