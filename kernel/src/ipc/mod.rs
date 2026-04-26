@@ -385,13 +385,32 @@ pub fn call_inline_if_ready(
 
     set_receiver_call_context(receiver, ep, current as *mut _);
     set_blocked_call_partner(current, receiver as *mut _);
-    scheduler::wake_up_deferred(receiver);
 
-    if should_block(current, ThreadState::BlockedCall) {
-        scheduler::block_current_thread();
+    // Optimization: Direct handoff to receiver if it's on the same CPU
+    if receiver.cpu_id == current.cpu_id {
+        let receiver_ptr = receiver as *mut TCB;
+        let cpu_id = receiver.cpu_id;
+
+        // Prepare receiver state
+        {
+            let _guard = receiver.lock.lock();
+            receiver.state = ThreadState::Running;
+        }
+        receiver.get_tf().set_cpuid(cpu_id);
+
+        scheduler::set_current_ptr(receiver_ptr);
+        unsafe {
+            crate::hal::proc::switch_context(&mut current.context, &mut receiver.context);
+        }
+        scheduler::set_current_ptr(current as *mut TCB);
+    } else {
+        scheduler::wake_up_deferred(receiver);
+        if should_block(current, ThreadState::BlockedCall) {
+            scheduler::block_current_thread();
+        }
     }
-    restore_running_if_ready(current);
 
+    restore_running_if_ready(current);
     clear_partner(current);
     Ok(true)
 }
@@ -399,10 +418,46 @@ pub fn call_inline_if_ready(
 /// REPLY 快路径：使用寄存器内联消息回复被阻塞的 CALL 线程。
 pub fn reply_inline(
     current: &mut TCB,
-    target: &mut TCB,
+    receiver: &mut TCB,
     msg_tag: MsgTag,
     mrs: [usize; 4],
 ) -> Result<(), Error> {
+    let sender_mrs = sender_mrs_count(current)?;
+    unsafe { copy_msg_inline(current, receiver, msg_tag, Badge::null(), mrs, sender_mrs, None)? };
+
+    clear_receiver_caller(current);
+    clear_current_call_context(receiver);
+
+    // Optimization: Direct handoff back to caller if it's on the same CPU
+    if receiver.cpu_id == current.cpu_id {
+        // Current (server) is likely to continue or block later,
+        // but we switch to receiver (client) immediately to complete the RPC.
+        {
+            let _guard = current.lock.lock();
+            current.state = ThreadState::Ready;
+        }
+        scheduler::add_thread(current);
+
+        let receiver_ptr = receiver as *mut TCB;
+        {
+            let _guard = receiver.lock.lock();
+            receiver.state = ThreadState::Running;
+        }
+
+        scheduler::set_current_ptr(receiver_ptr);
+        unsafe {
+            crate::hal::proc::switch_context(&mut current.context, &mut receiver.context);
+        }
+        scheduler::set_current_ptr(current as *mut TCB);
+    } else {
+        scheduler::wake_up(receiver);
+    }
+
+    Ok(())
+}
+
+/// 回复被阻塞的 CALL 线程。
+pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
     let target_state = {
         let _guard = target.lock.lock();
         target.state
@@ -415,8 +470,7 @@ pub fn reply_inline(
         return Err(Error::InvalidCapability);
     }
 
-    let sender_mrs = sender_mrs_count(current)?;
-    unsafe { copy_msg_inline(current, target, msg_tag, Badge::null(), mrs, sender_mrs, None)? };
+    unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
 
     {
         let _guard = current.lock.lock();
@@ -621,38 +675,6 @@ fn call_internal(
         }
     }
     Ok(())
-}
-
-/// Reply 操作
-/// 向指定的 TCB 发送回复消息
-pub fn reply(current: &mut TCB, target: &mut TCB, cap: Option<Capability>) -> Result<(), Error> {
-    // 只有处于 BlockedCall 状态的线程才能接收 Reply
-    let target_state = {
-        let _guard = target.lock.lock();
-        target.state
-    };
-    if target_state == ThreadState::BlockedCall {
-        log!("ipc: Reply current={:p} target={:p} success", current, target);
-        // Reply 不产生新的 Reply Cap
-        unsafe { copy_msg(current, target, Badge::null(), cap, None)? };
-
-        // 任务完成，当前线程恢复基础优先级
-        {
-            let _guard = current.lock.lock();
-            current.priority = current.base_priority;
-        }
-
-        // 唤醒目标线程
-        scheduler::wake_up(target);
-        clear_current_call_context(current);
-        Ok(())
-    } else {
-        error!(
-            "ipc: Reply current={:p} target={:p} failed target state {:?}",
-            current, target, target_state
-        );
-        Err(Error::InvalidCapability)
-    }
 }
 
 /// 内核层面的通知（用于 IRQ 等），传递 badge

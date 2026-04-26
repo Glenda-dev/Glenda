@@ -530,9 +530,17 @@ pub fn current() -> Option<*mut TCB> {
     if tcb_ptr.is_null() { None } else { Some(tcb_ptr) }
 }
 
-fn set_current(tcb_ptr: *mut TCB) {
+pub fn set_current(tcb_ptr: *mut TCB) {
+    set_current_ptr(tcb_ptr);
+}
+
+pub fn set_current_ptr(tcb_ptr: *mut TCB) {
     let cpu = hal::cpu::cpu_id();
     CURRENT_TCB[cpu].store(tcb_ptr as usize, Ordering::Release);
+}
+
+pub fn get_cpu_context() -> *mut hal::proc::ProcContext {
+    &mut crate::cpu::get().context as *mut _
 }
 
 pub fn watchdog_tick(now: usize) {

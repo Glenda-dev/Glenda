@@ -28,13 +28,13 @@ unsafe extern "C" {
 pub unsafe fn activate_vspace(val: usize) {
     unsafe {
         asm::write_satp(val);
-        asm::sfence_vma_global();
+        // asm::sfence_vma_global(); // Removed: redundancy and performance impact. ASID is used.
     }
 }
 pub unsafe fn deactivate_vspace() {
     unsafe {
         asm::write_satp(0);
-        asm::sfence_vma_global();
+        // asm::sfence_vma_global();
     }
 }
 
