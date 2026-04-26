@@ -1,0 +1,12 @@
+[package]
+name = "ping-test"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ping-test"
+path = "src/main.rs"
+
+[dependencies]
+libglenda-rs = { path = "../../lib/libglenda-rs", features = ["rt-service"] }
+smoltcp = { version = "0.12.0", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-icmp"] }

@@ -1,0 +1,18 @@
+{
+    "services": [
+        {
+            "name": "ipc-test-server",
+            "path": "ipc-test-server",
+            "auto_start": true,
+            "dependencies": []
+        },
+        {
+            "name": "ipc-test-client",
+            "path": "ipc-test-client",
+            "auto_start": true,
+            "dependencies": [
+                "ipc-test-server"
+            ]
+        }
+    ]
+}

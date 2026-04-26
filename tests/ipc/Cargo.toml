@@ -1,0 +1,15 @@
+[package]
+name = "ipc-test"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ipc-test-server"
+path = "src/server.rs"
+
+[[bin]]
+name = "ipc-test-client"
+path = "src/client.rs"
+
+[dependencies]
+libglenda-rs = { path = "../../lib/libglenda-rs", features = ["rt-service"] }

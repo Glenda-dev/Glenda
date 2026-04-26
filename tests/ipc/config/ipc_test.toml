@@ -1,0 +1,47 @@
+[system]
+arch = "riscv64"
+profile = "release"
+bootloader = "opensbi"
+
+[qemu]
+cpus = 4
+mem = "2G"
+display = "nographic"
+serial_port = 5555
+bootargs = "-v"
+
+# System Services
+[[services]]
+name = "warren"
+path = "service/warren"
+build = "cargo"
+output = "build/warren.elf"
+kind = "root_task"
+
+[[services]]
+name = "nineball"
+path = "service/nineball"
+build = "cargo"
+output = "build/nineball.elf"
+kind = "service"
+
+[[services]]
+name = "ipc-test-server"
+path = "tests/ipc"
+build = "cargo"
+output = "build/ipc-test-server.elf"
+kind = "service"
+
+[[services]]
+name = "ipc-test-client"
+path = "tests/ipc"
+build = "cargo"
+output = "build/ipc-test-client.elf"
+kind = "service"
+
+[[files]]
+name = "init.json"
+path = "tests/ipc/config/init.json"
+
+[features]
+kernel = []

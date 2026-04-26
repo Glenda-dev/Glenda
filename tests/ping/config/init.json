@@ -1,0 +1,35 @@
+{
+    "services": [
+        {
+            "name": "unicorn",
+            "path": "unicorn",
+            "auto_start": true,
+            "dependencies": []
+        },
+        {
+            "name": "march",
+            "path": "march",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn"
+            ]
+        },
+        {
+            "name": "gopher",
+            "path": "gopher",
+            "auto_start": true,
+            "dependencies": [
+                "unicorn",
+                "march"
+            ]
+        },
+        {
+            "name": "ping-test",
+            "path": "ping-test",
+            "auto_start": true,
+            "dependencies": [
+                "gopher"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,105 @@
+[system]
+arch = "riscv64"
+profile = "relwithdebuginfo"
+bootloader = "opensbi"
+
+[qemu]
+cpus = 1
+mem = "2G"
+display = "nographic"
+serial_port = 5555
+bootargs = "-v"
+net = true
+net_type = "user"
+
+# System Services
+[[services]]
+name = "warren"
+path = "service/warren"
+build = "cargo"
+output = "build/warren.elf"
+kind = "root_task"
+
+[[services]]
+name = "nineball"
+path = "service/nineball"
+build = "cargo"
+output = "build/nineball.elf"
+kind = "service"
+
+[[services]]
+name = "unicorn"
+path = "service/unicorn"
+build = "cargo"
+output = "build/unicorn.elf"
+kind = "service"
+
+[[services]]
+name = "march"
+path = "service/march"
+build = "cargo"
+output = "build/march.elf"
+kind = "service"
+
+[[services]]
+name = "gopher"
+path = "service/gopher"
+build = "cargo"
+output = "build/gopher.elf"
+kind = "service"
+
+[[services]]
+name = "dtb"
+path = "drivers/platform/dtb"
+build = "cargo"
+output = "build/dtb.elf"
+kind = "service"
+
+[[services]]
+name = "goldfish-rtc"
+path = "drivers/timer/goldfish-rtc"
+build = "cargo"
+output = "build/goldfish-rtc.elf"
+kind = "service"
+
+[[services]]
+name = "virtio-mmio"
+path = "drivers/virtio/mmio"
+build = "cargo"
+output = "build/virtio-mmio.elf"
+kind = "service"
+
+[[services]]
+name = "ns16550a"
+path = "drivers/uart/ns16550a"
+build = "cargo"
+output = "build/ns16550a.elf"
+kind = "service"
+
+[[services]]
+name = "virtio-net"
+path = "drivers/virtio/net"
+build = "cargo"
+output = "build/virtio-net.elf"
+kind = "service"
+
+[[services]]
+name = "ping-test"
+path = "tests/ping"
+build = "cargo"
+output = "build/ping-test.elf"
+kind = "service"
+
+[[files]]
+name = "init.json"
+path = "tests/ping/config/init.json"
+[[files]]
+name = "drivers.json"
+path = "config/drivers.json"
+[[files]]
+name = "network.json"
+path = "config/network.json"
+
+[features]
+kernel = []
+libglenda-rs = ["rt-service"]
