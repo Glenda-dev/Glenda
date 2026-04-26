@@ -61,8 +61,16 @@ impl BackgroundRun {
     }
 
     fn ensure_alive_within_timeout(&mut self) -> anyhow::Result<()> {
+        if self.terminated {
+            return Ok(());
+        }
+
         if let Some(status) = self.child.try_wait()? {
             self.terminated = true;
+            if status.success() {
+                eprintln!("[ INFO ] background command exited successfully: {}", self.cmd_debug);
+                return Ok(());
+            }
             return Err(anyhow::anyhow!(
                 "[ ERROR ] command failed with status {}: {}",
                 status,
@@ -543,8 +551,10 @@ pub fn exec(
 
     let commands: Vec<String> = script_text
         .lines()
-        .map(|line| line.trim_end_matches('\r'))
-        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.trim_end_matches('\r').trim())
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.starts_with("#!"))
+        .filter(|line| !line.starts_with('#'))
         .map(ToOwned::to_owned)
         .collect();
 
@@ -652,7 +662,8 @@ pub fn exec(
 
         eprintln!("\n[ EXEC ] ({}/{}) {}", idx + 1, commands.len(), line);
         telnet_write_all(&mut conn, line.as_bytes())?;
-        telnet_write_all(&mut conn, b"\n")?;
+        telnet_write_all(&mut conn, b"\r\n")?;
+        wait_for_prompt(&mut conn, &mut rolling, prompt_timeout, &mut background_run)?;
     }
 
     eprintln!("\n[ INFO ] Script execution finished: {}", script.display());

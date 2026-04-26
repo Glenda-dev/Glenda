@@ -192,7 +192,7 @@ name = "ape.json"
 path = "config/ape.json"
 
 [features]
-kernel = []
+kernel = ["initrd-embed"]
 libglenda-rs = ["rt-bare"]
 libape = ["runtime"]
 musl-glenda = ["--disable-shared", "--prefix=../../target/sysroot"]

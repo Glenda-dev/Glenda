@@ -91,6 +91,12 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
     let rustflags = format!("-C link-arg=-T{} -C link-arg=--gc-sections", linker_script.display());
 
     cmd.env("RUSTFLAGS", rustflags);
+
+    if features.contains("embed-initrd") {
+        let initrd_path = std::env::current_dir()?.join("target/modules.bin");
+        cmd.env("INITRD_PATH", initrd_path);
+    }
+
     cmd.arg("--profile").arg(&cfg.system.profile);
     if !features.is_empty() {
         cmd.arg("--features").arg(features);

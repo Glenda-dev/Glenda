@@ -22,6 +22,7 @@ chrono = "0.4"
 default = ["logging"]
 logging = []
 shell = []
+embed-initrd = []
 bl-limine = ["limine"]
 bl-uboot = []
 bl-multiboot2 = ["multiboot2"]

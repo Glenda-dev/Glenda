@@ -73,12 +73,36 @@ pub struct BootLoaderInfo {
 
 pub static BOOT_LOADER_INFO: Once<BootLoaderInfo> = Once::new();
 
+#[cfg(feature = "embed-initrd")]
+#[repr(C, align(4096))]
+struct EmbeddedInitrd {
+    data: [u8; include_bytes!(env!("INITRD_PATH")).len()],
+}
+
+#[cfg(feature = "embed-initrd")]
+static EMBEDDED_INITRD: EmbeddedInitrd = EmbeddedInitrd {
+    data: *include_bytes!(env!("INITRD_PATH")),
+};
+
 pub fn get_dtb() -> Option<(VirtAddr, usize)> {
     BOOT_LOADER_INFO.get().and_then(|info| info.dtb_addr)
 }
 
 pub fn get_initrd() -> Option<(VirtAddr, usize)> {
-    BOOT_LOADER_INFO.get().and_then(|info| info.initrd_addr)
+    if let Some(addr) = BOOT_LOADER_INFO.get().and_then(|info| info.initrd_addr) {
+        return Some(addr);
+    }
+
+    #[cfg(feature = "embed-initrd")]
+    {
+        return Some((
+            VirtAddr::from(EMBEDDED_INITRD.data.as_ptr() as usize),
+            EMBEDDED_INITRD.data.len(),
+        ));
+    }
+
+    #[cfg(not(feature = "embed-initrd"))]
+    None
 }
 
 pub fn get_rsdp() -> Option<VirtAddr> {
