@@ -79,12 +79,6 @@ path = "service/ape"
 build = "cargo"
 output = "build/ape.elf"
 kind = "service"
-[[services]]
-name = "libape_daemon"
-path = "lib/libape"
-build = "cargo"
-output = "build/libape_daemon.elf"
-kind = "service"
 
 [[services]]
 name = "initrdfs"
@@ -193,7 +187,6 @@ path = "config/ape.json"
 
 [features]
 kernel = ["embed-initrd"]
-libglenda-rs = ["rt-bare"]
 libape = ["runtime"]
 musl-glenda = ["--disable-shared", "--prefix=../../target/sysroot"]
 ape = ["strace"]
