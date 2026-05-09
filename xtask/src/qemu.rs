@@ -20,17 +20,16 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         ));
     }
 
-    cmd.arg("-machine").arg("virt,acpi=on");
+    if !cfg.system.arch.qemu_machine().is_empty() {
+        cmd.arg("-machine").arg(cfg.system.arch.qemu_machine());
+    }
 
     // OpenSBI 直启内核时不挂载 EFI/vvfat 启动盘。
     // 其它引导模式保留 vvfat 启动盘，便于加载 EFI/boot 产物。
-    let attach_efi_disk = !matches!(cfg.system.bootloader, crate::arch::Bootloader::Opensbi);
     let mut next_mmio_bus = 0usize;
-    if attach_efi_disk {
-        cmd.arg("-drive")
-            .arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
-        cmd.arg("-device")
-            .arg(format!("virtio-blk-device,drive=boot,bus=virtio-mmio-bus.{next_mmio_bus}"));
+    cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
+    cmd.arg("-device").arg(cfg.system.arch.qemu_block_device("boot", next_mmio_bus));
+    if cfg.system.arch.uses_mmio_virtio() {
         next_mmio_bus += 1;
     }
 
@@ -119,10 +118,11 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
             cmd.arg("-display").arg("none");
         } else {
             // Add GPU device for graphical output
-            cmd.arg("-device").arg("virtio-gpu-device");
+            cmd.arg("-device").arg(cfg.system.arch.qemu_gpu_device());
             // Add input devices
-            cmd.arg("-device").arg("virtio-keyboard-pci");
-            cmd.arg("-device").arg("virtio-mouse-pci");
+            for device in cfg.system.arch.qemu_input_devices() {
+                cmd.arg("-device").arg(device);
+            }
             // cmd.arg("-device").arg("virtio-tablet-pci");
 
             cmd.arg("-display").arg(display);
@@ -142,9 +142,10 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     if let Some(disk) = data_disk {
         if !disk.is_empty() {
             cmd.arg("-drive").arg(format!("file={disk},if=none,format=raw,id=disk0"));
-            cmd.arg("-device")
-                .arg(format!("virtio-blk-device,drive=disk0,bus=virtio-mmio-bus.{next_mmio_bus}"));
-            next_mmio_bus += 1;
+            cmd.arg("-device").arg(cfg.system.arch.qemu_block_device("disk0", next_mmio_bus));
+            if cfg.system.arch.uses_mmio_virtio() {
+                next_mmio_bus += 1;
+            }
         }
     }
 
@@ -160,8 +161,7 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         }
         cmd.arg("-netdev").arg(netdev);
 
-        let mut device =
-            format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.{next_mmio_bus}");
+        let mut device = cfg.system.arch.qemu_net_device("net0", next_mmio_bus).into_owned();
         if let Some(mac) = &cfg.qemu.mac {
             device.push_str(&format!(",mac={}", mac));
         }
@@ -174,8 +174,10 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     // Add telnet for debugging
     cmd.arg("-monitor").arg("telnet:127.0.0.1:45454,server,nowait");
 
-    // Force Modern VirtIOg
-    cmd.arg("-global").arg("virtio-mmio.force-legacy=false");
+    if cfg.system.arch.uses_mmio_virtio() {
+        // Force modern virtio transport on MMIO platforms.
+        cmd.arg("-global").arg("virtio-mmio.force-legacy=false");
+    }
 
     Ok(cmd)
 }
@@ -227,7 +229,7 @@ pub fn qemu_dump_acpi(cfg: &Config) -> anyhow::Result<()> {
     let acpi_path_str = acpi_path.to_str().ok_or(anyhow::anyhow!("Invalid path"))?;
 
     // For RISC-V/ARM virt machine, we need to explicitly enable ACPI
-    cmd.arg("-machine").arg("virt,acpi=on");
+    cmd.arg("-machine").arg("virt");
     cmd.arg("-display").arg("none");
     // Disable default serial to avoid conflict with monitor on stdio
     cmd.arg("-serial").arg("null");

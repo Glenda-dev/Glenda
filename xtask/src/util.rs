@@ -302,7 +302,7 @@ pub fn download(url: &str, dest: &Path) -> anyhow::Result<()> {
     }
 
     let is_bz2 = url.ends_with(".bz2");
-    let download_path = if is_bz2 { dest.with_extension("bz2") } else { dest.to_path_buf() };
+    let download_path = if is_bz2 { dest.with_added_extension("bz2") } else { dest.to_path_buf() };
 
     eprintln!("[ INFO ] Downloading {} -> {}", url, download_path.display());
     let mut cmd = Command::new("curl");

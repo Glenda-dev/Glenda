@@ -1,5 +1,6 @@
 use clap::ValueEnum;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(ValueEnum, Clone, Copy, Debug, Deserialize, Default, PartialEq, Eq)]
@@ -7,7 +8,6 @@ use std::fmt::{self, Display, Formatter};
 pub enum Arch {
     #[default]
     Riscv64,
-    #[serde(rename = "riscv32")]
     Riscv32,
     X86_64,
     Aarch64,
@@ -53,19 +53,63 @@ impl Arch {
         format!("llvm-{}", tool)
     }
 
+    pub fn qemu_machine(&self) -> &'static str {
+        match self {
+            Arch::X86_64 => "q35",
+            Arch::Riscv64 | Arch::Riscv32 | Arch::Aarch64 | Arch::Loongarch64 => "virt",
+            Arch::Hosted => "",
+        }
+    }
+
+    pub fn uses_mmio_virtio(&self) -> bool {
+        matches!(self, Arch::Riscv64 | Arch::Riscv32 | Arch::Aarch64 | Arch::Loongarch64)
+    }
+
+    pub fn qemu_block_device(&self, drive: &str, mmio_bus: usize) -> String {
+        if self.uses_mmio_virtio() {
+            format!("virtio-blk-device,drive={drive},bus=virtio-mmio-bus.{mmio_bus}")
+        } else {
+            format!("virtio-blk-pci,drive={drive}")
+        }
+    }
+
+    pub fn qemu_net_device<'a>(&self, netdev: &'a str, mmio_bus: usize) -> Cow<'a, str> {
+        if self.uses_mmio_virtio() {
+            Cow::Owned(format!("virtio-net-device,netdev={netdev},bus=virtio-mmio-bus.{mmio_bus}"))
+        } else {
+            Cow::Owned(format!("virtio-net-pci,netdev={netdev}"))
+        }
+    }
+
+    pub fn qemu_gpu_device(&self) -> &'static str {
+        if self.uses_mmio_virtio() {
+            "virtio-gpu-device"
+        } else {
+            "virtio-gpu-pci"
+        }
+    }
+
+    pub fn qemu_input_devices(&self) -> &'static [&'static str] {
+        if self.uses_mmio_virtio() {
+            &["virtio-keyboard-pci", "virtio-mouse-pci"]
+        } else {
+            &["usb-kbd", "usb-mouse"]
+        }
+    }
+
     pub fn uefi_firmware_candidates(&self) -> Vec<String> {
         let local = format!("firmware/{}_uefi.fd", self.as_str());
         match self {
-            Arch::Riscv64 => vec![local, "/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd".to_string()],
-            Arch::Riscv32 => vec![],
-            Arch::Aarch64 => vec![local, "/usr/share/edk2/aarch64/QEMU_EFI.fd".to_string()],
+            Arch::Riscv64 => vec!["/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd".to_string(), local],
+            Arch::Riscv32 => vec!["/usr/share/edk2/riscv/RISCV_VIRT_CODE.fd".to_string(), local],
+            Arch::Aarch64 => vec!["/usr/share/edk2/aarch64/QEMU_EFI.fd".to_string(), local],
             Arch::X86_64 => vec![
                 local,
                 "/usr/share/ovmf/X64/OVMF.fd".to_string(),
                 "/usr/share/qemu/OVMF.fd".to_string(),
                 "/usr/share/ovmf/ovmf_code_x64.bin".to_string(),
             ],
-            Arch::Loongarch64 => vec![local, "/usr/share/edk2/loongarch/QEMU_EFI.fd".to_string()],
+            Arch::Loongarch64 => vec!["/usr/share/edk2/loongarch/QEMU_EFI.fd".to_string(), local],
             Arch::Hosted => vec![],
         }
     }
