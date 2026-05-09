@@ -133,7 +133,10 @@ fn ensure_slot_insertable(
     kind: &str,
 ) -> Result<(), Error> {
     let Some(slot_ptr) = receiver.lookup_slot(slot) else {
-        error!("ipc: {} insert failed: slot {} not found", kind, slot);
+        error!(
+            "ipc: {} insert failed: slot {} not found, target={:p}",
+            kind, slot, receiver as *const TCB
+        );
         return Err(Error::InvalidSlot);
     };
 

@@ -1,8 +1,5 @@
 use core::arch::global_asm;
 
-#[cfg(not(any(target_arch = "riscv64", target_arch = "riscv32")))]
-compile_error!("OpenSBI only supports RISC-V architecture");
-
 global_asm!(
     r#"
     .option arch, +zmmul // 启用 Zmmul 扩展以支持多核启动
@@ -15,6 +12,14 @@ global_asm!(
     
     .macro HART_ENTRY entry
         csrw sie, zero
+        
+        // Save args
+        la   t0, LINUXBOOT_ARGS
+        sd   a0, 0(t0)
+        sd   a1, 8(t0)
+        sd   a2, 16(t0)
+        sd   a3, 24(t0)
+
         la   t1, boot_stack_top
         li   t2, BOOT_STACK_SIZE
         li   t3, MAX_BOOT_HARTS
@@ -32,10 +37,10 @@ global_asm!(
     .endm
 
 _start: // boot hart
-    HART_ENTRY sbi_bootstrap
+    HART_ENTRY linuxboot_bootstrap
 
 secondary_start: // secondary harts
-    HART_ENTRY sbi_secondary_bootstrap
+    HART_ENTRY linuxboot_secondary_bootstrap
 
 // 启动栈放在 .bss 段，这样不会与代码混在一起
     .section .bss
@@ -47,13 +52,17 @@ boot_stack_top:
 );
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sbi_bootstrap(hartid: usize, dtb_pa: usize) -> ! {
-    // 保存早期信息
-    super::set_boot_info(dtb_pa);
-    crate::glenda_boot(hartid);
+pub unsafe extern "C" fn linuxboot_bootstrap(
+    arg0: usize,
+    arg1: usize,
+    arg2: usize,
+    arg3: usize,
+) -> ! {
+    super::super::set_boot_info(arg0, arg1, arg2, arg3);
+    crate::glenda_boot(arg0);
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sbi_secondary_bootstrap(hartid: usize, _dtb_pa: usize) -> ! {
+pub unsafe extern "C" fn linuxboot_secondary_bootstrap(hartid: usize, _dtb_pa: usize) -> ! {
     crate::glenda_secondary(hartid);
 }

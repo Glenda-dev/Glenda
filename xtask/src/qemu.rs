@@ -1,4 +1,5 @@
 use crate::config::Config;
+use std::fs;
 use crate::util::run;
 use std::path::PathBuf;
 use std::process::Command;
@@ -28,7 +29,9 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
     // 其它引导模式保留 vvfat 启动盘，便于加载 EFI/boot 产物。
     let mut next_mmio_bus = 0usize;
     cmd.arg("-drive").arg(format!("file=fat:rw:{},format=raw,if=none,id=boot", fsroot.display()));
-    cmd.arg("-device").arg(cfg.system.arch.qemu_block_device("boot", next_mmio_bus));
+    let mut boot_device = cfg.system.arch.qemu_block_device("boot", next_mmio_bus);
+    boot_device.push_str(",bootindex=0");
+    cmd.arg("-device").arg(boot_device);
     if cfg.system.arch.uses_mmio_virtio() {
         next_mmio_bus += 1;
     }
@@ -53,9 +56,25 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
             // Pass U-Boot as -kernel to QEMU. It will be loaded after OpenSBI.
             cmd.arg("-kernel").arg(uboot_path);
         }
-        crate::arch::Bootloader::Opensbi => {
-            // 直接将内核作为 OpenSBI 的 Payload
-            let kernel_path = std::env::current_dir()?.join("target/kernel");
+        crate::arch::Bootloader::Linuxboot => {
+            // 直接将内核作为 Payload (Linux boot protocol)
+            let mut kernel_path = std::env::current_dir()?.join("target/kernel");
+            
+            // AArch64 QEMU virt doesn't boot ELF via -kernel correctly, use raw binary.
+            if cfg.system.arch == crate::arch::Arch::Aarch64 {
+                cmd.arg("-cpu").arg("max");
+                
+                let bin_path = std::env::current_dir()?.join("target/kernel.bin");
+                let objcopy = cfg.system.arch.llvm_tool("objcopy");
+                let status = Command::new(objcopy)
+                    .args(&["-O", "binary", kernel_path.to_str().unwrap(), bin_path.to_str().unwrap()])
+                    .status()?;
+                if !status.success() {
+                    return Err(anyhow::anyhow!("[ ERROR ] Failed to convert kernel ELF to binary"));
+                }
+                kernel_path = bin_path;
+            }
+            
             cmd.arg("-kernel").arg(kernel_path);
 
             // 指定 initrd 为 modules.bin
@@ -79,11 +98,23 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
                 }
             } else {
                 let candidates = cfg.system.arch.uefi_firmware_candidates();
+                let vars_candidates = cfg.system.arch.uefi_vars_candidates();
 
                 if let Some(path) = candidates.iter().find(|p| PathBuf::from(p).exists()) {
                     eprintln!("[ INFO ] Using UEFI Firmware: {}", path);
                     cmd.arg("-drive")
                         .arg(format!("if=pflash,format=raw,unit=0,file={},readonly=on", path));
+                    if let Some(vars_source) =
+                        vars_candidates.iter().find(|p| PathBuf::from(p).exists())
+                    {
+                        let vars_copy = std::env::current_dir()?
+                            .join(format!("target/{}-vars.fd", cfg.system.arch.as_str()));
+                        fs::copy(vars_source, &vars_copy)?;
+                        cmd.arg("-drive").arg(format!(
+                            "if=pflash,format=raw,unit=1,file={}",
+                            vars_copy.display()
+                        ));
+                    }
                 } else {
                     // Try to download
                     if let Some(url) = cfg.system.arch.uefi_firmware_url() {

@@ -27,6 +27,7 @@ target
 *.log
 *.elf
 *.bak
+*.qcow2
 *.bin
 firmware/
 mnt

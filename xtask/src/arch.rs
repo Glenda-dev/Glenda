@@ -157,7 +157,7 @@ pub enum Bootloader {
     #[default]
     Limine,
     Uboot,
-    Opensbi,
+    Linuxboot,
     Multiboot2,
     Uefi,
 }
@@ -167,7 +167,7 @@ impl Bootloader {
         match self {
             Bootloader::Limine => "limine",
             Bootloader::Uboot => "uboot",
-            Bootloader::Opensbi => "opensbi",
+            Bootloader::Linuxboot => "linuxboot",
             Bootloader::Multiboot2 => "multiboot2",
             Bootloader::Uefi => "uefi",
         }

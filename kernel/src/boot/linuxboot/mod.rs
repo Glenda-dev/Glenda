@@ -6,25 +6,23 @@ use crate::hal::mem::PGSIZE;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
 
-mod boot;
+mod arch;
 
 static mut MEM_MAP: [MemoryMapEntry; 64] =
     [MemoryMapEntry { base: PhysAddr::null(), length: 0, kind: MemoryType::Ram }; 64];
 static mut MEM_MAP_COUNT: usize = 0;
-static mut OPENSBI_DTB_ADDR: usize = 0;
+
+#[unsafe(no_mangle)]
+static mut LINUXBOOT_ARGS: [usize; 4] = [0; 4];
 
 unsafe extern "C" {
     static __kernel_pbase: u8;
     static __alloc_start: u8;
 }
 
-pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
-    let dtb_pa = unsafe { OPENSBI_DTB_ADDR };
-    if dtb_pa == 0 {
-        panic!("opensbi: No DTB address provided");
-    }
+pub unsafe fn init_mem_map(dtb_pa: usize) -> &'static [MemoryMapEntry] {
     let fdt =
-        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("opensbi: Failed to parse FDT");
+        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("linuxboot: Failed to parse FDT");
     // 解析内存映射 (仅在第一次调用时)
     unsafe {
         let mut count = 0;
@@ -77,7 +75,7 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
                     reserved_regions[reserved_count] =
                         (start, end - start, MemoryType::Reclaimable);
                     reserved_count += 1;
-                    log!("opensbi: Initrd at {:#x} - {:#x}", start, end);
+                    log!("linuxboot: Initrd at {:#x} - {:#x}", start, end);
                 }
             }
         }
@@ -168,7 +166,7 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
                 let (base, size) = ranges[k];
                 if size > 0 && *count < 64 {
                     log!(
-                        "opensbi: Found RAM: {:#x} - {:#x} ({} MB)",
+                        "linuxboot: Found RAM: {:#x} - {:#x} ({} MB)",
                         base,
                         base + size,
                         size / 1024 / 1024
@@ -219,28 +217,41 @@ pub unsafe fn init_mem_map() -> &'static [MemoryMapEntry] {
 }
 
 pub unsafe fn init() {
-    let dtb_pa = unsafe { OPENSBI_DTB_ADDR };
+    let args = unsafe { LINUXBOOT_ARGS };
+    log!(
+        "linuxboot: Boot args: arg0={:#x}, arg1={:#x}, arg2={:#x}, arg3={:#x}",
+        args[0],
+        args[1],
+        args[2],
+        args[3]
+    );
+
+    #[cfg(target_arch = "aarch64")]
+    let dtb_pa = if args[0] != 0 { args[0] } else { 0x40000000 };
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    let dtb_pa = if args[1] != 0 { args[1] } else { args[0] };
+
+    let magic = u32::from_be_bytes(unsafe { *(dtb_pa as *const [u8; 4]) });
+    log!("linuxboot: Using DTB at {:#x} (magic: {:#x})", dtb_pa, magic);
 
     let fdt =
-        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("opensbi: Failed to parse FDT");
-    // 确定 CPU 数量
+        unsafe { fdt::Fdt::from_ptr(dtb_pa as *const u8) }.expect("linuxboot: Failed to parse FDT");
+
     let cpu_count = fdt.cpus().count();
-    log!("opensbi: Detected {} CPUs from DTB", cpu_count);
-    // 确定 initrd 和命令行
+    log!("linuxboot: Detected {} CPUs from DTB", cpu_count);
+
     let mut initrd_addr = None;
     let cmdline = fdt.chosen().bootargs();
-    log!("opensbi: Kernel cmdline from DTB: {:?}", cmdline);
+    log!("linuxboot: Kernel cmdline from DTB: {:?}", cmdline);
+
     if let Some(chosen_node) = fdt.find_node("/chosen") {
         if let (Some(start), Some(end)) =
             (chosen_node.property("linux,initrd-start"), chosen_node.property("linux,initrd-end"))
         {
             let parse_be = |data: &[u8]| -> usize {
-                #[cfg(target_pointer_width = "64")]
                 if data.len() == 8 {
                     return u64::from_be_bytes(data.try_into().unwrap()) as usize;
-                }
-                #[cfg(target_pointer_width = "32")]
-                if data.len() == 4 {
+                } else if data.len() == 4 {
                     return u32::from_be_bytes(data.try_into().unwrap()) as usize;
                 }
                 0
@@ -251,10 +262,9 @@ pub unsafe fn init() {
 
             if start_val != 0 && end_val > start_val {
                 let size = end_val - start_val;
-                // Currently identity mapping
                 initrd_addr = Some((VirtAddr::from(start_val), size));
                 log!(
-                    "opensbi: Found initrd in DTB: {:#x} - {:#x} ({} KB)",
+                    "linuxboot: Found initrd in DTB: {:#x} - {:#x} ({} KB)",
                     start_val,
                     end_val,
                     size / 1024
@@ -263,7 +273,7 @@ pub unsafe fn init() {
         }
     }
     unsafe {
-        init_mem_map();
+        init_mem_map(dtb_pa);
     }
 
     let pbase = &raw const __kernel_pbase as usize;
@@ -271,7 +281,7 @@ pub unsafe fn init() {
     let kernel_size = pend - pbase;
     let fdt_size = fdt.total_size();
     log!(
-        "opensbi: Kernel at {:#x} - {:#x} ({} KB), DTB size {} KB",
+        "linuxboot: Kernel at {:#x} - {:#x} ({} KB), DTB size {} KB",
         pbase,
         pend,
         kernel_size / 1024,
@@ -292,9 +302,9 @@ pub unsafe fn init() {
     });
 }
 
-pub fn set_boot_info(dtb_pa: usize) {
+pub fn set_boot_info(arg0: usize, arg1: usize, arg2: usize, arg3: usize) {
     unsafe {
-        OPENSBI_DTB_ADDR = dtb_pa;
+        LINUXBOOT_ARGS = [arg0, arg1, arg2, arg3];
     }
 }
 

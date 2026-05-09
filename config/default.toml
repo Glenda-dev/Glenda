@@ -1,7 +1,7 @@
 [system]
 arch = "riscv64"
 profile = "release"
-bootloader = "opensbi"
+bootloader = "linuxboot"
 
 [qemu]
 cpus = 1

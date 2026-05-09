@@ -11,8 +11,8 @@ pub mod uefi;
 #[cfg(feature = "bl-uboot")]
 pub mod uboot;
 
-#[cfg(feature = "bl-opensbi")]
-pub mod opensbi;
+#[cfg(feature = "bl-linuxboot")]
+pub mod linuxboot;
 
 #[cfg(feature = "bl-multiboot2")]
 pub mod multiboot2;
@@ -26,8 +26,8 @@ pub use uefi::{bootstrap, init};
 #[cfg(feature = "bl-uboot")]
 pub use uboot::{bootstrap, init};
 
-#[cfg(feature = "bl-opensbi")]
-pub use opensbi::{bootstrap, init};
+#[cfg(feature = "bl-linuxboot")]
+pub use linuxboot::{bootstrap, init};
 
 #[cfg(feature = "bl-multiboot2")]
 pub use multiboot2::{bootstrap, init};
@@ -37,7 +37,7 @@ pub mod api;
     feature = "bl-limine",
     feature = "bl-uefi",
     feature = "bl-uboot",
-    feature = "bl-opensbi",
+    feature = "bl-linuxboot",
     feature = "bl-multiboot2"
 )))]
 pub use api::*;
