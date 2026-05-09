@@ -1,16 +1,17 @@
 /// Kernel Version Information
-
+use crate::hal::ARCH;
 pub const GIT_HASH: &str = env!("KERNEL_GIT_HASH");
 pub const BUILD_TIME_STR: &str = env!("KERNEL_BUILD_TIME");
 
 pub fn print() {
     crate::printk!(
-        "Glenda Microkernel v{}.{}.{} (Commit: {}, Build: {})\n",
+        "Glenda Microkernel v{}.{}.{} (Commit: {}, Build: {}) on {}\n",
         env!("CARGO_PKG_VERSION_MAJOR"),
         env!("CARGO_PKG_VERSION_MINOR"),
         env!("CARGO_PKG_VERSION_PATCH"),
         GIT_HASH,
-        BUILD_TIME_STR
+        BUILD_TIME_STR,
+        ARCH
     );
 }
 

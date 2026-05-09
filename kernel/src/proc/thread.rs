@@ -305,6 +305,7 @@ impl TCB {
     }
 
     pub fn resume(&mut self) -> bool {
+        debug!("Resuming thread {:p} in state {:?}", self as *const _, self.state);
         let _guard = self.lock.lock();
         if self.state == ThreadState::Suspended || self.state == ThreadState::Inactive {
             self.state = ThreadState::Ready;

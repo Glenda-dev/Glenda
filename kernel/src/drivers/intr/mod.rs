@@ -10,4 +10,5 @@ pub trait InterruptController: Send + Sync {
 }
 
 pub mod aplic;
+pub mod gicv2;
 pub mod plic;

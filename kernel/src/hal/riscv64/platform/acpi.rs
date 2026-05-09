@@ -21,9 +21,9 @@ pub fn parse(tables: &AcpiTables<GlendaAcpiHandler>) {
                     let size = 0x100;
                     let cfg = generic_drivers::uart::ns16550a::Config::new(addr, 0, 5, 0x20);
                     UART.call_once(|| {
-                        UartDriver::Ns16550a(generic_drivers::uart::ns16550a::Uart::from_config(
-                            cfg, size,
-                        ))
+                        UartDriver::Ns16550a(
+                            generic_drivers::uart::ns16550a::Ns16550a::from_config(cfg, size),
+                        )
                     });
                     log!("hal: ns16550a (acpi) initialized at {:#x}", addr);
                 }

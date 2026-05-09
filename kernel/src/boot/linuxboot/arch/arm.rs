@@ -13,6 +13,11 @@ _start:
     // x0 = dtb_pa
     // Disable interrupts
     msr daifset, #0xf
+    // Enable FP/SIMD at EL1 early, before entering Rust code.
+    mrs x8, cpacr_el1
+    orr x8, x8, #(3 << 20)
+    msr cpacr_el1, x8
+    isb
 
     // Save early boot args
     ldr x8, =LINUXBOOT_ARGS
@@ -32,6 +37,11 @@ _start:
 secondary_start:
     // x0 = context_id (cpuid)
     msr daifset, #0xf
+    // Enable FP/SIMD at EL1 early, before entering Rust code.
+    mrs x8, cpacr_el1
+    orr x8, x8, #(3 << 20)
+    msr cpacr_el1, x8
+    isb
 
     // Setup stack for secondary CPU
     // sp = boot_stack_top - (cpuid * BOOT_STACK_SIZE)

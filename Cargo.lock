@@ -772,6 +772,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nine"
+version = "0.1.0"
+dependencies = [
+ "libglenda-rs",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nineball"
 version = "0.1.0"
 dependencies = [

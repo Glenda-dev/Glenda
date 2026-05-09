@@ -44,15 +44,15 @@ impl Config {
     }
 }
 
-pub struct Uart {
+pub struct Ns16550a {
     cfg: Config,
     size: usize,
 }
 
-unsafe impl Send for Uart {}
-unsafe impl Sync for Uart {}
+unsafe impl Send for Ns16550a {}
+unsafe impl Sync for Ns16550a {}
 
-impl Uart {
+impl Ns16550a {
     pub const fn from_config(cfg: Config, size: usize) -> Self {
         Self { cfg, size }
     }
@@ -80,7 +80,7 @@ impl Uart {
     }
 }
 
-impl super::Uart for Uart {
+impl super::Uart for Ns16550a {
     fn putc(&self, b: u8) {
         self.putb(b);
     }
@@ -106,7 +106,7 @@ impl super::Uart for Uart {
     }
 }
 
-pub struct UartWriter<'a>(pub &'a Uart);
+pub struct UartWriter<'a>(pub &'a Ns16550a);
 
 impl<'a> Write for UartWriter<'a> {
     fn write_str(&mut self, s: &str) -> fmt::Result {

@@ -103,7 +103,7 @@ pub fn parse(fdt: &fdt::Fdt) {
                         let cfg = generic_drivers::uart::ns16550a::Config::new(addr, 0, 5, 0x20);
                         UART.call_once(|| {
                             UartDriver::Ns16550a(
-                                generic_drivers::uart::ns16550a::Uart::from_config(cfg, size),
+                                generic_drivers::uart::ns16550a::Ns16550a::from_config(cfg, size),
                             )
                         });
                         log!("hal: NS16550A initialized at {:#x}", addr);

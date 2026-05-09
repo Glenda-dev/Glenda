@@ -1,8 +1,10 @@
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 use crate::hal::cpu::cpu_id;
 use crate::hal::mem::PGSIZE;
 use crate::mem::addr::phys_to_virt;
 use crate::mem::{PageTable, Perms, PhysAddr};
 use crate::sync::SpinLock;
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 use core::arch::asm;
 use core::ptr::{read_volatile, write_volatile};
 
@@ -81,23 +83,33 @@ impl super::InterruptController for Aplic {
 
     fn set_threshold(&self, hartid: usize, threshold: usize) {
         // AIA specific: writes to IMSIC/CPU interface CSRs
+        #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
         if hartid == cpu_id() {
             unsafe {
                 // sethreshold (0x15e in S-mode)
                 asm!("csrw 0x15e, {}", in(reg) threshold);
             }
         }
+        #[cfg(not(any(target_arch = "riscv64", target_arch = "riscv32")))]
+        let _ = (hartid, threshold);
     }
 
     fn claim(&self, _hartid: usize) -> usize {
-        let irq: usize;
-        unsafe {
-            // stopei (S-mode Top External Interrupt, 0x15c)
-            // Reads highest priority interrupt and acknowledges it.
-            asm!("csrr {}, 0x15c", out(reg) irq);
+        #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+        {
+            let irq: usize;
+            unsafe {
+                // stopei (S-mode Top External Interrupt, 0x15c)
+                // Reads highest priority interrupt and acknowledges it.
+                asm!("csrr {}, 0x15c", out(reg) irq);
+            }
+            // IID is in bits 26:16
+            return (irq >> 16) & 0x7FF;
         }
-        // IID is in bits 26:16
-        (irq >> 16) & 0x7FF
+        #[cfg(not(any(target_arch = "riscv64", target_arch = "riscv32")))]
+        {
+            0
+        }
     }
 
     fn complete(&self, _hartid: usize, _irq: usize) {

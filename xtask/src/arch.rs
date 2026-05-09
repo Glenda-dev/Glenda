@@ -32,7 +32,7 @@ impl Arch {
             Arch::Riscv64 => "riscv64gc-unknown-none-elf",
             Arch::Riscv32 => "riscv32imac-unknown-none-elf",
             Arch::X86_64 => "x86_64-unknown-none",
-            Arch::Aarch64 => "aarch64-unknown-none-elf",
+            Arch::Aarch64 => "aarch64-unknown-none",
             Arch::Loongarch64 => "loongarch64-unknown-none",
             Arch::Hosted => "hosted",
         }
@@ -110,6 +110,29 @@ impl Arch {
                 "/usr/share/ovmf/ovmf_code_x64.bin".to_string(),
             ],
             Arch::Loongarch64 => vec!["/usr/share/edk2/loongarch/QEMU_EFI.fd".to_string(), local],
+            Arch::Hosted => vec![],
+        }
+    }
+
+    pub fn uefi_vars_candidates(&self) -> Vec<String> {
+        let local = format!("firmware/{}_uefi_vars.fd", self.as_str());
+        match self {
+            Arch::Riscv64 => {
+                vec!["/usr/share/edk2/riscv/RISCV_VIRT_VARS.fd".to_string(), local]
+            }
+            Arch::Riscv32 => {
+                vec!["/usr/share/edk2/riscv/RISCV_VIRT_VARS.fd".to_string(), local]
+            }
+            Arch::Aarch64 => vec!["/usr/share/edk2/aarch64/QEMU_VARS.fd".to_string(), local],
+            Arch::X86_64 => vec![
+                local,
+                "/usr/share/ovmf/X64/OVMF_VARS.fd".to_string(),
+                "/usr/share/qemu/OVMF_VARS.fd".to_string(),
+                "/usr/share/ovmf/ovmf_vars_x64.bin".to_string(),
+            ],
+            Arch::Loongarch64 => {
+                vec!["/usr/share/edk2/loongarch/QEMU_VARS.fd".to_string(), local]
+            }
             Arch::Hosted => vec![],
         }
     }

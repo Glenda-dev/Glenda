@@ -5,6 +5,8 @@ use crate::boot::{BootLoaderInfo, MemoryMapEntry};
 use crate::hal;
 use crate::mem::{PhysAddr, VirtAddr};
 use crate::platform::MemoryType;
+#[cfg(target_arch = "aarch64")]
+use core::ptr::{read_volatile, write_volatile};
 use limine::memory_map::EntryType;
 use limine::mp::Cpu;
 use limine::request::*;
@@ -67,10 +69,31 @@ static MP_REQUEST: MpRequest = MpRequest::new();
 #[unsafe(link_section = ".requests")]
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
+#[cfg(target_arch = "aarch64")]
+fn early_serial_write(msg: &str) {
+    let hhdm = HHDM_REQUEST.get_response().map(|res| res.offset() as usize).unwrap_or(0);
+    if hhdm == 0 {
+        return;
+    }
+
+    let base = (0x0900_0000usize + hhdm) as *mut u32;
+    let fr = (base as usize + 0x18) as *const u32;
+
+    for byte in msg.bytes() {
+        unsafe {
+            while read_volatile(fr) & (1 << 5) != 0 {}
+            if byte == b'\n' {
+                write_volatile(base, b'\r' as u32);
+                while read_volatile(fr) & (1 << 5) != 0 {}
+            }
+            write_volatile(base, byte as u32);
+        }
+    }
+}
+
 pub unsafe fn init() {
     let mp_response = MP_REQUEST.get_response().expect("limine: MP request failed!");
     let bsp_id = arch::bspid(mp_response);
-    log!("limine: SMP info found. BSP ID: {}", bsp_id);
     hal::cpu::set_cpuid(bsp_id);
     let hhdm_offset = HHDM_REQUEST.get_response().map(|res| res.offset() as usize).unwrap_or(0);
     let kernel_addr = KERNEL_ADDRESS_REQUEST
@@ -82,11 +105,6 @@ pub unsafe fn init() {
             )
         })
         .expect("limine: Kernel address request failed!");
-    // Debug logging for critical boot info
-    let (pbase, vbase) = kernel_addr;
-    log!("limine: HHDM offset: {:#x}", hhdm_offset);
-    log!("limine: Kernel PBase: {}, VBase: {}", pbase, vbase);
-
     let mut count = 0;
     if let Some(res) = MEMORY_MAP_REQUEST.get_response() {
         for entry in res.entries() {
@@ -151,8 +169,14 @@ pub unsafe fn init() {
         cmdline,
         cpu_count,
     });
+
+    let (pbase, vbase) = kernel_addr;
+    log!("limine: SMP info found. BSP ID: {}", bsp_id);
+    log!("limine: HHDM offset: {:#x}", hhdm_offset);
+    log!("limine: Kernel PBase: {}, VBase: {}", pbase, vbase);
 }
 
+#[unsafe(no_mangle)]
 unsafe extern "C" fn secondary_trampoline(cpu: &Cpu) -> ! {
     let cpuid = arch::cpuid(cpu);
     crate::glenda_secondary(cpuid)
@@ -174,7 +198,11 @@ pub fn bootstrap() {
     }
 }
 
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.start")]
 unsafe extern "C" fn master_trampoline() -> ! {
+    #[cfg(target_arch = "aarch64")]
+    early_serial_write("limine: entered master_trampoline\n");
     let cpuid = hal::cpu::cpu_id();
     crate::glenda_boot(cpuid);
 }

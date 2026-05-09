@@ -1,0 +1,20 @@
+[system]
+arch = "aarch64"
+profile = "relwithdebuginfo"
+bootloader = "linuxboot"
+
+[[services]]
+name = "hello"
+path = "examples/hello"
+build = "cargo"
+output = "build/hello.elf"
+kind = "root_task"
+
+[qemu]
+cpus = 1
+mem = "2G"
+display = "nographic"
+serial_port = 5555
+net = true
+mac = "52:54:00:11:22:33"
+hostfwd = ["tcp::8088-:80"]

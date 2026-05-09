@@ -117,8 +117,15 @@ pub fn build_kernel(cfg: &Config) -> anyhow::Result<()> {
         // If the linker produced ELF, we convert to PE via objcopy as the "packaging" step
         // However, if lld produced PE directly (due to --subsystem), we just rename it.
         let objcopy = cfg.system.arch.llvm_tool("objcopy");
+        let pe_format = match cfg.system.arch {
+            crate::arch::Arch::Riscv64 => "pei-riscv64-little",
+            crate::arch::Arch::Aarch64 => "pei-aarch64-little",
+            crate::arch::Arch::X86_64 => "pei-x86-64",
+            crate::arch::Arch::Loongarch64 => "pei-loongarch64-little",
+            _ => "pei-riscv64-little",
+        };
         let _ = Command::new(objcopy)
-            .args(&["-O", "pei-riscv64-little", "target/kernel", "target/kernel.efi"])
+            .args(&["-O", pe_format, "target/kernel", "target/kernel.efi"])
             .status();
 
         if !Path::new("target/kernel.efi").exists() {

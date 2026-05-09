@@ -44,15 +44,7 @@ struct IdtEntry {
 
 impl IdtEntry {
     const fn missing() -> Self {
-        Self {
-            offset_lo: 0,
-            selector: 0,
-            ist: 0,
-            attrs: 0,
-            offset_mid: 0,
-            offset_hi: 0,
-            zero: 0,
-        }
+        Self { offset_lo: 0, selector: 0, ist: 0, attrs: 0, offset_mid: 0, offset_hi: 0, zero: 0 }
     }
 
     fn new(handler: unsafe extern "C" fn(), dpl: u8) -> Self {
@@ -244,16 +236,7 @@ impl TrapFrame {
     }
 
     pub fn get_registers(&self) -> MsgArgs {
-        [
-            self.rax,
-            self.rbx,
-            self.rcx,
-            self.rdx,
-            self.rsi,
-            self.rdi,
-            self.r8,
-            self.r9,
-        ]
+        [self.rax, self.rbx, self.rcx, self.rdx, self.rsi, self.rdi, self.r8, self.r9]
     }
 
     pub fn get_syscall_registers(&self) -> MsgArgs {
@@ -276,8 +259,8 @@ impl TrapFrame {
         F: FnMut(usize),
     {
         for reg in [
-            self.rax, self.rbx, self.rcx, self.rdx, self.rsi, self.rdi, self.r8, self.r9,
-            self.r10, self.r11, self.r12, self.r13, self.r14, self.r15,
+            self.rax, self.rbx, self.rcx, self.rdx, self.rsi, self.rdi, self.r8, self.r9, self.r10,
+            self.r11, self.r12, self.r13, self.r14, self.r15,
         ] {
             f(reg);
         }
@@ -350,7 +333,7 @@ pub unsafe extern "C" fn user_vector() {
     naked_asm!("ud2");
 }
 
-pub extern "C" fn trap_user_handler() {
+pub extern "C" fn trap_user_handler() -> ! {
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
         let tf = tcb.get_tf();
@@ -370,60 +353,7 @@ pub unsafe extern "C" fn user_return(_trapframe: usize, _satp: usize) {
 }
 
 pub fn trap_user_return() {
-    let tcb = unsafe { &mut *scheduler::current().expect("No current process in scheduler") };
-    let tf = tcb.get_tf_ref();
-    unsafe {
-        TSS.rsp0 = tcb.get_kstack_top().as_usize() as u64;
-        asm!(
-            "mov rdx, {tf}",
-            "mov rax, [rdx + {fsbase}]",
-            "wrfsbase rax",
-            "push QWORD PTR [rdx + {user_ss}]",
-            "push QWORD PTR [rdx + {user_rsp}]",
-            "push QWORD PTR [rdx + {rflags}]",
-            "push QWORD PTR [rdx + {user_cs}]",
-            "push QWORD PTR [rdx + {user_rip}]",
-            "mov r15, [rdx + {r15}]",
-            "mov r14, [rdx + {r14}]",
-            "mov r13, [rdx + {r13}]",
-            "mov r12, [rdx + {r12}]",
-            "mov r11, [rdx + {r11}]",
-            "mov r10, [rdx + {r10}]",
-            "mov r9, [rdx + {r9}]",
-            "mov r8, [rdx + {r8}]",
-            "mov rdi, [rdx + {rdi}]",
-            "mov rsi, [rdx + {rsi}]",
-            "mov rbp, [rdx + {rbp}]",
-            "mov rcx, [rdx + {rcx}]",
-            "mov rbx, [rdx + {rbx}]",
-            "mov rax, [rdx + {rax}]",
-            "mov rdx, [rdx + {rdx_off}]",
-            "iretq",
-            tf = in(reg) tf as *const TrapFrame,
-            fsbase = const offset_of!(TrapFrame, fsbase),
-            user_ss = const offset_of!(TrapFrame, user_ss),
-            user_rsp = const offset_of!(TrapFrame, user_rsp),
-            rflags = const offset_of!(TrapFrame, rflags),
-            user_cs = const offset_of!(TrapFrame, user_cs),
-            user_rip = const offset_of!(TrapFrame, user_rip),
-            rax = const offset_of!(TrapFrame, rax),
-            rbx = const offset_of!(TrapFrame, rbx),
-            rcx = const offset_of!(TrapFrame, rcx),
-            rdx_off = const offset_of!(TrapFrame, rdx),
-            rbp = const offset_of!(TrapFrame, rbp),
-            rsi = const offset_of!(TrapFrame, rsi),
-            rdi = const offset_of!(TrapFrame, rdi),
-            r8 = const offset_of!(TrapFrame, r8),
-            r9 = const offset_of!(TrapFrame, r9),
-            r10 = const offset_of!(TrapFrame, r10),
-            r11 = const offset_of!(TrapFrame, r11),
-            r12 = const offset_of!(TrapFrame, r12),
-            r13 = const offset_of!(TrapFrame, r13),
-            r14 = const offset_of!(TrapFrame, r14),
-            r15 = const offset_of!(TrapFrame, r15),
-            options(noreturn)
-        );
-    }
+    unimplemented!()
 }
 
 pub fn is_user_mode(status: usize) -> bool {
@@ -444,33 +374,36 @@ unsafe fn init_gdt() {
         | (((tss_limit >> 16) & 0xf) << 48)
         | (((tss_base >> 24) & 0xff) << 56);
     let high = tss_base >> 32;
-    GDT.0[5] = low;
-    GDT.0[6] = high;
-
+    unsafe {
+        GDT.0[5] = low;
+        GDT.0[6] = high;
+    }
     let gdtr = DescriptorTablePointer {
         limit: (core::mem::size_of::<Gdt>() - 1) as u16,
         base: core::ptr::addr_of!(GDT) as u64,
     };
-    asm!("lgdt [{}]", in(reg) &gdtr, options(readonly, nostack));
-    asm!(
-        "push {kcode}",
-        "lea rax, [rip + 2f]",
-        "push rax",
-        "lretq",
-        "2:",
-        "mov ax, {kdata}",
-        "mov ds, ax",
-        "mov es, ax",
-        "mov ss, ax",
-        "mov fs, ax",
-        "mov gs, ax",
-        "ltr {tss:x}",
-        kcode = const KERNEL_CS,
-        kdata = const KERNEL_DS,
-        tss = in(reg) TSS_SELECTOR,
-        out("rax") _,
-        options(nostack)
-    );
+    unsafe {
+        asm!("lgdt [{}]", in(reg) &gdtr, options(readonly, nostack));
+        asm!(
+            "push {kcode}",
+            "lea rax, [rip + 2f]",
+            "push rax",
+            "lretq",
+            "2:",
+            "mov ax, {kdata}",
+            "mov ds, ax",
+            "mov es, ax",
+            "mov ss, ax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "ltr {tss:x}",
+            kcode = const KERNEL_CS,
+            kdata = const KERNEL_DS,
+            tss = in(reg) TSS_SELECTOR,
+            out("rax") _,
+            options(nostack)
+        );
+    }
 }
 
 unsafe extern "C" fn x86_syscall_dispatch(frame: *const InterruptFrame) -> ! {
@@ -497,5 +430,5 @@ unsafe extern "C" fn x86_syscall_dispatch(frame: *const InterruptFrame) -> ! {
     tf.rflags = raw.rflags;
     tf.user_rsp = raw.rsp;
     tf.user_ss = raw.ss;
-    trap_user_handler();
+    trap_user_handler()
 }

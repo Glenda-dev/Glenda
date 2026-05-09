@@ -1,6 +1,5 @@
-pub mod sbi;
+pub mod pl011;
 use super::drivers as hal_drivers;
-use super::sbi as sbi_driver;
 use crate::drivers;
 use core::fmt::Write;
 
@@ -18,7 +17,7 @@ pub fn print(args: core::fmt::Arguments) {
             }
         }
     } else {
-        let _ = sbi::SBIWriter.write_fmt(args);
+        let _ = pl011::PL011Writer.write_fmt(args);
     }
 }
 
@@ -29,10 +28,7 @@ pub fn read() -> u8 {
                 return c;
             }
         } else {
-            if let Some(c) = sbi_driver::get_char() {
-                sbi_driver::put_char(c); // 回显
-                return c;
-            }
+            // Fallback to direct read if needed, but for now just loop
         }
     }
 }

@@ -4,7 +4,7 @@ use crate::mem::PageTable;
 use crate::sync::Once;
 
 pub enum UartDriver {
-    Ns16550a(ns16550a::Uart),
+    Ns16550a(ns16550a::Ns16550a),
     Pl011(pl011::Pl011),
 }
 
@@ -106,5 +106,3 @@ impl FbDriver {
 pub static UART: Once<UartDriver> = Once::new();
 pub static INTC: Once<IntcDriver> = Once::new();
 pub static FB: Once<FbDriver> = Once::new();
-
-pub mod fb;

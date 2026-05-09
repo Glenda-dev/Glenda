@@ -17,3 +17,8 @@ pub use riscv::{bspid, cpuid};
 pub mod loongarch64;
 #[cfg(target_arch = "loongarch64")]
 pub use loongarch64::{bspid, cpuid};
+
+#[cfg(target_arch = "aarch64")]
+pub mod aarch64;
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::{bspid, cpuid};

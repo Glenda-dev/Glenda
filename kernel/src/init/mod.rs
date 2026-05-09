@@ -1,4 +1,3 @@
-mod console;
 mod cpu;
 mod irq;
 mod platform;
@@ -29,7 +28,6 @@ fn init_primary() {
     trap::init();
     pmem::init();
     platform::init();
-    console::init();
     // 关键：在这里重新初始化内核页表，处理真正的权限控制和 HHDM
     vm::init();
     proc::init();
