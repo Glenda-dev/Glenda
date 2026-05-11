@@ -61,3 +61,6 @@
 [submodule "service/chimera"]
 	path = service/chimera
 	url = https://github.com/Glenda-dev/chimera.git
+[submodule "service/nine"]
+	path = service/nine
+	url = https://github.com/Glenda-dev/9.git

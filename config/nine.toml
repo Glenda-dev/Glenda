@@ -1,0 +1,51 @@
+[system]
+arch = "arm64"
+profile = "relwithdebuginfo"
+bootloader = "u-boot"
+
+[qemu]
+cpus = 4
+mem = "2G"
+display = "nographic"
+disk = "./target/disk.img"
+serial_port = 5555
+net = true
+
+[[services]]
+name = "warren"
+path = "service/warren"
+build = "cargo"
+output = "build/warren.elf"
+kind = "root_task"
+
+[[services]]
+name = "nineball"
+path = "service/nineball"
+build = "cargo"
+output = "build/nineball.elf"
+kind = "service"
+
+[[services]]
+name = "fossil"
+path = "service/fossil"
+build = "cargo"
+output = "build/fossil.elf"
+kind = "service"
+
+[[services]]
+name = "nine"
+path = "service/nine"
+build = "cargo"
+output = "build/nine.elf"
+kind = "service"
+
+[[files]]
+name = "init.json"
+path = "config/init.json"
+[[files]]
+name = "nine.json"
+path = "config/nine.json"
+
+[features]
+kernel = ["embed-initrd"]
+nine = []

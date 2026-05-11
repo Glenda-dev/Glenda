@@ -1,0 +1,11 @@
+{
+    "init_path": "/arm64/bin/rc",
+    "root_partition": "disk0p0",
+    "stdio": {
+        "vt_name": "vt0",
+        "seat_id": 0,
+        "devices": [
+            "uart1"
+        ]
+    }
+}
