@@ -15,22 +15,6 @@ path = "examples/hello"
 build = "cargo"
 output = "build/hello.elf"
 kind = "root_task"
-[[services]]
-name = "hello-c"
-path = "examples/hello-c"
-build = "cmake"
-output = "build/hello-c"
-kind = "root_task"
-[[libraries]]
-name = "libglenda"
-path = "lib/libglenda"
-build = "cmake"
-output = "build/libglenda.a"
-[[libraries]]
-name = "libglenda-rs"
-path = "lib/libglenda-rs"
-build = "cargo"
-output = ""
 [features]
 kernel = []
 libglenda-rs = ["rt-bare"]

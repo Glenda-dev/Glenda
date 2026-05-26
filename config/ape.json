@@ -1,6 +1,6 @@
 {
     "init_path": "/bin/sh",
-    "root_partition": "disk0p0",
+    "root_partition": "disk1p0",
     "stdio": {
         "vt_name": "vt0",
         "seat_id": 0,
