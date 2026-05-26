@@ -72,9 +72,9 @@ pub fn parse_dtb(fdt: &fdt::Fdt) {
                         let size = reg.size.unwrap_or(0x100);
                         let cfg = generic_drivers::uart::ns16550a::Config::new(addr, 0, 5, 0x20);
                         UART.call_once(|| {
-                            UartDriver::Ns16550a(generic_drivers::uart::ns16550a::Ns16550a::from_config(
-                                cfg, size,
-                            ))
+                            UartDriver::Ns16550a(
+                                generic_drivers::uart::ns16550a::Ns16550a::from_config(cfg, size),
+                            )
                         });
                         log!("hal: ns16550a initialized at {:#x}", addr);
                     }

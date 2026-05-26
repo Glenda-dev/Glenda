@@ -1,5 +1,5 @@
 use super::csr;
-use crate::trap::cause::TrapCause;
+use crate::trap::{RawTrapInfo, TrapEvent};
 use core::arch::global_asm;
 
 global_asm!(
@@ -79,24 +79,17 @@ impl TrapFrame {
     }
 }
 
-pub fn get_cause() -> usize {
-    csr::read_csr(csr::CSR_ESTAT)
-}
-pub fn get_pc() -> usize {
-    csr::read_csr(csr::CSR_ERA)
-}
-pub fn get_value() -> usize {
-    csr::read_csr(csr::CSR_BADV)
-}
-pub fn get_status() -> usize {
-    csr::read_csr(csr::CSR_CRMD)
-}
 pub fn is_user_mode(status: usize) -> bool {
     (status & 0x3) != 0
 }
 
-pub fn match_cause(_cause: usize) -> TrapCause {
-    TrapCause::Unknown(0)
+pub fn trap_event(_ctx: &TrapFrame) -> TrapEvent {
+    TrapEvent::Unknown(RawTrapInfo {
+        cause: csr::read_csr(csr::CSR_ESTAT),
+        pc: csr::read_csr(csr::CSR_ERA),
+        value: csr::read_csr(csr::CSR_BADV),
+        status: csr::read_csr(csr::CSR_CRMD),
+    })
 }
 
 pub fn vector_init() {

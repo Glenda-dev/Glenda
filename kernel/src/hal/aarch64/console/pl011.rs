@@ -1,7 +1,7 @@
-use core::fmt::{self, Write};
-use core::ptr::{read_volatile, write_volatile};
 use crate::boot;
 use crate::mem::addr::HHDM_OFFSET;
+use core::fmt::{self, Write};
+use core::ptr::{read_volatile, write_volatile};
 
 const PL011_BASE: usize = 0x0900_0000;
 const UARTDR: usize = 0x00;

@@ -1,8 +1,7 @@
-use super::PGSIZE;
 use super::virt_to_phys;
+use super::{PGSIZE, TRAMPOLINE_VA};
 use crate::hal::drivers;
 use crate::mem::PageTable;
-use crate::mem::TRAMPOLINE_VA;
 use crate::mem::{Perms, VirtAddr};
 
 unsafe extern "C" {

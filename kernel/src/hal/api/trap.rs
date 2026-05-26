@@ -1,6 +1,6 @@
 use crate::ipc::MsgArgs;
 use crate::proc::thread;
-use crate::trap::TrapCause;
+use crate::trap::TrapEvent;
 use core::arch::naked_asm;
 /// 陷阱帧结构体
 /// 保存陷阱发生时的寄存器状态
@@ -104,27 +104,7 @@ impl TrapFrame {
 pub unsafe fn vector_init() {
     unimplemented!()
 }
-/// 获取导致 Trap 的原因
-/// 返回架构无关的枚举 (Syscall, Timer, ExternalIrq, PageFault...)
-pub fn match_cause(cause: usize) -> TrapCause {
-    unimplemented!()
-}
-/// 获取导致 Trap 的原因
-pub fn get_cause() -> usize {
-    unimplemented!()
-}
-/// 获取 Trap 发生时的程序计数器 (PC/EPC)
-pub fn get_pc() -> usize {
-    unimplemented!()
-}
-
-/// 获取导致异常的值 (如页错误的 faulting address)
-pub fn get_value() -> usize {
-    unimplemented!()
-}
-
-/// 获取陷阱发生时的状态寄存器 (sstatus/spsr)
-pub fn get_status() -> usize {
+pub fn trap_event(_ctx: &TrapFrame) -> TrapEvent {
     unimplemented!()
 }
 

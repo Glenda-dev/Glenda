@@ -46,7 +46,7 @@ impl TrapFrame {
         self.sp = stack_pointer;
         self.tpidr = thread_pointer;
         // SPSR_EL1: EL0t mode, interrupts enabled (all 0s)
-        self.spsr = 0; 
+        self.spsr = 0;
     }
 
     pub fn configure_kernel(
@@ -126,7 +126,7 @@ impl TrapFrame {
             self.regs[4],
             self.regs[5],
             self.regs[6],
-            self.regs[7],
+            self.regs[8],
         ]
     }
 

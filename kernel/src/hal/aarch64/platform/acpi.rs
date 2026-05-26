@@ -15,9 +15,9 @@ pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>) {
                 SpcrInterfaceType::Full16550 => {
                     let cfg = generic_drivers::uart::ns16550a::Config::new(addr, 0, 5, 0x20);
                     UART.call_once(|| {
-                        UartDriver::Ns16550a(generic_drivers::uart::ns16550a::Ns16550a::from_config(
-                            cfg, 0x100,
-                        ))
+                        UartDriver::Ns16550a(
+                            generic_drivers::uart::ns16550a::Ns16550a::from_config(cfg, 0x100),
+                        )
                     });
                 }
                 SpcrInterfaceType::ArmPL011 => {
@@ -99,7 +99,11 @@ pub fn parse_acpi(tables: &AcpiTables<GlendaAcpiHandler>) {
         }
 
         if let (Some(dist), Some(cpu)) = (gicd_base, gicc_base) {
-            INTC.call_once(|| IntcDriver::GicV2(generic_drivers::intr::gicv2::GicV2::new(dist, cpu, 0x10000, 0x2000)));
+            INTC.call_once(|| {
+                IntcDriver::GicV2(generic_drivers::intr::gicv2::GicV2::new(
+                    dist, cpu, 0x10000, 0x2000,
+                ))
+            });
             log!("hal: gicv2 (acpi) initialized, dist={:#x}, cpu={:#x}", dist, cpu);
         }
     }

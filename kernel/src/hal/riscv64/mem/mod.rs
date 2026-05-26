@@ -6,6 +6,14 @@ pub use pte::Pte;
 pub const PGSIZE: usize = 4096;
 pub const VA_MAX: usize = 1 << 38;
 pub const USER_VA: usize = 0x10000;
+pub const TRAMPOLINE_VA: usize = VA_MAX - PGSIZE;
+pub const STACK_BASE: usize = TRAMPOLINE_VA;
+pub const THREAD_AREA_BASE: usize = 0x3F_0000_0000;
+pub const UTCB_VA: usize = THREAD_AREA_BASE;
+pub const TRAPFRAME_VA: usize = THREAD_AREA_BASE + PGSIZE;
+pub const HEAP_VA: usize = 0x2000_0000;
+pub const BOOTINFO_VA: usize = 0x4000_0000;
+pub const INITRD_VA: usize = 0x5000_0000;
 pub const PT_LEVELS: usize = 3;
 pub const PGNUM: usize = 512;
 pub const PT_INDEX_BITS: usize = 9;
@@ -15,7 +23,6 @@ pub const ASID_MASK: usize = 0xFFFF;
 pub const KSTACK_PAGES: usize = 1;
 
 use super::asm;
-use crate::mem::TRAMPOLINE_VA;
 use crate::mem::addr::{phys_to_virt, virt_to_phys};
 use crate::mem::{PageTable, Perms, PhysAddr, VPN, VirtAddr};
 

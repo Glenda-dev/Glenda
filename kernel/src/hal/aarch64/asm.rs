@@ -83,6 +83,15 @@ pub unsafe fn write_ttbr1(value: usize) {
 }
 
 #[inline(always)]
+pub fn read_par_el1() -> usize {
+    let par: usize;
+    unsafe {
+        asm!("mrs {}, par_el1", out(reg) par, options(nomem, nostack, preserves_flags));
+    }
+    par
+}
+
+#[inline(always)]
 pub fn read_tpidr_el1() -> usize {
     let val: usize;
     unsafe {
@@ -227,6 +236,42 @@ pub fn read_id_aa64pfr0() -> usize {
 }
 
 #[inline(always)]
+pub fn read_vbar() -> usize {
+    let val: usize;
+    unsafe {
+        asm!("mrs {}, vbar_el1", out(reg) val, options(nomem, nostack, preserves_flags));
+    }
+    val
+}
+
+#[inline(always)]
+pub fn read_mair() -> usize {
+    let val: usize;
+    unsafe {
+        asm!("mrs {}, mair_el1", out(reg) val, options(nomem, nostack, preserves_flags));
+    }
+    val
+}
+
+#[inline(always)]
+pub fn read_tcr() -> usize {
+    let val: usize;
+    unsafe {
+        asm!("mrs {}, tcr_el1", out(reg) val, options(nomem, nostack, preserves_flags));
+    }
+    val
+}
+
+#[inline(always)]
+pub fn read_sctlr() -> usize {
+    let val: usize;
+    unsafe {
+        asm!("mrs {}, sctlr_el1", out(reg) val, options(nomem, nostack, preserves_flags));
+    }
+    val
+}
+
+#[inline(always)]
 pub unsafe fn write_vbar(value: usize) {
     unsafe {
         asm!("msr vbar_el1, {}", in(reg) value, options(nomem, nostack, preserves_flags));
@@ -259,6 +304,24 @@ pub unsafe fn write_ttbr0_zero() {
     unsafe {
         asm!("msr ttbr0_el1, xzr", "isb");
     }
+}
+
+#[inline(always)]
+pub fn at_s1e0r(va: usize) -> usize {
+    unsafe {
+        asm!("at s1e0r, {}", in(reg) va, options(nomem, nostack, preserves_flags));
+    }
+    isb();
+    read_par_el1()
+}
+
+#[inline(always)]
+pub fn at_s1e1r(va: usize) -> usize {
+    unsafe {
+        asm!("at s1e1r, {}", in(reg) va, options(nomem, nostack, preserves_flags));
+    }
+    isb();
+    read_par_el1()
 }
 
 #[inline(always)]

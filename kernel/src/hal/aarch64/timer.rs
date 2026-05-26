@@ -4,12 +4,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 static TIMER_FREQ: AtomicUsize = AtomicUsize::new(0);
 
 pub fn init(freq: usize) {
-    let detected = if freq != 0 {
-        freq
-    } else {
-        asm::read_cntfrq()
-    };
-    TIMER_FREQ.store(detected, Ordering::Relaxed);
+    TIMER_FREQ.store(freq, Ordering::Relaxed);
 }
 
 pub fn get_time() -> usize {

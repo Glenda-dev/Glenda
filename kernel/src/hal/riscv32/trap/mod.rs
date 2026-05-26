@@ -3,8 +3,10 @@ mod user;
 mod vector;
 
 use super::asm;
-use crate::trap::TrapCause;
-use crate::trap::{TrapException, TrapInterrupt};
+use crate::trap::cause::VirtExitEvent;
+use crate::trap::{
+    FaultEvent, InterruptEvent, RawTrapInfo, SyscallEvent, TrapEvent, TrapException, TrapInterrupt,
+};
 use core::arch::asm;
 use vector::kernel_vector;
 
@@ -22,55 +24,65 @@ pub unsafe fn vector_init() {
     }
 }
 
-/// 获取导致 Trap 的原因
-/// 返回架构无关的枚举 (Syscall, Timer, ExternalIrq, PageFault...)
-pub fn match_cause(cause: usize) -> TrapCause {
-    // RISC-V scause 布局:
-    // 最高位 (Interrupt Bit): 1=Interrupt, 0=Exception
-    // 低位 (Exception Code)
-    let is_interrupt = (cause >> (usize::BITS - 1)) != 0;
-    let code = cause & !(1 << (usize::BITS - 1));
-
-    if is_interrupt {
-        match code {
-            1 => TrapCause::Interrupt(TrapInterrupt::Software), // Supervisor Software Interrupt
-            5 => TrapCause::Interrupt(TrapInterrupt::Timer),    // Supervisor Timer Interrupt
-            6 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorTimer),
-            9 => TrapCause::Interrupt(TrapInterrupt::External), // Supervisor External Interrupt
-            10 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorExternal),
-            2 => TrapCause::Interrupt(TrapInterrupt::VirtualSupervisorSoftware),
-            _ => TrapCause::Unknown(cause),
-        }
-    } else {
-        match code {
-            2 => TrapCause::Exception(TrapException::IllegalInstruction),
-            3 => TrapCause::Exception(TrapException::Breakpoint),
-            0 | 4 | 6 => TrapCause::Exception(TrapException::AccessMisaligned),
-            1 | 5 | 7 => TrapCause::Exception(TrapException::AccessFault),
-            8 => TrapCause::Exception(TrapException::Syscall), // Environment call from U-mode
-            10 => TrapCause::Exception(TrapException::VirtualSupervisorSyscall),
-            12 | 13 | 15 => TrapCause::Exception(TrapException::PageFault), // Instruction/Load/Store Page Fault
-            20 | 21 | 23 => TrapCause::Exception(TrapException::GuestPageFault),
-            22 => TrapCause::Exception(TrapException::VirtualInstruction),
-            _ => TrapCause::Unknown(cause),
-        }
+fn raw_trap_info() -> RawTrapInfo {
+    RawTrapInfo {
+        cause: asm::read_scause(),
+        pc: asm::read_sepc(),
+        value: asm::read_stval(),
+        status: asm::read_sstatus(),
     }
 }
-/// 获取 Trap 发生时的程序计数器 (PC/EPC)
-pub fn get_pc() -> usize {
-    asm::read_sepc()
+
+fn decode_interrupt(code: usize) -> TrapInterrupt {
+    match code {
+        1 => TrapInterrupt::Software,
+        5 => TrapInterrupt::Timer,
+        6 => TrapInterrupt::VirtualSupervisorTimer,
+        9 => TrapInterrupt::External,
+        10 => TrapInterrupt::VirtualSupervisorExternal,
+        2 => TrapInterrupt::VirtualSupervisorSoftware,
+        _ => TrapInterrupt::Unknown(code),
+    }
 }
 
-pub fn get_value() -> usize {
-    asm::read_stval()
+fn decode_exception(code: usize) -> TrapException {
+    match code {
+        2 => TrapException::IllegalInstruction,
+        3 => TrapException::Breakpoint,
+        0 | 4 | 6 => TrapException::AccessMisaligned,
+        1 | 5 | 7 => TrapException::AccessFault,
+        8 => TrapException::Syscall,
+        10 => TrapException::VirtualSupervisorSyscall,
+        12 | 13 | 15 => TrapException::PageFault,
+        20 | 21 | 23 => TrapException::GuestPageFault,
+        22 => TrapException::VirtualInstruction,
+        _ => TrapException::Unknown(code),
+    }
 }
 
-pub fn get_status() -> usize {
-    asm::read_sstatus()
-}
+pub fn trap_event(ctx: &TrapFrame) -> TrapEvent {
+    let raw = raw_trap_info();
+    let is_interrupt = (raw.cause >> (usize::BITS - 1)) != 0;
+    let code = raw.cause & !(1 << (usize::BITS - 1));
 
-pub fn get_cause() -> usize {
-    asm::read_scause()
+    if is_interrupt {
+        let kind = decode_interrupt(code);
+        return TrapEvent::Interrupt(InterruptEvent { kind, irq: None, raw });
+    }
+
+    match decode_exception(code) {
+        TrapException::Syscall => {
+            let (number, cptr) = ctx.get_syscall_args();
+            TrapEvent::Syscall(SyscallEvent { number, cptr, raw })
+        }
+        kind @ (TrapException::GuestPageFault
+        | TrapException::VirtualInstruction
+        | TrapException::VirtualSupervisorSyscall) => {
+            TrapEvent::VirtExit(VirtExitEvent { kind, raw })
+        }
+        TrapException::Unknown(_) => TrapEvent::Unknown(raw),
+        kind => TrapEvent::Fault(FaultEvent { kind, raw }),
+    }
 }
 
 /// 判断是否在用户态

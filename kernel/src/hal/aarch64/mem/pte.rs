@@ -31,7 +31,7 @@ impl Pte {
             // For AArch64:
             // Levels 0-2: bit 1 = 1 is table, bit 1 = 0 is block.
             // Level 3: bit 1 = 1 is page.
-            
+
             // We set bit 1 to 1 for now, assuming Page or Table.
             bits |= DESC_TABLE | AF | SH_INNER;
             bits |= if flags.contains(Perms::WRITE) { AP_RW_EL1 } else { AP_RO_EL1 };

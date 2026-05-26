@@ -1,9 +1,8 @@
-use super::super::mem::PGSIZE;
+use super::super::mem::{PGSIZE, TRAMPOLINE_VA};
 use super::super::{asm, cpu};
 use super::kernel_vector;
 use super::vector::user_return;
 use super::vector::user_vector;
-use crate::mem::TRAMPOLINE_VA;
 use crate::proc::scheduler;
 use crate::trap::handler::trap_kernel_handler;
 use core::mem::transmute;
@@ -29,10 +28,8 @@ pub fn trap_user_return() {
 
     let kstack_top = tcb.get_kstack_top().as_usize();
     let user_satp = tcb.mmu_register() as u64;
-
     // 从 TCB 获取正确的 TrapFrame
     let ctx = tcb.get_tf();
-
     // 将 stvec 切换到用户态向量入口
     let tramp_base_va = TRAMPOLINE_VA;
     let user_vec_off = (user_vector as *const () as usize) & (PGSIZE - 1);

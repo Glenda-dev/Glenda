@@ -1,6 +1,6 @@
+use super::asm;
 use super::drivers::INTC;
 use super::drivers::IntcDriver;
-use super::asm;
 
 pub const MAX_IRQS: usize = 1024;
 

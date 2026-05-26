@@ -1,7 +1,7 @@
 use crate::ipc::MsgArgs;
 use crate::proc::scheduler;
-use crate::trap::TrapCause;
 use crate::trap::syscall;
+use crate::trap::{RawTrapInfo, TrapEvent};
 use core::arch::{asm, naked_asm};
 
 const KERNEL_CS: u64 = 0x08;
@@ -282,24 +282,8 @@ pub unsafe fn vector_init() {
     }
 }
 
-pub fn match_cause(_cause: usize) -> TrapCause {
-    TrapCause::Unknown(_cause)
-}
-
-pub fn get_cause() -> usize {
-    0
-}
-
-pub fn get_pc() -> usize {
-    0
-}
-
-pub fn get_value() -> usize {
-    0
-}
-
-pub fn get_status() -> usize {
-    0
+pub fn trap_event(_ctx: &TrapFrame) -> TrapEvent {
+    TrapEvent::Unknown(RawTrapInfo { cause: 0, pc: 0, value: 0, status: 0 })
 }
 
 #[unsafe(naked)]
