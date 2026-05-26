@@ -1,6 +1,6 @@
 use crate::config::Config;
-use std::fs;
 use crate::util::run;
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use which::which;
@@ -59,22 +59,29 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         crate::arch::Bootloader::Linuxboot => {
             // 直接将内核作为 Payload (Linux boot protocol)
             let mut kernel_path = std::env::current_dir()?.join("target/kernel");
-            
+
             // AArch64 QEMU virt doesn't boot ELF via -kernel correctly, use raw binary.
             if cfg.system.arch == crate::arch::Arch::Aarch64 {
                 cmd.arg("-cpu").arg("max");
-                
+
                 let bin_path = std::env::current_dir()?.join("target/kernel.bin");
                 let objcopy = cfg.system.arch.llvm_tool("objcopy");
                 let status = Command::new(objcopy)
-                    .args(&["-O", "binary", kernel_path.to_str().unwrap(), bin_path.to_str().unwrap()])
+                    .args(&[
+                        "-O",
+                        "binary",
+                        kernel_path.to_str().unwrap(),
+                        bin_path.to_str().unwrap(),
+                    ])
                     .status()?;
                 if !status.success() {
-                    return Err(anyhow::anyhow!("[ ERROR ] Failed to convert kernel ELF to binary"));
+                    return Err(anyhow::anyhow!(
+                        "[ ERROR ] Failed to convert kernel ELF to binary"
+                    ));
                 }
                 kernel_path = bin_path;
             }
-            
+
             cmd.arg("-kernel").arg(kernel_path);
 
             // 指定 initrd 为 modules.bin
@@ -209,7 +216,9 @@ pub fn qemu_cmd(cfg: &Config) -> anyhow::Result<Command> {
         // Force modern virtio transport on MMIO platforms.
         cmd.arg("-global").arg("virtio-mmio.force-legacy=false");
     }
-
+    // Debug options
+    cmd.arg("-d").arg("int,guest_errors,cpu_reset");
+    cmd.arg("-D").arg("qemu.log");
     Ok(cmd)
 }
 

@@ -80,9 +80,8 @@ struct EmbeddedInitrd {
 }
 
 #[cfg(feature = "embed-initrd")]
-static EMBEDDED_INITRD: EmbeddedInitrd = EmbeddedInitrd {
-    data: *include_bytes!(env!("INITRD_PATH")),
-};
+static EMBEDDED_INITRD: EmbeddedInitrd =
+    EmbeddedInitrd { data: *include_bytes!(env!("INITRD_PATH")) };
 
 pub fn get_dtb() -> Option<(VirtAddr, usize)> {
     BOOT_LOADER_INFO.get().and_then(|info| info.dtb_addr)

@@ -1,4 +1,4 @@
-use super::{TrapCause, TrapException, TrapInterrupt};
+use super::{InterruptEvent, RawTrapInfo, SyscallEvent, TrapEvent, TrapException, TrapInterrupt};
 use crate::cap::method::{ipcmethod, replymethod};
 use crate::cap::{Badge, CapPtr, CapType, Capability, Rights, Slot};
 use crate::error::Error;
@@ -16,79 +16,53 @@ use crate::trap::syscall;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn trap_kernel_handler(ctx: &mut TrapFrame) {
-    let cause = hal::trap::get_cause();
-    let pc = hal::trap::get_pc();
-    let value = hal::trap::get_value();
-    let status = hal::trap::get_status();
-    match hal::trap::match_cause(cause) {
-        TrapCause::Exception(e) => {
-            exception_handler(e, pc, cause, value, status, ctx);
-        }
-        TrapCause::Interrupt(i) => {
-            interrupt_handler(i, pc, cause, value, status);
-        }
-        TrapCause::Unknown(code) => {
+    match hal::trap::trap_event(ctx) {
+        TrapEvent::Syscall(event) => syscall_entry(ctx, event),
+        TrapEvent::Fault(event) => exception_handler(event.kind, event.raw, ctx),
+        TrapEvent::VirtExit(event) => exception_handler(event.kind, event.raw, ctx),
+        TrapEvent::Interrupt(event) => interrupt_handler(event),
+        TrapEvent::Unknown(raw) => {
             panic!(
                 "Unhandled trap: {}, cause: {:#x}, pc: {:#x}, value: {:#x}, status: {:#x}",
-                code, cause, pc, value, status
+                raw.cause, raw.cause, raw.pc, raw.value, raw.status
             );
         }
+    }
+}
+
+fn syscall_entry(ctx: &mut TrapFrame, event: SyscallEvent) {
+    if let Some(ptr) = scheduler::current() {
+        let tcb = unsafe { &mut *ptr };
+        if syscall_fastpath(ctx, event) {
+            return;
+        }
+        fault_handler(tcb, TrapException::Syscall, event.raw, ctx);
+    } else {
+        unhandled_exception(TrapException::Syscall, event.raw);
     }
 }
 
 /// 处理异常情况
-fn exception_handler(
-    e: TrapException,
-    pc: usize,
-    cause: usize,
-    value: usize,
-    status: usize,
-    ctx: &mut TrapFrame,
-) {
+fn exception_handler(e: TrapException, raw: RawTrapInfo, ctx: &mut TrapFrame) {
     if let Some(ptr) = scheduler::current() {
         let tcb = unsafe { &mut *ptr };
-        if e == TrapException::Syscall && syscall_handler(ctx) {
-            return;
-        }
-        fault_handler(tcb, e, cause, pc, value, status, ctx);
+        fault_handler(tcb, e, raw, ctx);
     } else {
-        unhandled_exception(e, cause, pc, value, status);
+        unhandled_exception(e, raw);
     }
 }
 
 /// 处理中断情况
-fn interrupt_handler(e: TrapInterrupt, pc: usize, cause: usize, value: usize, status: usize) {
-    match e {
-        TrapInterrupt::External => external_handler(),
-        // S-mode timer interrupt
-        TrapInterrupt::Timer => timer_stip(status),
-        // S-mode software interrupt
-        TrapInterrupt::Software => timer_ssip(status),
-        // 剩下的被认为是需要打印的内容
-        _ => {
-            printk_unsynced!(
-                "{}TRAP(Interrupt){}: {}; pc={:#x}, cause={:#x}, value={:#x}, status={:#x}\n",
-                ANSI_YELLOW,
-                ANSI_RESET,
-                e,
-                pc,
-                cause,
-                value,
-                status
-            );
-        }
+fn interrupt_handler(event: InterruptEvent) {
+    match event.kind {
+        TrapInterrupt::External | TrapInterrupt::Fast => external_handler(event),
+        TrapInterrupt::Timer => timer_stip(event),
+        TrapInterrupt::Software => timer_ssip(event),
+        _ => unhandled_interrupt(event),
     }
 }
 
-fn fault_handler(
-    tcb: &mut TCB,
-    e: TrapException,
-    cause: usize,
-    pc: usize,
-    value: usize,
-    status: usize,
-    ctx: &mut TrapFrame,
-) {
+fn fault_handler(tcb: &mut TCB, e: TrapException, raw: RawTrapInfo, ctx: &mut TrapFrame) {
     if matches!(
         e,
         TrapException::GuestPageFault
@@ -104,49 +78,48 @@ fn fault_handler(
             }
             _ => crate::proc::virt::VcpuExitReason::HostTrap,
         };
-        vcpu.exit_detail0 = value;
-        vcpu.exit_detail1 = cause;
-        vcpu.exit_detail2 = pc;
+        vcpu.exit_detail0 = raw.value;
+        vcpu.exit_detail1 = raw.cause;
+        vcpu.exit_detail2 = raw.pc;
     }
 
     log!(
         "trap: Fault in thread {:p}: {}, cause={:#x}, pc={:#x}, value={:#x}, status={:#x}",
         tcb,
         e,
-        cause,
-        pc,
-        value,
-        status
+        raw.cause,
+        raw.pc,
+        raw.value,
+        raw.status
     );
     if let Some(handler_cap) = tcb.fault_handler.clone()
         && handler_cap.cap_type() == CapType::Endpoint
     {
-        // 1. 将异常详情写入 UTCB (IPC Buffer)
         if let Some(utcb) = tcb.get_utcb() {
             let (label, flags) = match e {
                 TrapException::PageFault => {
-                    utcb.mrs_regs[0] = value; // addr
-                    utcb.mrs_regs[1] = pc; // pc
-                    utcb.mrs_regs[2] = cause; // cause
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
+                    utcb.mrs_regs[2] = raw.cause;
                     (protocol::PAGE_FAULT, MsgFlags::NONE)
                 }
                 TrapException::IllegalInstruction => {
-                    utcb.mrs_regs[0] = value; // instruction
-                    utcb.mrs_regs[1] = pc; // pc
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
                     (protocol::ILLEGAL_INSTRUCTION, MsgFlags::NONE)
                 }
                 TrapException::Breakpoint => {
-                    utcb.mrs_regs[0] = pc; // pc
+                    utcb.mrs_regs[0] = raw.pc;
                     (protocol::BREAKPOINT, MsgFlags::NONE)
                 }
                 TrapException::AccessFault => {
-                    utcb.mrs_regs[0] = value; // addr
-                    utcb.mrs_regs[1] = pc; // pc
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
                     (protocol::ACCESS_FAULT, MsgFlags::NONE)
                 }
                 TrapException::AccessMisaligned => {
-                    utcb.mrs_regs[0] = value; // addr
-                    utcb.mrs_regs[1] = pc; // pc
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
                     (protocol::ACCESS_MISALIGNED, MsgFlags::NONE)
                 }
                 TrapException::Syscall => {
@@ -155,27 +128,27 @@ fn fault_handler(
                     (protocol::SYSCALL, MsgFlags::HAS_MRS)
                 }
                 TrapException::GuestPageFault => {
-                    utcb.mrs_regs[0] = value; // guest fault addr
-                    utcb.mrs_regs[1] = pc; // host trap pc
-                    utcb.mrs_regs[2] = cause; // scause
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
+                    utcb.mrs_regs[2] = raw.cause;
                     (protocol::VIRT_EXIT, MsgFlags::NONE)
                 }
                 TrapException::VirtualInstruction => {
-                    utcb.mrs_regs[0] = value; // trapping instruction encoding/value
-                    utcb.mrs_regs[1] = pc; // pc
-                    utcb.mrs_regs[2] = cause; // scause
+                    utcb.mrs_regs[0] = raw.value;
+                    utcb.mrs_regs[1] = raw.pc;
+                    utcb.mrs_regs[2] = raw.cause;
                     (protocol::VIRT_EXIT, MsgFlags::NONE)
                 }
                 TrapException::VirtualSupervisorSyscall => {
-                    utcb.mrs_regs[0] = cause; // scause
-                    utcb.mrs_regs[1] = value; // stval/htval proxy
-                    utcb.mrs_regs[2] = pc; // pc
+                    utcb.mrs_regs[0] = raw.cause;
+                    utcb.mrs_regs[1] = raw.value;
+                    utcb.mrs_regs[2] = raw.pc;
                     (protocol::VIRT_EXIT, MsgFlags::NONE)
                 }
                 _ => {
-                    utcb.mrs_regs[0] = cause; // cause
-                    utcb.mrs_regs[1] = value; // value
-                    utcb.mrs_regs[2] = pc; // pc
+                    utcb.mrs_regs[0] = raw.cause;
+                    utcb.mrs_regs[1] = raw.value;
+                    utcb.mrs_regs[2] = raw.pc;
                     (protocol::UNKNOWN_FAULT, MsgFlags::NONE)
                 }
             };
@@ -186,23 +159,19 @@ fn fault_handler(
         let ep = unsafe { ep_ptr.as_mut::<ipc::Endpoint>() };
         let badge = handler_cap.get_badge();
 
-        // 3. 执行 Call (这会阻塞当前线程，直到收到 Reply)
         ipc::call(tcb, ep, badge, None).unwrap_or_else(|err| {
             error!(
                 "trap: Fault handler IPC call failed: {:?}, terminating thread. Fault: {}, cause={:#x}, pc={:#x}\n",
                 err,
                 e,
-                cause,
-                pc
+                raw.cause,
+                raw.pc
             );
             scheduler::block_current_thread();
         });
 
-        // 4. 如果是Syscall，跳过epc
         if e == TrapException::Syscall {
             if tcb.upcall_delivery_armed {
-                // 已由 TCB::DeliverUpcall 预设用户态返回现场（epc/ra/a0..a3）。
-                // 这里必须避免默认 syscall 返回流程覆盖寄存器。
                 tcb.upcall_delivery_armed = false;
             } else {
                 ctx.advance_pc();
@@ -217,34 +186,34 @@ fn fault_handler(
             }
         }
     } else {
-        unhandled_exception(e, cause, pc, value, status);
+        unhandled_exception(e, raw);
     }
 }
 
-fn unhandled_exception(e: TrapException, cause: usize, pc: usize, value: usize, status: usize) {
+fn unhandled_exception(e: TrapException, raw: RawTrapInfo) {
     printk_unsynced!(
         "\n{}TRAP(Exception){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_RED,
         ANSI_RESET,
         e,
-        cause,
-        pc,
-        value,
-        status
+        raw.cause,
+        raw.pc,
+        raw.value,
+        raw.status
     );
     panic!("Kernel panic due to unhandled exception");
 }
 
-fn unhandled_interrupt(e: TrapInterrupt, cause: usize, pc: usize, value: usize, status: usize) {
+fn unhandled_interrupt(event: InterruptEvent) {
     printk_unsynced!(
         "{}TRAP(Interrupt){}: {} cause={:#x}, pc={:#x}, value={:#x}, status={:#x}\n",
         ANSI_YELLOW,
         ANSI_RESET,
-        e,
-        cause,
-        pc,
-        value,
-        status
+        event.kind,
+        event.raw.cause,
+        event.raw.pc,
+        event.raw.value,
+        event.raw.status
     );
 }
 
@@ -355,7 +324,6 @@ fn dispatch_fast_ipc_inline(
             let target_tcb = unsafe { &mut *target_tcb_ptr };
             let ret = ipc::reply_inline(tcb, target_tcb, fast_msgtag, fast_mrs);
 
-            // Reply cap is one-shot; consume it regardless of delivery result.
             consume_reply_slot(slot_ptr, target_tcb_ptr);
 
             Some(match ret {
@@ -462,7 +430,6 @@ fn dispatch_fast_ipc(
             let cap_to_send = ipc::transfer_cap(tcb);
             let ret = ipc::reply(tcb, target_tcb, cap_to_send);
 
-            // Reply cap is one-shot; consume it regardless of delivery result.
             consume_reply_slot(slot_ptr, target_tcb_ptr);
 
             Some(match ret {
@@ -504,12 +471,13 @@ fn finish_syscall(ctx: &mut TrapFrame, ret: usize) -> bool {
     true
 }
 
-fn syscall_handler(ctx: &mut TrapFrame) -> bool {
-    let (syscall_no, cptr) = ctx.get_syscall_args();
-    let Some(method) = crate::cap::method::decode_invoke(syscall_no) else {
+fn syscall_fastpath(ctx: &mut TrapFrame, event: SyscallEvent) -> bool {
+    let Some(method) = crate::cap::method::decode_invoke(event.number) else {
         return false;
     };
 
+    let cptr = event.cptr;
+    let syscall_no = event.number;
     let tcb_ptr = scheduler::current().expect("Native syscall with no current thread");
     let tcb = unsafe { &mut *tcb_ptr };
 
@@ -625,32 +593,42 @@ fn syscall_handler(ctx: &mut TrapFrame) -> bool {
     finish_syscall(ctx, ret)
 }
 
-// 外设中断处理
-fn external_handler() {
+fn complete_claimed_interrupt(irq: Option<usize>) {
+    if let Some(irq) = irq {
+        let cpuid = hal::cpu::cpu_id();
+        hal::irq::complete(irq, cpuid);
+    }
+}
+
+fn external_handler(event: InterruptEvent) {
     let cpuid = hal::cpu::cpu_id();
-    let id = hal::irq::claim(cpuid);
+    let id = event.irq.or_else(|| hal::irq::claim(cpuid).map(|irq| irq as usize));
     match id {
-        None => return,
-        Some(id) => irq::handle_claimed(cpuid, id as usize)
+        None => (),
+        Some(id) => irq::handle_claimed(cpuid, id)
             .unwrap_or_else(|e| error!("trap: Failed to handle external interrupt: {:?}\n", e)),
     }
 }
 
-fn timer_ssip(status: usize) {
-    hal::irq::clear_soft();
-    if hal::trap::is_user_mode(status) {
+fn timer_ssip(event: InterruptEvent) {
+    complete_claimed_interrupt(event.irq);
+    if event.irq.is_none() {
+        hal::irq::clear_soft();
+    }
+    if hal::trap::is_user_mode(event.raw.status) {
         scheduler::yield_proc();
     }
 }
 
-fn timer_stip(status: usize) {
+fn timer_stip(event: InterruptEvent) {
     irq::timer::program_next_tick();
-    if hal::trap::is_user_mode(status) {
-        if let Some(tcb_ptr) = scheduler::current() {
-            let tcb = unsafe { &*tcb_ptr };
-            if tcb.timeslice == 0 {
-                scheduler::yield_proc();
-            }
+    complete_claimed_interrupt(event.irq);
+    if hal::trap::is_user_mode(event.raw.status)
+        && let Some(tcb_ptr) = scheduler::current()
+    {
+        let tcb = unsafe { &*tcb_ptr };
+        if tcb.timeslice == 0 {
+            scheduler::yield_proc();
         }
     }
 }

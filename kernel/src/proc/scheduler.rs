@@ -322,7 +322,6 @@ pub fn scheduler() -> ! {
             let cpu = cpu::get();
             // 设置当前运行的线程
             set_current(tcb_ptr);
-
             // 执行上下文切换：从当前 CPU 的 idle context 切换到线程 context
             unsafe {
                 hal::proc::switch_context(&mut cpu.context, &mut tcb.context);
@@ -606,10 +605,7 @@ fn dump_watchdog(now: usize) {
                     ready_total += 1;
                     curr = unsafe { (*ptr).next };
                     if count > 4096 {
-                        debug!(
-                            "watchdog: cpu={} ready queue prio={} appears cyclic",
-                            id, prio
-                        );
+                        debug!("watchdog: cpu={} ready queue prio={} appears cyclic", id, prio);
                         break;
                     }
                 }

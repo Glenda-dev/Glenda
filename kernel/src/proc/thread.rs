@@ -194,6 +194,11 @@ impl TCB {
         unsafe { vspace_cap.obj_ptr().as_ref::<PageTable>() }
     }
 
+    pub fn get_pt_mut(&mut self) -> &mut PageTable {
+        let vspace_cap = self.vspace_root.as_ref().expect("VSpace root not configured");
+        unsafe { vspace_cap.obj_ptr().as_mut::<PageTable>() }
+    }
+
     pub fn get_cspace(&self) -> &CNode {
         let cspace_cap = self.cspace_root.as_ref().expect("CSpace root not configured");
         unsafe { cspace_cap.obj_ptr().as_ref::<CNode>() }

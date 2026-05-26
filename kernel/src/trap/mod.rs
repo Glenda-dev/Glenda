@@ -2,7 +2,7 @@ pub mod cause;
 pub mod handler;
 pub mod syscall;
 
-pub use cause::{TrapCause, TrapException, TrapInterrupt};
+pub use cause::*;
 
 use crate::hal;
 

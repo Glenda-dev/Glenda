@@ -539,65 +539,54 @@ impl PageTable {
         }
     }
 
-    pub fn debug_print(&self) {
-        let pgtbl_2 = self as *const PageTable as usize;
-        printk!("L2 PT @ {:#x}\n", pgtbl_2);
-
-        for i in 0..PGNUM {
-            let pte2 = self.entries[i];
-            if !pte2.is_valid() {
-                continue;
-            }
-            if pte2.is_leaf() {
-                printk!("ASSERT: L2 entry is leaf (Huge Page), i={}\n", i);
+    fn debug_print_level(table: &PageTable, level: usize, va_base: usize, depth: usize) {
+        for idx in 0..PGNUM {
+            let pte = table.entries[idx];
+            if !pte.is_valid() {
                 continue;
             }
 
-            let pgtbl_1_pa = pte2.pa();
-            let pgtbl_1_va = phys_to_virt(pgtbl_1_pa);
-            printk!(".. L1[{}] pa={:#x}\n", i, pgtbl_1_pa.as_usize());
+            let indent = match depth {
+                0 => "",
+                1 => ".. ",
+                2 => ".. .. ",
+                3 => ".. .. .. ",
+                4 => ".. .. .. .. ",
+                _ => ".. .. .. .. ..",
+            };
+            let entry_va_base = va_base | (idx << (12 + level * hal::mem::PT_INDEX_BITS));
 
-            let pgtbl_1 = unsafe { pgtbl_1_va.as_ref::<PageTable>() };
-            for j in 0..PGNUM {
-                let pte1 = pgtbl_1.entries[j];
-                if !pte1.is_valid() {
-                    continue;
-                }
-                if pte1.is_leaf() {
-                    printk!("ASSERT: L1 entry is leaf (Large Page), j={}\n", j);
-                    continue;
-                }
-
-                let pgtbl_0_pa = pte1.pa();
-                let pgtbl_0_va = phys_to_virt(pgtbl_0_pa);
-                printk!(".. .. L0[{}] pa={:#x}\n", j, pgtbl_0_pa.as_usize());
-
-                let pgtbl_0 = unsafe { pgtbl_0_va.as_ref::<PageTable>() };
-                for k in 0..PGNUM {
-                    let pte0 = pgtbl_0.entries[k];
-                    if !pte0.is_valid() {
-                        continue;
-                    }
-                    if !pte0.is_leaf() {
-                        printk!("ASSERT: L0 entry not leaf, k={}\n", k);
-                        continue;
-                    }
-
-                    let pa = pte0.pa();
-                    let va_raw = ((i << 30) | (j << 21) | (k << 12)) as usize;
-                    // let va = sv39_canon(va_raw);
-                    let va = va_raw; // Simplified for now
-                    let flags = pte0.as_usize() & PTEFLAGS_MASK;
-
-                    printk!(
-                        ".. .. .. page {} VA={:#x} -> PA={:#x} flags={:#x}\n",
-                        k,
-                        va,
-                        pa.as_usize(),
-                        flags
-                    );
-                }
+            if pte.is_leaf() {
+                let size = Self::page_size_for_level(level);
+                let flags = pte.as_usize() & PTEFLAGS_MASK;
+                printk!(
+                    "{}L{}[{}] VA={:#x}..{:#x} -> PA={:#x} flags={:#x}\n",
+                    indent,
+                    level,
+                    idx,
+                    entry_va_base,
+                    entry_va_base + size - 1,
+                    pte.pa().as_usize(),
+                    flags
+                );
+                continue;
             }
+
+            let next_pa = pte.pa();
+            printk!("{}L{}[{}] pa={:#x}\n", indent, level, idx, next_pa.as_usize());
+            if level == 0 {
+                printk!("{}ASSERT: L0 table entry encountered at idx={}\n", indent, idx);
+                continue;
+            }
+
+            let next_table = unsafe { phys_to_virt(next_pa).as_ref::<PageTable>() };
+            Self::debug_print_level(next_table, level - 1, entry_va_base, depth + 1);
         }
+    }
+
+    pub fn debug_print(&self) {
+        let root_level = PT_LEVELS - 1;
+        printk!("L{} PT @ {:#x}\n", root_level, self as *const PageTable as usize);
+        Self::debug_print_level(self, root_level, 0, 0);
     }
 }

@@ -25,13 +25,7 @@ pub struct GicV2 {
 
 impl GicV2 {
     pub const fn new(dist_base: usize, cpu_base: usize, dist_size: usize, cpu_size: usize) -> Self {
-        Self {
-            dist_base,
-            cpu_base,
-            dist_size,
-            cpu_size,
-            lock: SpinLock::new(()),
-        }
+        Self { dist_base, cpu_base, dist_size, cpu_size, lock: SpinLock::new(()) }
     }
 
     #[inline(always)]
