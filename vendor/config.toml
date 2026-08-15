@@ -1,0 +1,12 @@
+# Vendored source registry (empty by design).
+#
+# This workspace uses `[net] offline = true` (see ../.cargo/config.toml). When a
+# dependency is introduced, run `cargo vendor --versioned-dirs` from the
+# workspace root and commit the generated directory so clean offline builds keep
+# reproducing byte-identical kernels. The config here is emitted by `cargo vendor`;
+# it is kept checked-in because the registry replacement is part of the offline contract.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

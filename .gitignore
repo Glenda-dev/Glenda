@@ -4,3 +4,7 @@
 .env
 build/
 fs.img
+
+# Cargo build outputs live under target/ and are never part of the owned source
+# tree; ignore them so the ownership scanner only sees source changes.
+target/

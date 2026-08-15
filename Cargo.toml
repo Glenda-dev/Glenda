@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["kernel", "xtask"]
+
+# Deterministic builds: disable incremental so a clean kernel rebuild is a
+# full, byte-stable compile (the toolchain-clean-rebuild binding depends on
+# this plus offline resolution).
+[profile.dev]
+opt-level = 0
+incremental = false
+panic = "abort"
+
+[profile.release]
+incremental = false
+panic = "abort"

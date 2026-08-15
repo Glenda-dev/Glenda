@@ -1,0 +1,8 @@
+# Toolchain pinned for the offline rv64 workspace. The nightly channel plus
+# the riscv64gc-unknown-none-elf target are required to link the no_std kernel.
+# All listed components are preinstalled in the student harness so no network
+# access is needed to reproduce a clean build.
+[toolchain]
+channel = "nightly"
+components = ["rust-src", "llvm-tools", "rustfmt"]
+targets = ["riscv64gc-unknown-none-elf"]

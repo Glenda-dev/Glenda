@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+
+# Host-side build/run driver. Uses only the standard library so clean offline
+# builds and runs resolve without any crates.io access.
+[dependencies]
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

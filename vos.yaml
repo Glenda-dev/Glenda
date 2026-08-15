@@ -1,7 +1,9 @@
 version: vos.project.v1
 build:
   program: cargo
-  args: [xtask, build]
+  args:
+    - xtask
+    - build
   cwd: .
   env:
     - PATH
@@ -19,7 +21,11 @@ build:
 runners:
   qemu:
     program: cargo
-    args: [xtask, run, --mem, 128M]
+    args:
+      - xtask
+      - run
+      - --mem
+      - 128M
     cwd: .
     env:
       - PATH
@@ -34,14 +40,15 @@ runners:
     timeout: 120000
     artifacts: []
     success_pattern: GLENDA_BOOT_OK
-    failure_pattern: "panicked at|Kernel panic"
+    failure_pattern: panicked at|Kernel panic
   hardware:
     program: sh
     args:
       - -c
       - echo "hardware evidence is a recorded candidate pending human review"; exit 2
     cwd: .
-    env: [PATH]
+    env:
+      - PATH
     timeout: 5000
     artifacts: []
 checks:
@@ -63,7 +70,8 @@ checks:
       - CC_riscv64gc_unknown_none_elf
       - AR_riscv64gc_unknown_none_elf
     timeout: 180000
-    verifies: [boot-asm]
+    verifies:
+      - boot-asm
     artifacts:
       - target/serial-boot.log
   boot-console-binding:
@@ -73,9 +81,12 @@ checks:
       - tests/public/verify.sh
       - boot-console-binding
     cwd: .
-    env: [PATH]
+    env:
+      - PATH
     timeout: 30000
-    verifies: [boot-asm, interface/sbi-ecall]
+    verifies:
+      - boot-asm
+      - interface/sbi-ecall
     artifacts: []
   toolchain-clean-rebuild:
     kind: public
@@ -95,6 +106,93 @@ checks:
       - CC_riscv64gc_unknown_none_elf
       - AR_riscv64gc_unknown_none_elf
     timeout: 600000
-    verifies: [toolchain]
+    verifies:
+      - toolchain
     artifacts:
       - target/riscv64gc-unknown-none-elf/debug/kernel
+  toolchain-offline-build-public:
+    artifacts:
+      - target/riscv64gc-unknown-none-elf/debug/kernel
+    args:
+      - tests/toolchain/build_offline.sh
+    cwd: .
+    env:
+      - PATH
+      - CARGO_NET_OFFLINE
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    kind: public
+    program: sh
+    timeout: 120000
+    verifies:
+      - toolchain
+  toolchain-workspace-contract:
+    artifacts: []
+    args:
+      - tests/toolchain/workspace_contract.sh
+    cwd: .
+    env:
+      - PATH
+    kind: contract
+    program: sh
+    timeout: 30000
+    verifies:
+      - toolchain
+  toolchain-repro-fuzz:
+    artifacts:
+      - target/riscv64gc-unknown-none-elf/debug/kernel
+    args:
+      - tests/toolchain/repro_fuzz.sh
+      - toolchain-repro-fuzz
+      - "7"
+      - "3"
+    cases: 3
+    cwd: .
+    env:
+      - PATH
+      - CARGO_NET_OFFLINE
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    kind: fuzz
+    program: sh
+    reproduction_artifact: target/riscv64gc-unknown-none-elf/debug/kernel
+    seed: 7
+    timeout: 120000
+    verifies:
+      - toolchain
+  toolchain-build-trace:
+    artifacts:
+      - target/toolchain-build-trace.txt
+    args:
+      - tests/toolchain/build_trace.sh
+    cwd: .
+    env:
+      - PATH
+      - CARGO_NET_OFFLINE
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    kind: trace
+    oracle: exit status 0, kernel ELF non-empty, and both sha256 hashes byte-identical
+    program: sh
+    timeout: 120000
+    verifies:
+      - toolchain
+    workload: cargo xtask build; sha256 kernel; cargo clean -p kernel; cargo xtask build; sha256 kernel

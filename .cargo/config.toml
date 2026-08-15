@@ -1,0 +1,20 @@
+# Offline-first cargo configuration for the Glenda workspace.
+#
+# The toolchain binding requires "a clean cargo xtask build ... reproduced
+# offline", so builds must never reach out to crates.io. All dependencies would
+# be vendored under ./vendor (see vendor/config.toml); this workspace currently
+# has zero third-party crates.
+# `cargo xtask <args>` -> `cargo run --package xtask -- <args>`
+[alias]
+xtask = "run --package xtask --"
+
+[net]
+offline = true
+
+# Kernel binary always links with rust-lld (the bunded rv64 self-contained
+# linker), using the toolchain-owned bootstrap linker layout so the minimal
+# image boots under QEMU virt and stays byte-identical across clean rebuilds.
+# The boot-asm milestone supersedes this with kernel/src/linker.ld.
+[target.riscv64gc-unknown-none-elf]
+linker = "rust-lld"
+rustflags = ["-C", "link-arg=-Txtask/src/kernel_bootstrap_linker.ld"]

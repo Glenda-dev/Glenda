@@ -1,0 +1,7 @@
+# Stable formatter baseline for the whole workspace.
+edition = "2021"
+max_width = 100
+hard_tabs = false
+
+# No formatting churn on generated/assembly mirror files.
+ignore = ["vendor/**"]
