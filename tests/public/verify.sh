@@ -29,13 +29,13 @@ case "$case_id" in
     [ "$count" -eq 1 ] || fail "expected exactly one GLENDA_BOOT_OK line, found $count"
     echo "CHECK_OK boot-banner-public"
     ;;
-  boot-sbi-console-binding)
-    [ -f kernel/src/console.c ] || fail "kernel/src/console.c missing"
-    grep -Eq 'sbi_ecall|SBI_EXT_CONSOLE' kernel/src/console.c \
-      || fail "console output is not routed through the SBI ecall interface"
-    grep -Eq 'GLENDA_BOOT_OK' kernel/src/main.c kernel/src/console.c 2>/dev/null \
+  boot-console-binding)
+    [ -f kernel/src/printk.rs ] || fail "kernel/src/printk.rs missing"
+    grep -Eq 'driver_uart|uart::' kernel/src/printk.rs kernel/src/main.rs 2>/dev/null \
+      || fail "printk is not routed through the uart driver"
+    grep -REq 'GLENDA_BOOT_OK' kernel/src/main.rs kernel/src/logo.rs 2>/dev/null \
       || fail "boot banner literal not referenced by boot path"
-    echo "CHECK_OK boot-sbi-console-binding"
+    echo "CHECK_OK boot-console-binding"
     ;;
   toolchain-clean-rebuild)
     cargo xtask build >/dev/null 2>&1 || fail "initial cargo xtask build failed"

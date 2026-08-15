@@ -3,21 +3,12 @@ module: fs
 level: 3
 purpose: Own the 4 KiB block file system with superblock, bitmaps, LRU buffer cache, inodes, dentries, and path resolution over virtio block.
 owns:
-- kernel/src/fs/bio.c
-- kernel/src/fs/bitmap.c
-- kernel/src/fs/dentry.c
-- kernel/src/fs/file.c
-- kernel/src/fs/fs.c
-- kernel/src/fs/inode.c
-- kernel/src/fs/superblock.c
-- include/fs.h
-- include/file.h
-- include/buf.h
+- kernel/src/fs
 - tests/generated/fs
 interface:
 - name: fs_mount
   pre:
-  - virtio queue is ready and the superblock block is readable
+  - the virtio queue is ready and the superblock block is readable
   post:
   - the superblock is validated against the expected magic and geometry and the root inode is published
   errors:
@@ -29,13 +20,13 @@ interface:
   pre:
   - the requested block lies within the device
   post:
-  - each block has one cache identity; brelse releases the caller lock and reference exactly once
+  - each block has one cache identity; release returns the caller lock and reference exactly once
   errors:
   - cache exhaustion panics rather than aliasing an active block
   properties:
   - id: fs-cache-unique-contract
     text: repeated and competing lookups of one block resolve to a single cache identity
-- name: namei_open_read_write
+- name: file_open_read_write
   pre:
   - a mounted file system and a valid descriptor slot
   post:
@@ -67,7 +58,6 @@ invariants:
   text: every buffer, inode, and descriptor reference count is nonnegative and released exactly once
 dependencies:
 - virtio
-- syscall
 - toolchain
 rely:
 - virtio completes transfers while the buffer sleep lock is held

@@ -66,12 +66,12 @@ checks:
     verifies: [boot-asm]
     artifacts:
       - target/serial-boot.log
-  boot-sbi-console-binding:
+  boot-console-binding:
     kind: contract
     program: sh
     args:
       - tests/public/verify.sh
-      - boot-sbi-console-binding
+      - boot-console-binding
     cwd: .
     env: [PATH]
     timeout: 30000

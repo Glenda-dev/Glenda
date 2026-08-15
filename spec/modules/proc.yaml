@@ -3,11 +3,10 @@ module: proc
 level: 3
 purpose: Own the process table, context switch contract, runnable queue, and fork/wait/exit/sleep lifecycle on the boot hart.
 owns:
-- kernel/src/proc.c
+- kernel/src/proc
 - kernel/src/asm/enter.S
 - kernel/src/asm/switch.S
 - kernel/src/asm/trampoline.S
-- include/proc.h
 - tests/generated/proc
 interface:
 - name: fork_wait_exit
@@ -54,7 +53,7 @@ state:
 preconditions:
 - mem provides per-process Sv39 tables and frame allocation
 postconditions:
-- userland enters through userret with a valid trap frame
+- userland enters through the trampoline user return with a valid trap frame
 invariants:
 - id: proc-zombie-before-reap
   text: every exited child reaches zombie state before wait reclaims its slot
@@ -63,23 +62,22 @@ invariants:
 dependencies:
 - mem
 - irq
-- syscall
 - toolchain
 rely:
 - irq delivers timer ticks so blocked and runnable states are revisited
 - syscall validates arguments before touching process state
 guarantee:
 - fork publishes one child or fails cleanly; wait returns each child exactly once
-algorithm_intent: Fixed NPROC table with a round-robin runnable scan on the boot hart and per-slot spinlocks for state transitions.
+algorithm_intent: Fixed process table with a round-robin runnable scan on the boot hart and per-slot locks for state transitions.
 concurrency:
   module:
     module: proc
     shared_state:
     - process slot states, parent links, and the runnable queue
     lock_types:
-    - per-slot spinlock plus one global process table lock for scans
+    - per-slot spinlock plus one table lock for scans
     lock_order:
-    - slot lock before table lock is forbidden; table scans hold only the table lock
+    - slot lock is always taken before the table lock, never the reverse
     atomic_sections:
     - state transitions of one slot under its slot lock
     interrupt_rules:

@@ -1,15 +1,14 @@
 id: irq
 module: irq
 level: 3
-purpose: Own CLINT timer interrupts, PLIC external interrupt dispatch, and the trap vector that separates kernel and user traps.
+purpose: Own CLINT timer interrupts, PLIC external interrupt dispatch, hart parking, and the trap path that separates kernel and user traps.
 owns:
-- kernel/src/trap.c
-- kernel/src/clint.c
-- kernel/src/plic.c
-- include/trap.h
+- kernel/src/trap
+- kernel/src/hart.rs
+- kernel/src/init/hart.rs
 - tests/generated/irq
 interface:
-- name: trap_vector_dispatch
+- name: trap_dispatch
   pre:
   - the trap vector is installed for the current privilege context
   post:
@@ -18,7 +17,7 @@ interface:
   - an unknown trap cause panics with a diagnostic
   properties:
   - id: irq-timer-tick-public
-    text: timer interrupts advance the tick counter deterministically under a fixed QEMU icount-free run
+    text: timer interrupts advance the tick counter deterministically across a bounded QEMU run
 - name: plic_claim_complete
   pre:
   - the PLIC reports a pending external IRQ
@@ -31,15 +30,15 @@ interface:
     text: UART and virtio interrupts reach their drivers only through the claim and complete pair
 properties:
 - id: irq-user-kernel-split
-  text: user traps always transit through the trampoline while kernel traps use the direct vector
+  text: user traps transit through the trampoline path while kernel traps use the direct vector
 errors:
 - unexpected supervisor interrupts panic with a diagnostic
 state:
   stage: trap-handling
   owned_state:
-  - the tick counter, the PLIC enable and priority state, and the per-context trap vector selection
+  - the tick counter, the PLIC enable and priority state, the hart parking table, and the trap vector selection
   resource_lifetime:
-  - interrupt controller state lives for the kernel lifetime
+  - interrupt controller and hart state live for the kernel lifetime
 preconditions:
 - the boot hart has installed vectors and delegated supervisor traps
 postconditions:
@@ -55,14 +54,15 @@ dependencies:
 - toolchain
 rely:
 - device drivers finish their handlers without re-enabling nested interrupts
+- boot-asm publishes sbi_set_timer for timer programming
 guarantee:
 - exactly one handler runs per claimed interrupt source
-algorithm_intent: One direct vector for kernel traps and one trampoline vector for user traps, with CLINT timer compare re-armed per tick.
+algorithm_intent: One direct vector for kernel traps and one trampoline path for user traps, with CLINT timer compare re-armed per tick through SBI.
 concurrency:
   module:
     module: irq
     shared_state:
-    - the tick counter and PLIC claim state
+    - the tick counter, PLIC claim state, and hart parking table
     lock_types:
     - no locks are held across interrupt entry
     lock_order:
@@ -80,10 +80,10 @@ concurrency:
     forbidden_patterns:
     - sleeping or allocating while handling an interrupt
   operations:
-    trap_vector_dispatch:
+    trap_dispatch:
       atomicity: classification and dispatch are atomic with respect to the interrupted context
       lock_order:
       - no locks held on entry
       interrupt_state: interrupts disabled during classification
       wait_wakeup_rules:
-      - usertrapreturn publishes the trap frame before sret
+      - the user trap return publishes the trap frame before sret

@@ -3,15 +3,21 @@ module: toolchain
 level: 1
 purpose: Own the student build scaffolding, runner commands, and contract tooling for the Rust rv64 workspace.
 owns:
-  - vos.yaml
-  - Cargo.toml
-  - Cargo.lock
-  - .cargo
-  - xtask
-  - rust-toolchain.toml
-  - vendor
-  - tests/toolchain
-  - tests/public
+- vos.yaml
+- Cargo.toml
+- Cargo.lock
+- .cargo
+- .gitignore
+- rustfmt.toml
+- rust-toolchain.toml
+- vendor
+- kernel/Cargo.toml
+- kernel/build.rs
+- xtask
+- tests/toolchain
+- tests/public
 interface: []
-properties: []
+properties:
+- id: toolchain-clean-rebuild-binding
+  text: a clean cargo xtask build followed by a rebuild of the kernel crate reproduces the identical kernel image offline, bound to the toolchain-clean-rebuild check
 errors: []

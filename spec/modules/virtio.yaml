@@ -3,9 +3,7 @@ module: virtio
 level: 2
 purpose: Own virtio block device negotiation and transfer with descriptor ring handling for the file-system disk.
 owns:
-- kernel/src/virtio.c
-- kernel/src/virtio_blk.c
-- include/virtio.h
+- kernel/src/drivers/virtio
 - tests/generated/virtio
 interface:
 - name: virtio_disk_init
@@ -30,7 +28,7 @@ interface:
     text: logical block n maps only to the declared 512-byte sector pair for that block
 - name: virtio_disk_intr
   pre:
-  - the PLIC reported the virtio IRQ
+  - the interrupt controller reported the virtio IRQ
   post:
   - every completed chain is reclaimed and its waiter awakened exactly once
   errors:

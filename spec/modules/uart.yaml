@@ -1,22 +1,22 @@
 id: uart
 module: uart
 level: 2
-purpose: Own the ns16550 UART driver at 0x10000000 with interrupt-driven input and polled output for the kernel console.
+purpose: Own the ns16550 UART driver crate with polled output and interrupt-driven input for the kernel console.
 owns:
-- kernel/src/uart.c
-- include/uart.h
+- drivers/Cargo.toml
+- drivers/src
 - tests/generated/uart
 interface:
 - name: uart_init
   pre:
-  - the UART MMIO range is mapped and reachable
+  - a UART configuration is supplied from device-tree discovery or the QEMU virt fallback
   post:
-  - the device is configured for 8-bit transfer and its interrupt is enabled at the PLIC
+  - the device is configured for 8-bit transfer and reachable MMIO registers are validated
   errors:
   - register access faults panic with a diagnostic
   properties:
   - id: uart-byte-registers
-    text: the ns16550 is accessed as byte-addressed MMIO with THR at offset 0 and LSR at offset 5, bit 5 transmitter ready
+    text: the ns16550 is accessed as byte-addressed MMIO with the configured THR and LSR offsets from the device tree
 - name: uart_putc
   pre:
   - uart_init has completed
@@ -29,9 +29,9 @@ interface:
     text: console bytes written through uart_putc are observable on the QEMU serial stream
 - name: uart_intr
   pre:
-  - the PLIC reports the UART IRQ
+  - the interrupt controller reports the UART IRQ
   post:
-  - every pending input byte is moved to the console input buffer and echoed
+  - every pending input byte is moved to the console input buffer
   errors:
   - input buffer exhaustion drops bytes rather than blocking interrupt context
   properties:
@@ -45,17 +45,16 @@ errors:
 state:
   stage: device-driver
   owned_state:
-  - the UART register page mapping and the console input ring buffer
+  - the UART register mapping and the console input ring buffer
   resource_lifetime:
   - the mapping and ring live for the kernel lifetime
 preconditions:
-- kernel virtual memory mappings for the UART range exist
+- dtb discovery has published the UART base or the QEMU virt fallback applies
 postconditions:
-- kernel printk and console input operate through this driver only
+- kernel printk operates through this driver only
 invariants:
 - id: uart-identity-single
-  text: no second driver instance maps or writes the UART register page
+  text: no second driver instance maps or writes the UART register range
 dependencies:
-- boot-asm
-- irq
+- dtb
 - toolchain

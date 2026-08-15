@@ -3,22 +3,21 @@ module: syscall
 level: 2
 purpose: Own the validated syscall dispatch surface numbered 1-54 with argument copying and error translation.
 owns:
-- kernel/src/syscall.c
-- kernel/src/sysproc.c
-- include/syscall.h
+- kernel/src/syscall
+- include/kernel
 - tests/generated/syscall
 interface:
 - name: syscall_dispatch
   pre:
-  - a user trap delivered a syscall ecall with a number in 1-54
+  - a user trap delivered an ecall with a number in 1-54
   post:
-  - the matching handler runs with copied and validated arguments and a signed result returns in the trap frame
+  - the matching handler runs with copied and validated arguments and a signed result returns through the trap frame
   errors:
   - unknown numbers and invalid arguments return a negative result, never a panic
   properties:
   - id: syscall-dispatch-public
     text: each declared number 1-54 resolves to exactly one handler and every handler has a stable target check
-- name: argcopy_fetchaddr
+- name: arg_copy
   pre:
   - the current process trap frame is valid
   post:

@@ -1,23 +1,21 @@
 id: userland
 module: userland
 level: 2
-purpose: Own the embedded C init payload, its exec path, and the user entry that exercises the syscall surface end to end.
+purpose: Own the embedded C hello payload, its build rules, and the first-user-process entry that exercises the syscall surface end to end.
 owns:
 - service/hello
-- kernel/src/exec.c
-- tests/generated/userland
 - tests/generated/userland
 interface:
-- name: exec_payload
+- name: load_payload
   pre:
-  - the payload image is linked into the kernel and a process slot is current
+  - the payload image is embedded at build time and a process slot is current
   post:
-  - the current process image is replaced by the payload with a fresh user stack and valid trap frame
+  - the first user process starts from the payload entry with a fresh user stack and valid trap frame
   errors:
-  - a malformed payload header returns an error without corrupting the process
+  - a malformed embedded payload image fails boot with a diagnostic
   properties:
   - id: userland-exec-public
-    text: exec of the embedded payload reaches user mode and issues its declared syscall sequence
+    text: the embedded payload reaches user mode and issues its declared syscall sequence
 - name: hello_payload_main
   pre:
   - the payload is executing in user mode
@@ -30,24 +28,23 @@ interface:
     text: a single QEMU run captures the payload evidence line and the clean exit status
 properties:
 - id: userland-single-payload
-  text: exactly one embedded payload image is execed by the init process
+  text: exactly one embedded payload image is loaded by the init process
 errors:
-- payload format violations return errors cleanly
+- payload format violations fail boot cleanly
 state:
   stage: user-execution
   owned_state:
-  - the payload build outputs and the exec image layout
+  - the payload build outputs and the embedded image layout
   resource_lifetime:
-  - the payload image is immutable after build; process state follows proc lifecycle
+  - the payload image is immutable after build; process state follows the proc lifecycle
 preconditions:
 - syscall dispatch and proc lifecycle are published
 postconditions:
 - the milestone runtime evidence ends with the payload exit status
 invariants:
 - id: userland-privilege-crossing
-  text: the payload crosses privilege only through exec and the trampoline trap frame
+  text: the payload crosses privilege only through the trampoline trap frame
 dependencies:
 - proc
 - syscall
-- fs
 - toolchain

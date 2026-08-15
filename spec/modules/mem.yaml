@@ -3,23 +3,22 @@ module: mem
 level: 2
 purpose: Own page-aligned physical frame allocation and Sv39 kernel and per-process page-table mappings.
 owns:
-- kernel/src/kalloc.c
-- kernel/src/vm.c
-- kernel/src/pmem.c
-- include/mmu.h
+- kernel/src/init/pmem.rs
+- kernel/src/init/vm.rs
+- kernel/src/mem
 - tests/generated/mem
 interface:
 - name: kalloc_kfree
   pre:
-  - kinit has published free physical memory from the dtb discovery
+  - physical memory initialization has published free frames from the dtb discovery
   post:
-  - kalloc returns one page-aligned frame or null; kfree returns one frame to the free list exactly once
+  - allocation returns one page-aligned frame or null; free returns one frame to the allocator exactly once
   errors:
   - freeing an out-of-range or double-freed frame panics with a diagnostic
   properties:
   - id: mem-frame-unique-public
-    text: concurrent allocation rounds never hand out the same physical frame twice
-- name: kvmmake_proc_map
+    text: allocation rounds never hand out the same physical frame twice
+- name: kvm_map_uvm
   pre:
   - kernel mappings are active and the target range is canonical
   post:
@@ -28,25 +27,25 @@ interface:
   - mapping failures panic with a diagnostic rather than leaving partial tables
   properties:
   - id: mem-sv39-layout-binding
-    text: kernel and user mappings respect the declared Sv39 layout constants in memlayout
+    text: kernel and user mappings respect the declared Sv39 layout constants
 properties:
 - id: mem-balanced-lifetime
-  text: every allocated frame is freed exactly once before kernel exit
+  text: every allocated frame is freed exactly once
 errors:
 - exhaustion returns null; invalid ranges panic
 state:
   stage: memory
   owned_state:
-  - the physical free list and the kernel plus per-process Sv39 tables
+  - the physical frame pool and the kernel plus per-process Sv39 tables
   resource_lifetime:
-  - free list lives for the kernel lifetime; per-process tables live with their process slot
+  - the frame pool lives for the kernel lifetime; per-process tables live with their process slot
 preconditions:
 - dtb discovery has published the physical memory range
 postconditions:
 - allocator and mapping services are available to proc and fs
 invariants:
 - id: mem-frame-identity-unique
-  text: no frame is simultaneously on the free list and allocated
+  text: no frame is simultaneously free and allocated
 - id: mem-no-exec-write-user
   text: user mappings never combine write and execute permissions
 dependencies:

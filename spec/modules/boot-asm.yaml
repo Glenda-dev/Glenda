@@ -1,21 +1,17 @@
 id: boot-asm
 module: boot-asm
 level: 1
-purpose: Enter from OpenSBI on the boot hart, set the early stack, install the trap vector, and publish the deterministic GLENDA_BOOT_OK banner before any scheduling.
+purpose: Enter from OpenSBI on the boot hart, set the early stack, and publish the deterministic GLENDA_BOOT_OK banner before any scheduling.
 owns:
 - kernel/src/asm/boot.S
-- kernel/src/asm/vector.S
-- kernel/src/asm/sbi.S
-- kernel/src/console.c
-- kernel/src/spinlock.c
-- kernel/src/main.c
-- kernel/src/printf.c
-- kernel/src/string.c
-- kernel/src/kernel.ld
-- include/types.h
-- include/memlayout.h
-- include/riscv.h
-- include/param.h
+- kernel/src/main.rs
+- kernel/src/printk.rs
+- kernel/src/lock.rs
+- kernel/src/logo.rs
+- kernel/src/sbi.rs
+- kernel/src/init/harts.rs
+- kernel/src/init/mod.rs
+- kernel/src/linker.ld
 - tests/generated/boot-asm
 interface:
 - name: boot_banner
@@ -28,20 +24,32 @@ interface:
   properties:
   - id: boot-banner-public
     text: a single uninterrupted QEMU virt run observes exactly one GLENDA_BOOT_OK line as the runtime banner oracle
-- name: sbi_ecall_console
+- name: early_console
   pre:
-  - console initialization has completed
+  - the uart driver has been initialized from the device-tree discovery or the QEMU virt fallback
   post:
-  - every printk byte reaches the ns16550 UART through one SBI ecall path
+  - every printk byte reaches the ns16550 UART through the single uart driver path; SBI ecalls are reserved for timer, IPI, and hart services
   errors:
-  - SBI extension unavailability panics with a diagnostic
+  - console writes before uart initialization are dropped rather than corrupting device state
   properties:
-  - id: boot-sbi-console-binding
-    text: console output crosses to firmware only through the declared sbi-ecall interface
+  - id: boot-console-binding
+    text: printk routes all console bytes through the uart driver declared by the uart module, and the GLENDA_BOOT_OK literal is referenced by the boot path
+- name: sbi_services
+  pre:
+  - the SBI implementation is present in firmware
+  post:
+  - timer, IPI, and hart services cross to firmware only through the declared sbi-ecall interface
+  errors:
+  - unavailable SBI extensions surface a firmware error code
+  properties:
+  - id: boot-sbi-services-binding
+    text: kernel timer programming uses sbi_set_timer and never writes CLINT registers directly from driver code
 properties:
 - id: boot-deterministic-banner
   text: the boot hart reaches GLENDA_BOOT_OK deterministically under the boot-banner-public oracle
 errors:
 - early entry faults panic with a diagnostic rather than looping
 dependencies:
+- uart
+- dtb
 - toolchain

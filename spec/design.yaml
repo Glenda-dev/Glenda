@@ -12,7 +12,7 @@ machine:
     board: Orange Pi Prime (Allwinner H5, ARMv8-A Cortex-A53)
     status: candidate; architecture port and physical board evidence pending human review
 kernel:
-  organization: monolithic teaching kernel in Rust with an embedded C init payload
+  organization: monolithic teaching kernel in Rust with an embedded C user payload; proc/syscall/fs mutual couplings are intentional and are staged milestone by milestone rather than topologically
   execution: boot hart runs the scheduler while secondary harts park; one embedded user process exercises the syscall surface
   protection: Sv39 per-process page tables and a trampoline trap frame crossing the user/kernel boundary
   communication: validated syscalls numbered 1-54, the ns16550 UART console, and virtio block backed file descriptors
