@@ -1,0 +1,31 @@
+id: toolchain-manual-landing
+reason: >-
+  agent implement toolchain（run 202608151116379-1c2e83e9）实现了可复现的工具链骨架
+  （离线 clean rebuild 字节级一致、QEMU 单次输出 GLENDA_BOOT_OK），但权威校验要求
+  boot-console-binding，该检查依赖 boot-asm 拥有的 kernel/src/printk.rs 与
+  kernel/src/main.rs，不在 toolchain 的 allowed_paths 内，属于 M1 里程碑范围，
+  Agent 在自己的所有权边界内无法通过，提交循环陷入不可赢重试。按仿真预案，学生手动
+  将该 worktree 的真实产物落盘为 commit 758c4b5，并记录本偏差；boot-console-binding
+  留待 M1（boot-asm）里程碑实现后自然通过。
+changes:
+  - xtask/src/kernel_bootstrap.rs
+  - xtask/src/kernel_bootstrap_linker.ld
+  - xtask/src/main.rs
+  - xtask/Cargo.toml
+  - kernel/Cargo.toml
+  - kernel/build.rs
+  - .cargo/config.toml
+  - Cargo.toml
+  - Cargo.lock
+  - rust-toolchain.toml
+  - rustfmt.toml
+  - vendor/config.toml
+  - vendor/README.md
+  - tests/toolchain/workspace_contract.sh
+  - tests/toolchain/build_offline.sh
+  - tests/toolchain/repro_fuzz.sh
+  - tests/toolchain/build_trace.sh
+  - vos.yaml
+new_invariants:
+  - 手动落盘的代码必须来自 Agent worktree 的真实构建产物，且离线复现校验通过后才允许合入 master
+  - 本次手动落盘不构成 Agent 提交成功；结构化提交循环仍以 Agent 通过权威校验为准

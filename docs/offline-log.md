@@ -31,3 +31,10 @@ LLM：ECNU Anthropic 兼容网关，模型 `ecnu-max`（`.vos/config.toml`，密
 ## 每里程碑记录格式
 
 每个里程碑记录：agent 命令与结果摘要、手动修复清单（对应 spec/patches）、build/run/verify/report 输出摘要、证据文件路径。
+
+## M0/M1 工具链里程碑记录（2026-08-15）
+
+- `vos agent implement toolchain`（run 202608151116379-1c2e83e9，ecnu-max）：结构化提交经历 6 轮以上 schema 修复；权威校验的 boot-console-binding 需要 boot-asm 拥有的 kernel/src/printk.rs，超出 toolchain 所有权边界，循环不可收敛，按预案终止并手动落盘。
+- 手动落盘（偏差记录：spec/patches/toolchain-manual-landing.yaml，commit 758c4b5）：Agent worktree 产物已离线验证——`vos build` 通过且 submittable；`vos run qemu` oracle 精确命中一次 GLENDA_BOOT_OK；离线 clean rebuild 字节级一致（kernel sha256 8cde4cf5fde6e045950b974778abe7667c1d703a8ae33946585f45435a8c4d3b）。
+- `vos verify` 记录当前预期状态：toolchain 四项检查 CHECK_OK；boot-console-binding 待 M1 boot-asm 实现后自然通过；submittable:false（预期内，M1 范围未满足）。
+- 证据：.vos/runs/202608151116379-1c2e83e9/（events.jsonl、manifest.json）。
