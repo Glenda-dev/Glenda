@@ -23,6 +23,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-boot.log"
     timeout 90 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     count="$(grep -c '^GLENDA_BOOT_OK$' "$log" || true)"
     [ -n "$count" ] || count=0
@@ -41,6 +42,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-uart.log"
     timeout 20 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'UART in use: base=0x' "$log" || fail "uart discovery line missing from console"
     grep -q 'microkernel booting' "$log" || fail "banner bytes never reached the uart console"
@@ -50,6 +52,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-dtb.log"
     timeout 20 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'Device tree blob at 0x' "$log" || fail "dtb discovery banner missing"
     grep -Eq '^[0-9]+ harts detected' "$log" || fail "hart count discovery missing"
@@ -72,6 +75,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-proc.log"
     timeout 45 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'Creating init process from payload' "$log" || fail "init process was not created from the embedded payload"
     grep -q 'Starting scheduler on hart 0' "$log" || fail "scheduler never started on the boot hart"
@@ -82,6 +86,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-syscall.log"
     timeout 45 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q '\[PASS\] brk test passed' "$log" || fail "brk syscall evidence missing"
     grep -q '\[PASS\] mmap/munmap tests done' "$log" || fail "mmap/munmap syscall dispatch evidence missing"
@@ -95,6 +100,7 @@ case "$case_id" in
     [ "$magic" = "40302010" ] || fail "disk.img superblock magic mismatch ($magic)"
     log="target/serial-fs.log"
     timeout 40 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'FS: Superblock read:' "$log" || fail "fs superblock mount evidence missing"
     grep -q 'FS: All self-tests passed!' "$log" || fail "fs self-test evidence missing"
@@ -104,6 +110,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-virtio.log"
     timeout 40 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'VirtIO: Disk initialized' "$log" || fail "virtio-blk device never reached initialized state"
     echo "CHECK_OK virtio-negotiated-queue-public"
@@ -112,6 +119,7 @@ case "$case_id" in
     mkdir -p target
     log="target/serial-userland.log"
     timeout 45 cargo xtask run --mem 128M >"$log" 2>&1 || true
+    sed -i 's/\r$//' "$log" 2>/dev/null || true
     [ -s "$log" ] || fail "no serial output captured"
     grep -q 'Creating init process from payload' "$log" || fail "init process was not created from the embedded payload"
     grep -q 'Starting scheduler on hart 0' "$log" || fail "scheduler never started on the boot hart"
