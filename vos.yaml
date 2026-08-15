@@ -7,6 +7,7 @@ build:
   cwd: .
   env:
     - PATH
+    - PATHEXT
     - HOME
     - USERPROFILE
     - RUSTUP_HOME
@@ -30,6 +31,7 @@ runners:
     cwd: .
     env:
       - PATH
+      - PATHEXT
       - HOME
       - USERPROFILE
       - RUSTUP_HOME
@@ -51,6 +53,7 @@ runners:
     cwd: .
     env:
       - PATH
+      - PATHEXT
     timeout: 5000
     artifacts: []
 checks:
@@ -63,6 +66,7 @@ checks:
     cwd: .
     env:
       - PATH
+      - PATHEXT
       - HOME
       - USERPROFILE
       - RUSTUP_HOME
@@ -85,6 +89,7 @@ checks:
     cwd: .
     env:
       - PATH
+      - PATHEXT
       - HOME
       - USERPROFILE
       - RUSTUP_HOME
@@ -109,6 +114,7 @@ checks:
     cwd: .
     env:
       - PATH
+      - PATHEXT
       - HOME
       - USERPROFILE
       - RUSTUP_HOME

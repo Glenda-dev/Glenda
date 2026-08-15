@@ -48,3 +48,9 @@ LLM：ECNU Anthropic 兼容网关，模型 `ecnu-max`（`.vos/config.toml`，密
 - 启动：QEMU virt + disk.img(virtio-blk)，GLENDA_BOOT_OK 恰好 1 次；payload 被调度并跑完 LAB-9 自检（[ALL PASS] LAB-9 tests completed.）。
 - 里程碑检查：boot-banner-public / userland-exec-public / userland-evidence-public；本地复跑后两项 CHECK_OK。
 - 候选语义：M5 仅落 candidate（物理板证据与人工评审缺失，且上游自带构建缺口），标签 course/glenda-m5-candidate，不使用 -complete。
+
+## master 收尾修复（PATHEXT 运行环境白名单）
+
+- 现象：`vos run qemu` 在净化运行环境中报 `qemu-system-riscv64 not found in PATH`——vos runtime 只透传 vos.yaml env 白名单变量，xtask 使用的 which crate 在 Windows 下依赖 PATHEXT 解析无扩展名命令。
+- 修复：vos.yaml 的 build / runners.qemu / runners.hardware / 各 check 的 env 白名单统一追加 PATHEXT（宿主环境修复，不改内核源码）。
+- 说明：该问题在 M5 打标签之后的 master 门检查阶段才暴露，五个 course 标签保持原样（各里程碑的构建与启动证据均在全环境下独立复核过）。
