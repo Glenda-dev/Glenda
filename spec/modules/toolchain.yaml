@@ -1,12 +1,17 @@
 id: toolchain
 module: toolchain
 level: 1
-purpose: Own the student build, runner, and contract commands.
+purpose: Own the student build scaffolding, runner commands, and contract tooling for the Rust rv64 workspace.
 owns:
   - vos.yaml
-  - Makefile
+  - Cargo.toml
+  - Cargo.lock
+  - .cargo
   - xtask
+  - rust-toolchain.toml
+  - vendor
   - tests/toolchain
+  - tests/public
 interface: []
 properties: []
 errors: []

@@ -1,0 +1,106 @@
+id: fs
+module: fs
+level: 3
+purpose: Own the 4 KiB block file system with superblock, bitmaps, LRU buffer cache, inodes, dentries, and path resolution over virtio block.
+owns:
+- kernel/src/fs/bio.c
+- kernel/src/fs/bitmap.c
+- kernel/src/fs/dentry.c
+- kernel/src/fs/file.c
+- kernel/src/fs/fs.c
+- kernel/src/fs/inode.c
+- kernel/src/fs/superblock.c
+- include/fs.h
+- include/file.h
+- include/buf.h
+- tests/generated/fs
+interface:
+- name: fs_mount
+  pre:
+  - virtio queue is ready and the superblock block is readable
+  post:
+  - the superblock is validated against the expected magic and geometry and the root inode is published
+  errors:
+  - a wrong magic or inconsistent geometry panics with a diagnostic
+  properties:
+  - id: fs-mount-public
+    text: mounting the lab disk image succeeds and publishes the documented superblock magic and block size
+- name: bread_bwrite_brelse
+  pre:
+  - the requested block lies within the device
+  post:
+  - each block has one cache identity; brelse releases the caller lock and reference exactly once
+  errors:
+  - cache exhaustion panics rather than aliasing an active block
+  properties:
+  - id: fs-cache-unique-contract
+    text: repeated and competing lookups of one block resolve to a single cache identity
+- name: namei_open_read_write
+  pre:
+  - a mounted file system and a valid descriptor slot
+  post:
+  - path resolution, open, read, write, lseek, and close behave per the syscall ABI with balanced references
+  errors:
+  - missing paths and bad descriptors return errors cleanly
+  properties:
+  - id: fs-file-roundtrip-public
+    text: a public round trip writes, reads back, and closes a file with identical content and zero leaked references
+properties:
+- id: fs-metadata-through-cache
+  text: all metadata disk traffic passes through the buffer cache
+errors:
+- structural corruption panics with a diagnostic rather than returning fabricated data
+state:
+  stage: filesystem
+  owned_state:
+  - the fixed buffer cache entries with LRU links, the inode table, dentry cache, and open file table
+  resource_lifetime:
+  - cache and tables live for the kernel lifetime; references are balanced per operation
+preconditions:
+- virtio block transfers are available and whole-block aligned
+postconditions:
+- syscall file handlers operate only through this module
+invariants:
+- id: fs-cache-identity-unique
+  text: no two cache entries share an active device and block identity
+- id: fs-reference-nonnegative
+  text: every buffer, inode, and descriptor reference count is nonnegative and released exactly once
+dependencies:
+- virtio
+- syscall
+- toolchain
+rely:
+- virtio completes transfers while the buffer sleep lock is held
+- proc sleep channels wake blocked file waiters
+guarantee:
+- each logical block has one cache identity and metadata never bypasses the cache
+algorithm_intent: Fixed doubly-linked LRU cache guarded by one spinlock and per-buffer sleep locks, with bitmap allocation and dentry-cached path resolution.
+concurrency:
+  module:
+    module: fs
+    shared_state:
+    - LRU links, cache identities, reference counts, inode table, and open file table
+    lock_types:
+    - one cache spinlock plus per-buffer sleep locks and per-inode sleep locks
+    lock_order:
+    - cache spinlock is released before any buffer or inode sleep lock acquisition
+    atomic_sections:
+    - cache identity lookup and reassignment under the cache spinlock
+    interrupt_rules:
+    - no disk wait occurs while holding the cache spinlock
+    rely:
+    - callers release every acquired buffer, inode, and descriptor exactly once
+    guarantee:
+    - lookup and reassignment never create duplicate identities
+    wait_wakeup_rules:
+    - contention waits only on the selected buffer or inode sleep lock
+    forbidden_patterns:
+    - sleeping or performing disk I/O while holding the cache spinlock
+  operations:
+    bread_bwrite_brelse:
+      atomicity: identity selection is atomic under the cache spinlock; contents are protected by the selected sleep lock
+      lock_order:
+      - cache spinlock released before buffer sleep lock acquisition
+      interrupt_state: enabled while waiting for a sleep lock
+      wait_wakeup_rules:
+      - sleep-lock waiters retry after the current holder releases

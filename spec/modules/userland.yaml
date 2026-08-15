@@ -1,0 +1,53 @@
+id: userland
+module: userland
+level: 2
+purpose: Own the embedded C init payload, its exec path, and the user entry that exercises the syscall surface end to end.
+owns:
+- service/hello
+- kernel/src/exec.c
+- tests/generated/userland
+- tests/generated/userland
+interface:
+- name: exec_payload
+  pre:
+  - the payload image is linked into the kernel and a process slot is current
+  post:
+  - the current process image is replaced by the payload with a fresh user stack and valid trap frame
+  errors:
+  - a malformed payload header returns an error without corrupting the process
+  properties:
+  - id: userland-exec-public
+    text: exec of the embedded payload reaches user mode and issues its declared syscall sequence
+- name: hello_payload_main
+  pre:
+  - the payload is executing in user mode
+  post:
+  - the payload writes its deterministic evidence line through the write syscall and exits with a documented status
+  errors:
+  - invalid syscall results are reported through the exit status, never a kernel panic
+  properties:
+  - id: userland-evidence-public
+    text: a single QEMU run captures the payload evidence line and the clean exit status
+properties:
+- id: userland-single-payload
+  text: exactly one embedded payload image is execed by the init process
+errors:
+- payload format violations return errors cleanly
+state:
+  stage: user-execution
+  owned_state:
+  - the payload build outputs and the exec image layout
+  resource_lifetime:
+  - the payload image is immutable after build; process state follows proc lifecycle
+preconditions:
+- syscall dispatch and proc lifecycle are published
+postconditions:
+- the milestone runtime evidence ends with the payload exit status
+invariants:
+- id: userland-privilege-crossing
+  text: the payload crosses privilege only through exec and the trampoline trap frame
+dependencies:
+- proc
+- syscall
+- fs
+- toolchain

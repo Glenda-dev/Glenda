@@ -1,0 +1,25 @@
+id: interface/syscall-abi
+name: user syscall ABI
+boundary: syscall
+module: syscall
+operations:
+- name: ecall_dispatch
+  pre:
+  - a user ecall trapped with a syscall number in 1-54
+  post:
+  - dispatch selects the declared handler and returns the signed result through the trap frame a0 slot
+  errors:
+  - out-of-range numbers return a negative result without side effects
+  properties:
+  - id: syscall-number-table-binding
+    text: the numeric table 1-54 and handler names are generated from one declaration shared by kernel and checks
+- name: arg_passing
+  pre:
+  - arguments are placed in a0-a5 per the ABI
+  post:
+  - handlers observe only copied and validated argument values
+  errors:
+  - argument validation failures return an error code
+  properties:
+  - id: syscall-arg-abi-stable
+    text: argument register usage is identical across all 54 handlers

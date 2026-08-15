@@ -1,40 +1,100 @@
 version: vos.project.v1
 build:
-  program: bun
-  args: [--version]
+  program: cargo
+  args: [xtask, build]
   cwd: .
-  env: []
-  timeout: 30000
-  artifacts: []
+  env:
+    - PATH
+    - HOME
+    - USERPROFILE
+    - RUSTUP_HOME
+    - CARGO_HOME
+    - CARGO_TARGET_DIR
+    - CROSS_COMPILE
+    - CC_riscv64gc_unknown_none_elf
+    - AR_riscv64gc_unknown_none_elf
+  timeout: 600000
+  artifacts:
+    - target/riscv64gc-unknown-none-elf/debug/kernel
 runners:
   qemu:
-    program: bun
-    args: [--version]
+    program: cargo
+    args: [xtask, run, --mem, 128M]
     cwd: .
-    env: []
-    timeout: 30000
+    env:
+      - PATH
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    timeout: 120000
     artifacts: []
-    success_pattern: '[0-9]+[.][0-9]+[.][0-9]+'
-    failure_pattern: '[Ee]rror|[Ff]ailed|panic'
+    success_pattern: GLENDA_BOOT_OK
+    failure_pattern: "panicked at|Kernel panic"
   hardware:
-    program: bun
-    args: [--version]
+    program: sh
+    args:
+      - -c
+      - echo "hardware evidence is a recorded candidate pending human review"; exit 2
     cwd: .
-    env: []
-    timeout: 30000
+    env: [PATH]
+    timeout: 5000
     artifacts: []
 checks:
-  public-toolchain:
-    program: bun
-    args: [--version]
+  boot-banner-public:
+    kind: public
+    program: sh
+    args:
+      - tests/public/verify.sh
+      - boot-banner-public
     cwd: .
-    env: []
-    timeout: 30000
-    verifies: [toolchain]
-  contract-toolchain:
-    program: bun
-    args: [--version]
+    env:
+      - PATH
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    timeout: 180000
+    verifies: [boot-asm]
+    artifacts:
+      - target/serial-boot.log
+  boot-sbi-console-binding:
+    kind: contract
+    program: sh
+    args:
+      - tests/public/verify.sh
+      - boot-sbi-console-binding
     cwd: .
-    env: []
+    env: [PATH]
     timeout: 30000
+    verifies: [boot-asm, interface/sbi-ecall]
+    artifacts: []
+  toolchain-clean-rebuild:
+    kind: public
+    program: sh
+    args:
+      - tests/public/verify.sh
+      - toolchain-clean-rebuild
+    cwd: .
+    env:
+      - PATH
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    timeout: 600000
     verifies: [toolchain]
+    artifacts:
+      - target/riscv64gc-unknown-none-elf/debug/kernel

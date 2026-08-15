@@ -1,0 +1,47 @@
+id: boot-asm
+module: boot-asm
+level: 1
+purpose: Enter from OpenSBI on the boot hart, set the early stack, install the trap vector, and publish the deterministic GLENDA_BOOT_OK banner before any scheduling.
+owns:
+- kernel/src/asm/boot.S
+- kernel/src/asm/vector.S
+- kernel/src/asm/sbi.S
+- kernel/src/console.c
+- kernel/src/spinlock.c
+- kernel/src/main.c
+- kernel/src/printf.c
+- kernel/src/string.c
+- kernel/src/kernel.ld
+- include/types.h
+- include/memlayout.h
+- include/riscv.h
+- include/param.h
+- tests/generated/boot-asm
+interface:
+- name: boot_banner
+  pre:
+  - OpenSBI has entered the linked supervisor image with interrupts disabled
+  post:
+  - the boot hart prints the literal line GLENDA_BOOT_OK exactly once before scheduling user code
+  errors:
+  - an invalid early stack or trap-vector address faults before the banner
+  properties:
+  - id: boot-banner-public
+    text: a single uninterrupted QEMU virt run observes exactly one GLENDA_BOOT_OK line as the runtime banner oracle
+- name: sbi_ecall_console
+  pre:
+  - console initialization has completed
+  post:
+  - every printk byte reaches the ns16550 UART through one SBI ecall path
+  errors:
+  - SBI extension unavailability panics with a diagnostic
+  properties:
+  - id: boot-sbi-console-binding
+    text: console output crosses to firmware only through the declared sbi-ecall interface
+properties:
+- id: boot-deterministic-banner
+  text: the boot hart reaches GLENDA_BOOT_OK deterministically under the boot-banner-public oracle
+errors:
+- early entry faults panic with a diagnostic rather than looping
+dependencies:
+- toolchain

@@ -1,29 +1,41 @@
-# VOS DesignSpec. Discuss choices with `vos agent ask`, then replace every TODO by hand.
 system:
-  name: student-os
-  language: TODO
-  isa: TODO
+  name: glenda
+  language: Rust (no_std kernel) with C userland payload
+  isa: RISC-V RV64GC
 machine:
   qemu:
-    machine: TODO
-    memory: TODO
-    firmware: TODO
-    console: TODO
+    machine: virt
+    memory: 128M
+    firmware: OpenSBI (-bios default)
+    console: ns16550 UART at 0x10000000
   hardware:
-    board: not in current lab scope
-    status: not in current lab scope
+    board: Orange Pi Prime (Allwinner H5, ARMv8-A Cortex-A53)
+    status: candidate; architecture port and physical board evidence pending human review
 kernel:
-  organization: TODO
-  execution: TODO
-  protection: TODO
-  communication: TODO
-  resource_model: TODO
-required_mechanisms: []
+  organization: monolithic teaching kernel in Rust with an embedded C init payload
+  execution: boot hart runs the scheduler while secondary harts park; one embedded user process exercises the syscall surface
+  protection: Sv39 per-process page tables and a trampoline trap frame crossing the user/kernel boundary
+  communication: validated syscalls numbered 1-54, the ns16550 UART console, and virtio block backed file descriptors
+  resource_model: process table slots own page tables and file descriptors; buffer cache and inode references are balanced by construction
+required_mechanisms:
+- OpenSBI entry, per-hart stack setup, and deterministic early serial output including the GLENDA_BOOT_OK banner
+- flattened device tree parsing for memory and UART discovery
+- page-aligned physical frame allocation and Sv39 kernel and user mappings
+- CLINT timer interrupts, PLIC external interrupts, and a trap vector distinguishing kernel and user traps
+- process lifecycle with fork, wait, exit, sleep, and a round-robin runnable queue on the boot hart
+- brk and mmap based user address-space growth
+- virtio block I/O with an LRU buffer cache, bitmaps, inodes, dentries, and path resolution
+- file syscalls covering open, close, read, write, lseek, dup, fstat, mkdir, chdir, link, unlink, and exec of the embedded payload
 composition_invariants:
-  - TODO
-non_goals: []
+- every public check is deterministic; a clean cargo xtask build reproduces the kernel image offline, and boot prints the literal banner line GLENDA_BOOT_OK after console initialization and before scheduling user code
+- user execution crosses privilege only through the mapped trampoline frame, and syscall arguments are copied and validated before use
+- file-system metadata reaches disk only through the buffer cache, and every acquired buffer, inode, or descriptor reference is released exactly once
+non_goals:
+- multi-hart scheduling on secondary harts
+- shell, pipes, and user programs loaded from the file system
+- ARMv8-A port execution in this course iteration; the board stays a reviewed candidate gate
 hardware_port:
-  board: TODO
-  boot: TODO
-  console: TODO
-  interrupt: TODO
+  board: Orange Pi Prime with Allwinner H5 and four Cortex-A53 cores
+  boot: future BROM/boot0 chain; exact firmware and image hashes will be evidence inputs when the port lands
+  console: onboard UART0; serial capture on the physical board is human-reviewed evidence, never simulated output
+  interrupt: GICv2 topology must be probed by the ported HAL before workload execution

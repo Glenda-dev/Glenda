@@ -1,0 +1,25 @@
+id: interface/sbi-ecall
+name: SBI ecall firmware boundary
+boundary: abi
+module: boot-asm
+operations:
+- name: sbi_ecall
+  pre:
+  - the caller passes a valid SBI extension and function id
+  post:
+  - the firmware result and error code are returned through the declared register contract
+  errors:
+  - unavailable extensions surface a firmware error code, never a silent success
+  properties:
+  - id: sbi-register-contract-binding
+    text: a7 carries the extension id, a6 the function id, and a0 returns the error code per the SBI ABI
+- name: sbi_set_timer
+  pre:
+  - CLINT timer support is present
+  post:
+  - the next timer interrupt fires no earlier than the requested compare value
+  errors:
+  - invalid compare values return a firmware error
+  properties:
+  - id: sbi-timer-monotonic
+    text: timer programming never moves the compare backwards

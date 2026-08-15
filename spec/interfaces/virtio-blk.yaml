@@ -1,0 +1,25 @@
+id: interface/virtio-blk
+name: virtio block device boundary
+boundary: driver
+module: virtio
+operations:
+- name: vring_negotiate
+  pre:
+  - the device reports the expected virtio block device id
+  post:
+  - feature bits, queue geometry, and the driver-ok transition follow the legacy virtio order
+  errors:
+  - any out-of-order state transition aborts negotiation with a diagnostic
+  properties:
+  - id: virtio-state-machine-binding
+    text: device initialization observes ack, driver, features, queue setup, and driver-ok in order
+- name: vring_submit_complete
+  pre:
+  - a descriptor chain is built for one logical block
+  post:
+  - submission is visible through the available ring and completion is consumed from the used ring exactly once
+  errors:
+  - used-ring inconsistency panics rather than double-completing
+  properties:
+  - id: virtio-used-ring-once
+    text: each used-ring entry is consumed exactly once per submission

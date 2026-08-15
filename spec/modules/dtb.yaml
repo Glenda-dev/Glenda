@@ -1,0 +1,40 @@
+id: dtb
+module: dtb
+level: 2
+purpose: Parse the firmware-provided flattened device tree to discover physical memory ranges and the UART base before memory initialization.
+owns:
+- kernel/src/dtb.c
+- include/dtb.h
+- tests/generated/dtb
+interface:
+- name: dtb_init
+  pre:
+  - OpenSBI passes the DTB physical address in the boot register contract
+  post:
+  - physical memory top and the UART base are published as immutable discovery results
+  errors:
+  - a malformed or missing device tree panics with a diagnostic
+  properties:
+  - id: dtb-memory-discovery-public
+    text: the discovered memory range matches the QEMU virt configured RAM and gates the physical allocator
+properties:
+- id: dtb-immutable-discovery
+  text: discovery results never change after dtb_init returns
+errors:
+- structure corruption or missing nodes panic with a diagnostic
+state:
+  stage: early-boot
+  owned_state:
+  - the parsed device tree view and the published memory and UART discovery results
+  resource_lifetime:
+  - discovery results live for the kernel lifetime; the tree view may be freed after discovery
+preconditions:
+- the DTB blob is readable at the address handed off by firmware
+postconditions:
+- mem and uart modules consume only the published discovery results
+invariants:
+- id: dtb-discovery-once
+  text: discovery runs exactly once before the physical allocator starts
+dependencies:
+- boot-asm
+- toolchain

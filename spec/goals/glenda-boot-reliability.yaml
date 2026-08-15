@@ -1,0 +1,9 @@
+id: glenda-boot-reliability
+objective: Keep every milestone boot and public check deterministic so a clean cargo xtask build and a single uninterrupted QEMU virt run reproduce the GLENDA_BOOT_OK banner and the stage checks without flaky reruns.
+metric: Each milestone verify run records GLENDA_BOOT_OK exactly once from one QEMU run and every declared public check passes on the first attempt under an unchanged toolchain.
+oracle: The milestone verify command rejects a missing or duplicated banner, a failed public check, or a dirty-tree rerun; success requires GLENDA_BOOT_OK and all stage public checks passing in one run.
+correctness:
+- Boot banner evidence comes from a single uninterrupted QEMU virt run.
+- A clean cargo xtask build reproduces the kernel image without network access to crates.io.
+- Every manual repair lands as a committed handwritten spec patch before the rerun.
+- Existing public checks of earlier milestones remain passing at each later milestone.

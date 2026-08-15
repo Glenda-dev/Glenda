@@ -1,0 +1,102 @@
+id: proc
+module: proc
+level: 3
+purpose: Own the process table, context switch contract, runnable queue, and fork/wait/exit/sleep lifecycle on the boot hart.
+owns:
+- kernel/src/proc.c
+- kernel/src/asm/enter.S
+- kernel/src/asm/switch.S
+- kernel/src/asm/trampoline.S
+- include/proc.h
+- tests/generated/proc
+interface:
+- name: fork_wait_exit
+  pre:
+  - the caller is the current process and free slots exist
+  post:
+  - fork publishes one child with inherited state; wait reaps each zombie exactly once; exit releases every owned resource
+  errors:
+  - slot exhaustion makes fork fail cleanly; wait without children returns a sentinel
+  properties:
+  - id: proc-lifecycle-public
+    text: a fork-exit-wait round leaves no slot owned after reap and returns the child status exactly once
+- name: scheduler_yield
+  pre:
+  - the caller holds the current process context
+  post:
+  - one runnable process is selected round-robin and the context switch completes with locks balanced
+  errors:
+  - switching with a held spinlock panics with a diagnostic
+  properties:
+  - id: proc-round-robin-fair
+    text: with N runnable processes each is scheduled before any is scheduled twice
+- name: sleep_wakeup
+  pre:
+  - the caller passes a valid channel
+  post:
+  - the process blocks until wakeup targets that channel and is then made runnable
+  errors:
+  - wakeup without waiters is a no-op
+  properties:
+  - id: proc-sleep-channel-binding
+    text: sleepers are only woken through their declared channel
+properties:
+- id: proc-slot-single-owner
+  text: each process slot is owned by at most one execution context at any time
+errors:
+- invalid lifecycle transitions panic with a diagnostic
+state:
+  stage: process-management
+  owned_state:
+  - the fixed process table, per-slot stacks, page tables, context records, and the runnable queue
+  resource_lifetime:
+  - slots live for the kernel lifetime; per-process resources are released at exit and reap
+preconditions:
+- mem provides per-process Sv39 tables and frame allocation
+postconditions:
+- userland enters through userret with a valid trap frame
+invariants:
+- id: proc-zombie-before-reap
+  text: every exited child reaches zombie state before wait reclaims its slot
+- id: proc-switch-locks-balanced
+  text: context switch acquires and releases the process table lock as one pair
+dependencies:
+- mem
+- irq
+- syscall
+- toolchain
+rely:
+- irq delivers timer ticks so blocked and runnable states are revisited
+- syscall validates arguments before touching process state
+guarantee:
+- fork publishes one child or fails cleanly; wait returns each child exactly once
+algorithm_intent: Fixed NPROC table with a round-robin runnable scan on the boot hart and per-slot spinlocks for state transitions.
+concurrency:
+  module:
+    module: proc
+    shared_state:
+    - process slot states, parent links, and the runnable queue
+    lock_types:
+    - per-slot spinlock plus one global process table lock for scans
+    lock_order:
+    - slot lock before table lock is forbidden; table scans hold only the table lock
+    atomic_sections:
+    - state transitions of one slot under its slot lock
+    interrupt_rules:
+    - no sleeping while holding any process lock
+    rely:
+    - wakeup callers hold no process lock when invoking device sleep channels
+    guarantee:
+    - each slot transitions through a legal state order only
+    wait_wakeup_rules:
+    - sleep records the channel before releasing the guarded lock
+    forbidden_patterns:
+    - freeing a process page table before the slot is reaped
+  operations:
+    scheduler_yield:
+      atomicity: selection and switch form one critical section under the table lock
+      lock_order:
+      - table lock held across selection, released by the switched-in context
+      interrupt_state: interrupts restored after the new context runs
+      wait_wakeup_rules:
+      - a rescheduled process observes all wakeups published before its selection

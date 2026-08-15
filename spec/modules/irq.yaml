@@ -1,0 +1,89 @@
+id: irq
+module: irq
+level: 3
+purpose: Own CLINT timer interrupts, PLIC external interrupt dispatch, and the trap vector that separates kernel and user traps.
+owns:
+- kernel/src/trap.c
+- kernel/src/clint.c
+- kernel/src/plic.c
+- include/trap.h
+- tests/generated/irq
+interface:
+- name: trap_vector_dispatch
+  pre:
+  - the trap vector is installed for the current privilege context
+  post:
+  - each trap reaches exactly one handler class, timer traps reschedule, and device IRQs are claimed and completed
+  errors:
+  - an unknown trap cause panics with a diagnostic
+  properties:
+  - id: irq-timer-tick-public
+    text: timer interrupts advance the tick counter deterministically under a fixed QEMU icount-free run
+- name: plic_claim_complete
+  pre:
+  - the PLIC reports a pending external IRQ
+  post:
+  - the handler claims the source, services it, and completes it exactly once
+  errors:
+  - claiming an absent source returns zero and is ignored
+  properties:
+  - id: irq-plic-claim-binding
+    text: UART and virtio interrupts reach their drivers only through the claim and complete pair
+properties:
+- id: irq-user-kernel-split
+  text: user traps always transit through the trampoline while kernel traps use the direct vector
+errors:
+- unexpected supervisor interrupts panic with a diagnostic
+state:
+  stage: trap-handling
+  owned_state:
+  - the tick counter, the PLIC enable and priority state, and the per-context trap vector selection
+  resource_lifetime:
+  - interrupt controller state lives for the kernel lifetime
+preconditions:
+- the boot hart has installed vectors and delegated supervisor traps
+postconditions:
+- proc receives timer ticks and device drivers receive their IRQs
+invariants:
+- id: irq-claim-complete-paired
+  text: every nonzero PLIC claim is completed exactly once
+- id: irq-tick-monotonic
+  text: the tick counter is strictly monotonic
+dependencies:
+- boot-asm
+- uart
+- toolchain
+rely:
+- device drivers finish their handlers without re-enabling nested interrupts
+guarantee:
+- exactly one handler runs per claimed interrupt source
+algorithm_intent: One direct vector for kernel traps and one trampoline vector for user traps, with CLINT timer compare re-armed per tick.
+concurrency:
+  module:
+    module: irq
+    shared_state:
+    - the tick counter and PLIC claim state
+    lock_types:
+    - no locks are held across interrupt entry
+    lock_order:
+    - interrupt handlers never acquire a lock already held by the interrupted context
+    atomic_sections:
+    - tick increment is a single atomic update
+    interrupt_rules:
+    - timer interrupts are re-enabled only after the handler returns
+    rely:
+    - drivers complete bounded work per interrupt
+    guarantee:
+    - no tick or claim is lost while interrupts are enabled
+    wait_wakeup_rules:
+    - trap return restores the interrupted context exactly
+    forbidden_patterns:
+    - sleeping or allocating while handling an interrupt
+  operations:
+    trap_vector_dispatch:
+      atomicity: classification and dispatch are atomic with respect to the interrupted context
+      lock_order:
+      - no locks held on entry
+      interrupt_state: interrupts disabled during classification
+      wait_wakeup_rules:
+      - usertrapreturn publishes the trap frame before sret

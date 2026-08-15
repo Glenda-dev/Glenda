@@ -1,0 +1,15 @@
+id: interface/trap-frame
+name: user trap-frame ABI
+boundary: abi
+module: proc
+operations:
+- name: uservec_userret
+  pre:
+  - the current process owns a mapped trap frame page below the trampoline
+  post:
+  - all general registers and kernel handoff fields cross privilege only through the declared fixed offsets
+  errors:
+  - a mismatched Rust or assembly layout fails the contract check before user execution
+  properties:
+  - id: trap-frame-layout-binding
+    text: the trap frame field offsets used by trampoline save and restore slots are generated from one layout definition

@@ -1,0 +1,62 @@
+id: virtio
+module: virtio
+level: 2
+purpose: Own virtio block device negotiation and transfer with descriptor ring handling for the file-system disk.
+owns:
+- kernel/src/virtio.c
+- kernel/src/virtio_blk.c
+- include/virtio.h
+- tests/generated/virtio
+interface:
+- name: virtio_disk_init
+  pre:
+  - the VIRTIO0 range is mapped and the allocator is active
+  post:
+  - one legacy virtqueue is negotiated and ready before fs mount
+  errors:
+  - unsupported device identity or feature negotiation panics with a diagnostic
+  properties:
+  - id: virtio-negotiated-queue-public
+    text: initialization validates device and driver state transitions before marking the queue ready
+- name: virtio_disk_rw
+  pre:
+  - the caller supplies a valid logical block and a locked buffer
+  post:
+  - a read returns the complete block and a write persists it before returning
+  errors:
+  - descriptor exhaustion waits; malformed completion panics rather than fabricating data
+  properties:
+  - id: virtio-sector-mapping-binding
+    text: logical block n maps only to the declared 512-byte sector pair for that block
+- name: virtio_disk_intr
+  pre:
+  - the PLIC reported the virtio IRQ
+  post:
+  - every completed chain is reclaimed and its waiter awakened exactly once
+  errors:
+  - spurious interrupts are ignored without state change
+  properties:
+  - id: virtio-completion-once
+    text: each submitted transfer completes and wakes its waiter exactly once
+properties:
+- id: virtio-single-queue
+  text: exactly one negotiated queue serves the block device for the kernel lifetime
+errors:
+- device absence or protocol faults panic with a diagnostic at initialization
+state:
+  stage: device-driver
+  owned_state:
+  - the descriptor ring, available and used rings, and per-slot buffer bookkeeping
+  resource_lifetime:
+  - queue state lives for the kernel lifetime
+preconditions:
+- irq dispatch routes the virtio IRQ to this module
+postconditions:
+- fs obtains whole-block transfers in logical block order
+invariants:
+- id: virtio-ring-bounded
+  text: in-flight descriptors never exceed the negotiated queue size
+dependencies:
+- mem
+- irq
+- toolchain
