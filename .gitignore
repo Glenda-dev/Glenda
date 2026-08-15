@@ -1,0 +1,6 @@
+.tmp
+.vos/*
+!.vos/project.yaml
+.env
+build/
+fs.img

@@ -1,0 +1,40 @@
+version: vos.project.v1
+build:
+  program: bun
+  args: [--version]
+  cwd: .
+  env: []
+  timeout: 30000
+  artifacts: []
+runners:
+  qemu:
+    program: bun
+    args: [--version]
+    cwd: .
+    env: []
+    timeout: 30000
+    artifacts: []
+    success_pattern: '[0-9]+[.][0-9]+[.][0-9]+'
+    failure_pattern: '[Ee]rror|[Ff]ailed|panic'
+  hardware:
+    program: bun
+    args: [--version]
+    cwd: .
+    env: []
+    timeout: 30000
+    artifacts: []
+checks:
+  public-toolchain:
+    program: bun
+    args: [--version]
+    cwd: .
+    env: []
+    timeout: 30000
+    verifies: [toolchain]
+  contract-toolchain:
+    program: bun
+    args: [--version]
+    cwd: .
+    env: []
+    timeout: 30000
+    verifies: [toolchain]

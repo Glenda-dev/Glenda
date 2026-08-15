@@ -1,0 +1,29 @@
+# VOS DesignSpec. Discuss choices with `vos agent ask`, then replace every TODO by hand.
+system:
+  name: student-os
+  language: TODO
+  isa: TODO
+machine:
+  qemu:
+    machine: TODO
+    memory: TODO
+    firmware: TODO
+    console: TODO
+  hardware:
+    board: not in current lab scope
+    status: not in current lab scope
+kernel:
+  organization: TODO
+  execution: TODO
+  protection: TODO
+  communication: TODO
+  resource_model: TODO
+required_mechanisms: []
+composition_invariants:
+  - TODO
+non_goals: []
+hardware_port:
+  board: TODO
+  boot: TODO
+  console: TODO
+  interrupt: TODO
