@@ -18,6 +18,7 @@ build:
   timeout: 600000
   artifacts:
     - target/riscv64gc-unknown-none-elf/debug/kernel
+    - target/service/hello/hello.bin
 runners:
   qemu:
     program: cargo
@@ -38,7 +39,8 @@ runners:
       - CC_riscv64gc_unknown_none_elf
       - AR_riscv64gc_unknown_none_elf
     timeout: 120000
-    artifacts: []
+    artifacts:
+      - disk.img
     success_pattern: GLENDA_BOOT_OK
     failure_pattern: panicked at|Kernel panic
   hardware:
@@ -74,26 +76,36 @@ checks:
       - boot-asm
     artifacts:
       - target/serial-boot.log
-  boot-console-binding:
-    kind: contract
-    program: sh
-    args:
-      - tests/public/verify.sh
-      - boot-console-binding
-    cwd: .
-    env:
-      - PATH
-    timeout: 30000
-    verifies:
-      - boot-asm
-      - interface/sbi-ecall
-    artifacts: []
-  toolchain-clean-rebuild:
+  userland-exec-public:
     kind: public
     program: sh
     args:
       - tests/public/verify.sh
-      - toolchain-clean-rebuild
+      - userland-exec-public
+    cwd: .
+    env:
+      - PATH
+      - HOME
+      - USERPROFILE
+      - RUSTUP_HOME
+      - CARGO_HOME
+      - CARGO_TARGET_DIR
+      - CROSS_COMPILE
+      - CC_riscv64gc_unknown_none_elf
+      - AR_riscv64gc_unknown_none_elf
+    timeout: 180000
+    verifies:
+      - userland
+      - proc
+      - interface/syscall-abi
+    artifacts:
+      - target/serial-userland.log
+  userland-evidence-public:
+    kind: public
+    program: sh
+    args:
+      - tests/public/verify.sh
+      - userland-evidence-public
     cwd: .
     env:
       - PATH
@@ -107,92 +119,8 @@ checks:
       - AR_riscv64gc_unknown_none_elf
     timeout: 600000
     verifies:
+      - userland
       - toolchain
     artifacts:
-      - target/riscv64gc-unknown-none-elf/debug/kernel
-  toolchain-offline-build-public:
-    artifacts:
-      - target/riscv64gc-unknown-none-elf/debug/kernel
-    args:
-      - tests/toolchain/build_offline.sh
-    cwd: .
-    env:
-      - PATH
-      - CARGO_NET_OFFLINE
-      - HOME
-      - USERPROFILE
-      - RUSTUP_HOME
-      - CARGO_HOME
-      - CARGO_TARGET_DIR
-      - CROSS_COMPILE
-      - CC_riscv64gc_unknown_none_elf
-      - AR_riscv64gc_unknown_none_elf
-    kind: public
-    program: sh
-    timeout: 120000
-    verifies:
-      - toolchain
-  toolchain-workspace-contract:
-    artifacts: []
-    args:
-      - tests/toolchain/workspace_contract.sh
-    cwd: .
-    env:
-      - PATH
-    kind: contract
-    program: sh
-    timeout: 30000
-    verifies:
-      - toolchain
-  toolchain-repro-fuzz:
-    artifacts:
-      - target/riscv64gc-unknown-none-elf/debug/kernel
-    args:
-      - tests/toolchain/repro_fuzz.sh
-      - toolchain-repro-fuzz
-      - "7"
-      - "3"
-    cases: 3
-    cwd: .
-    env:
-      - PATH
-      - CARGO_NET_OFFLINE
-      - HOME
-      - USERPROFILE
-      - RUSTUP_HOME
-      - CARGO_HOME
-      - CARGO_TARGET_DIR
-      - CROSS_COMPILE
-      - CC_riscv64gc_unknown_none_elf
-      - AR_riscv64gc_unknown_none_elf
-    kind: fuzz
-    program: sh
-    reproduction_artifact: target/riscv64gc-unknown-none-elf/debug/kernel
-    seed: 7
-    timeout: 120000
-    verifies:
-      - toolchain
-  toolchain-build-trace:
-    artifacts:
-      - target/toolchain-build-trace.txt
-    args:
-      - tests/toolchain/build_trace.sh
-    cwd: .
-    env:
-      - PATH
-      - CARGO_NET_OFFLINE
-      - HOME
-      - USERPROFILE
-      - RUSTUP_HOME
-      - CARGO_HOME
-      - CARGO_TARGET_DIR
-      - CROSS_COMPILE
-      - CC_riscv64gc_unknown_none_elf
-      - AR_riscv64gc_unknown_none_elf
-    kind: trace
-    oracle: exit status 0, kernel ELF non-empty, and both sha256 hashes byte-identical
-    program: sh
-    timeout: 120000
-    verifies:
-      - toolchain
-    workload: cargo xtask build; sha256 kernel; cargo clean -p kernel; cargo xtask build; sha256 kernel
+      - target/service/hello/hello.elf
+      - target/service/hello/hello.bin

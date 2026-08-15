@@ -4,7 +4,15 @@
 .env
 build/
 fs.img
+disk.img
 
 # Cargo build outputs live under target/ and are never part of the owned source
 # tree; ignore them so the ownership scanner only sees source changes.
 target/
+
+# Upstream Glenda ignores (kept from the landed lab-1 tree)
+debug
+**/*.rs.bk
+*.pdb
+**/mutants.out*/
+.vscode/

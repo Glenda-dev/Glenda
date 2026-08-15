@@ -1,23 +1,17 @@
 [package]
 name = "kernel"
 version = "0.1.0"
-edition = "2021"
-build = "build.rs"
+edition = "2024"
 
-# The monolithic teaching kernel compiles to a single no_std binary linked with
-# rust-lld for riscv64gc-unknown-none-elf. The `kernel` crate is owned by the
-# toolchain module only at the scaffolding level; kernel source lives in the
-# boot-asm milestone.
 [dependencies]
+riscv = "0.15"
+fdt = "0.1.5"
+spin = "0.10.0"
+
+[build-dependencies]
+cc = "1.2.38"
 
 [features]
 default = []
-
-# The kernel binary is a workspace artifact; its source lives with the toolchain
-# module under xtask/ until the boot-asm milestone lands its own kernel sources
-# and re-points this path.
-[[bin]]
-name = "kernel"
-path = "../xtask/src/kernel_bootstrap.rs"
-test = false
-bench = false
+tests = []
+uart-unicode = []

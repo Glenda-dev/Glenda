@@ -1,0 +1,59 @@
+id: glenda-m5-manual-landing
+reason: >-
+  M5（用户态，candidate）按课程预案手动落盘：学生参考实现 refs/tmp/lab-9 在 M4
+  基础上补齐可运行队列、文件文件描述符层、dentry 缓存重构与 LAB-9 用户态自检。
+  Agent 所有权边界无法一次性覆盖 userland、proc、fs 多个模块的 owns 路径，故由
+  学生手动将该参考树落盘为本 orphan 里程碑树。课程适配与诚实修复共三处：
+  （1）lab-9 上游与 lab-8 一样从不打印 LOGO，学生在 kernel/src/main.rs init()
+  之后补上 AtomicBool 守卫的一次性横幅块（LOGO + GLENDA_BOOT_OK，printk 不自动
+  换行故显式补 \n），单次运行恰好一次且位于调度用户代码之前；
+  （2）上游 service/hello/Makefile 的 SRCS 引用了树中不存在的 string.c，导致
+  make 直接失败；hello.c 在 -ffreestanding 下需要编译器隐式生成的 memset/memcpy，
+  学生补写了最小实现 service/hello/string.c（memset/memcpy/memmove，无外部依赖）
+  使 payload 可以链接；
+  （3）其余文件与参考分支逐字节一致。学生脚手架从 master 复制，verify.sh 追加
+  userland-exec-public 与 userland-evidence-public 两个 case。本次落盘已在宿主
+  离线构建并通过 QEMU virt + disk.img(virtio-blk) 启动验证：GLENDA_BOOT_OK 恰好
+  一次，内嵌 payload 被调度并跑完全部 LAB-9 自检（[ALL PASS] LAB-9 tests
+  completed.）。按课程语义，本里程碑仅为 candidate：物理板证据与人工评审缺失，
+  且上游树本身带构建缺口，故标签为 course/glenda-m5-candidate 而非 complete。
+changes:
+  - kernel/src/main.rs
+  - service/hello/string.c
+  - service/hello/
+  - kernel/src/proc/
+  - kernel/src/fs/
+  - kernel/src/syscall/
+  - kernel/src/drivers/
+  - kernel/src/dtb/
+  - kernel/src/irq/
+  - kernel/src/mem/
+  - kernel/src/asm/
+  - kernel/src/init/
+  - kernel/src/linker.ld
+  - kernel/src/sbi.rs
+  - kernel/src/hart.rs
+  - kernel/src/printk.rs
+  - kernel/src/logo.rs
+  - kernel/src/tests/
+  - kernel/Cargo.toml
+  - kernel/build.rs
+  - xtask/
+  - .cargo/config.toml
+  - Cargo.toml
+  - Cargo.lock
+  - config/
+  - docs/
+  - include/
+  - lib/
+  - misc/
+  - examples/
+  - .gitignore
+  - vos.yaml
+  - tests/public/verify.sh
+  - spec/patches/glenda-m5-manual-landing.yaml
+new_invariants:
+  - 手动落盘的里程碑树除横幅适配与最小 string.c 修复外不得偏离参考分支 refs/tmp/lab-9 的源码内容
+  - GLENDA_BOOT_OK 必须在调度用户代码之前恰好打印一次
+  - service/hello/string.c 是学生最小重建，仅提供 memset/memcpy/memmove，不引入任何库依赖
+  - 本里程碑保持 candidate 语义：缺少物理板证据与人工评审前不得升级为 complete

@@ -1,0 +1,152 @@
+use super::super::TrapContext;
+use super::super::interrupt;
+use super::super::plic;
+use super::super::timer;
+use super::user;
+use super::{EXCEPTION_INFO, INTERRUPT_INFO};
+use crate::drivers;
+use crate::hart;
+use crate::printk;
+use crate::printk::{ANSI_RED, ANSI_RESET, ANSI_YELLOW};
+use crate::proc;
+use core::panic;
+use riscv::interrupt::Interrupt;
+use riscv::register::{
+    scause::{self, Trap},
+    sepc, sip, sstatus, stval,
+};
+
+/// S-mode 陷阱处理函数
+/// 在 kernel_vector 汇编代码中被调用
+/// # 参数
+/// - `ctx`: 指向栈上保存的寄存器上下文的指针
+#[unsafe(no_mangle)]
+pub extern "C" fn trap_kernel_handler(ctx: &mut TrapContext) {
+    interrupt::enter();
+    let sc = scause::read();
+    let epc = sepc::read();
+    let tval = stval::read();
+    let sstatus_bits = sstatus::read().bits();
+
+    match sc.cause() {
+        Trap::Exception(e) => {
+            exception_handler(e, epc, tval, sstatus_bits, ctx);
+        }
+        Trap::Interrupt(i) => {
+            interrupt_handler(i, epc, tval, sstatus_bits, ctx);
+        }
+    }
+    interrupt::exit();
+}
+
+/// 处理异常情况
+fn exception_handler(
+    e: usize,
+    epc: usize,
+    tval: usize,
+    sstatus_bits: usize,
+    ctx: &mut TrapContext,
+) {
+    // 8: Environment call from U-mode (syscall)
+    if e == 8 {
+        user::syscall_handler(ctx);
+        // advance sepc to next instruction
+        unsafe {
+            sepc::write(epc.wrapping_add(4));
+        }
+        return;
+    }
+
+    // 13: Load Page Fault, 15: Store/AMO Page Fault
+    if e == 13 || e == 15 {
+        let p = proc::current_proc();
+        if p.ustack_grow(tval).is_ok() {
+            return;
+        }
+    }
+    printk!(
+        "{}TRAP(Exception){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
+        ANSI_RED,
+        ANSI_RESET,
+        e,
+        EXCEPTION_INFO.get(e).unwrap_or(&"Unknown Exception"),
+        epc,
+        tval,
+        sstatus_bits
+    );
+    panic!("Kernel panic due to exception");
+}
+
+/// 处理中断情况
+fn interrupt_handler(
+    e: usize,
+    epc: usize,
+    tval: usize,
+    sstatus_bits: usize,
+    _ctx: &mut TrapContext,
+) {
+    match e {
+        9 => external_handler(),
+        // S-mode timer interrupt
+        5 => timer_handler_stip(sstatus_bits),
+        // S-mode software interrupt
+        1 => timer_handler_ssip(sstatus_bits),
+        // 剩下的被认为是需要打印的内容
+        _ => {
+            printk!(
+                "{}TRAP(Interrupt){}: code={} ({}); epc=0x{:x}, tval=0x{:x}, sstatus=0x{:x}\n",
+                ANSI_YELLOW,
+                ANSI_RESET,
+                e,
+                INTERRUPT_INFO.get(e).unwrap_or(&"Unknown Interrupt"),
+                epc,
+                tval,
+                sstatus_bits
+            );
+        }
+    }
+}
+
+// 外设中断处理 (基于PLIC，lab-3只需要识别和处理UART中断)
+pub fn external_handler() {
+    let hartid = hart::getid();
+    let id = plic::claim(hartid);
+    match id {
+        0 => return,
+        plic::UART_IRQ => {
+            drivers::uart::irq::handler();
+        }
+        plic::VIRTIO0_IRQ => {
+            drivers::virtio::disk::intr();
+        }
+        _ => {
+            panic!("Unexpected interrupt id {} on hart {}", id, hartid);
+        }
+    }
+
+    plic::complete(hartid, id);
+}
+
+pub fn timer_handler_ssip(sstatus_bits: usize) {
+    if hart::getid() == 0 {
+        timer::update();
+    }
+    unsafe {
+        sip::clear_pending(Interrupt::SupervisorSoft);
+    }
+
+    if (sstatus_bits & (1 << 8)) == 0 {
+        proc::scheduler::yield_proc();
+    }
+}
+
+pub fn timer_handler_stip(sstatus_bits: usize) {
+    if hart::getid() == 0 {
+        timer::update();
+    }
+    timer::program_next_tick();
+
+    if (sstatus_bits & (1 << 8)) == 0 {
+        proc::scheduler::yield_proc();
+    }
+}

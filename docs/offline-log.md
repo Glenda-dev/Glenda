@@ -38,3 +38,13 @@ LLM：ECNU Anthropic 兼容网关，模型 `ecnu-max`（`.vos/config.toml`，密
 - 手动落盘（偏差记录：spec/patches/toolchain-manual-landing.yaml，commit 758c4b5）：Agent worktree 产物已离线验证——`vos build` 通过且 submittable；`vos run qemu` oracle 精确命中一次 GLENDA_BOOT_OK；离线 clean rebuild 字节级一致（kernel sha256 8cde4cf5fde6e045950b974778abe7667c1d703a8ae33946585f45435a8c4d3b）。
 - `vos verify` 记录当前预期状态：toolchain 四项检查 CHECK_OK；boot-console-binding 待 M1 boot-asm 实现后自然通过；submittable:false（预期内，M1 范围未满足）。
 - 证据：.vos/runs/202608151116379-1c2e83e9/（events.jsonl、manifest.json）。
+
+## M5 里程碑记录（用户态 candidate，参考 refs/tmp/lab-9）
+
+- 落盘方式：手动（spec/patches/glenda-m5-manual-landing.yaml）。orphan 工作分支 work/glenda-m5 自 refs/tmp/lab-9 检出，叠加 master 学生脚手架。
+- 上游构建缺口（诚实修复 1）：service/hello/Makefile 的 SRCS 引用了树中不存在的 string.c，make 直接失败；hello.c 在 -ffreestanding 下需要编译器隐式生成的 memset/memcpy（test_buffer/lab9_test_2 的链接错误可证）。学生补写最小 service/hello/string.c（memset/memcpy/memmove）后 payload 链接通过。
+- 课程适配（诚实修复 2）：lab-9 上游从不打印 LOGO；kernel/src/main.rs init() 后新增 AtomicBool 一次性横幅块（LOGO + GLENDA_BOOT_OK，显式 \n）。
+- 构建：`cargo xtask build` 通过（上游存量 warning 较多）；hello.elf/hello.bin 由 make 生成并经 xtask 写入 target/proc_payload.rs。
+- 启动：QEMU virt + disk.img(virtio-blk)，GLENDA_BOOT_OK 恰好 1 次；payload 被调度并跑完 LAB-9 自检（[ALL PASS] LAB-9 tests completed.）。
+- 里程碑检查：boot-banner-public / userland-exec-public / userland-evidence-public；本地复跑后两项 CHECK_OK。
+- 候选语义：M5 仅落 candidate（物理板证据与人工评审缺失，且上游自带构建缺口），标签 course/glenda-m5-candidate，不使用 -complete。
